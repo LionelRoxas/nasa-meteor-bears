@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { fetchNearEarthObjects, calculateImpactEnergy, estimateCraterDiameter, type AsteroidData } from '@/api/nasa-neo';
 
 interface AsteroidParams {
   size: number; // diameter in meters
@@ -18,6 +19,36 @@ export default function AsteroidVisualization() {
     distance: 10,
     angle: 0
   });
+  const [realAsteroids, setRealAsteroids] = useState<AsteroidData[]>([]);
+  const [selectedAsteroid, setSelectedAsteroid] = useState<AsteroidData | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch real asteroid data on mount
+  useEffect(() => {
+    const loadAsteroidData = async () => {
+      setLoading(true);
+      const asteroids = await fetchNearEarthObjects();
+      setRealAsteroids(asteroids);
+      setLoading(false);
+    };
+    
+    loadAsteroidData();
+  }, []);
+
+  // Apply selected asteroid data to parameters
+  const applyAsteroidData = (asteroid: AsteroidData) => {
+    setSelectedAsteroid(asteroid);
+    setAsteroidParams({
+      size: asteroid.size,
+      velocity: asteroid.velocity,
+      distance: asteroid.distance,
+      angle: asteroidParams.angle, // Keep current angle
+    });
+  };
+
+  // Calculate impact metrics
+  const impactEnergy = calculateImpactEnergy(asteroidParams.size, asteroidParams.velocity);
+  const craterDiameter = estimateCraterDiameter(impactEnergy);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -170,15 +201,52 @@ export default function AsteroidVisualization() {
       <canvas ref={canvasRef} className="w-full h-full" />
       
       {/* Control Panel */}
-      <div className="absolute top-4 left-4 bg-black/70 text-white p-6 rounded-lg backdrop-blur-sm max-w-md">
+      <div className="absolute top-4 left-4 bg-black/70 text-white p-6 rounded-lg backdrop-blur-sm max-w-md max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold mb-4">Asteroid Parameters</h2>
+        
+        {/* NASA Asteroid Selector */}
+        {realAsteroids.length > 0 && (
+          <div className="mb-6 p-4 bg-purple-900/50 rounded">
+            <h3 className="font-bold mb-2">🛰️ Real NASA Data</h3>
+            <select
+              className="w-full p-2 bg-black/50 rounded border border-purple-500 text-sm"
+              onChange={(e) => {
+                const asteroid = realAsteroids[parseInt(e.target.value)];
+                if (asteroid) applyAsteroidData(asteroid);
+              }}
+              defaultValue=""
+            >
+              <option value="" disabled>
+                Select a real asteroid...
+              </option>
+              {realAsteroids.map((asteroid, index) => (
+                <option key={asteroid.id} value={index}>
+                  {asteroid.name} {asteroid.isHazardous ? '⚠️' : ''}
+                </option>
+              ))}
+            </select>
+            {selectedAsteroid && (
+              <p className="text-xs text-gray-400 mt-2">
+                Selected: {selectedAsteroid.name}
+                <br />
+                Close approach: {selectedAsteroid.closeApproachDate}
+              </p>
+            )}
+          </div>
+        )}
+        
+        {loading && (
+          <div className="mb-4 p-3 bg-blue-900/50 rounded text-sm">
+            Loading real asteroid data from NASA...
+          </div>
+        )}
         
         <div className="space-y-4">
           <div>
             <label className="block mb-2">
-              Size: {asteroidParams.size}m diameter
+              Size: {asteroidParams.size.toFixed(0)}m diameter
               <span className="text-xs text-gray-400 ml-2">
-                (Impact Energy: {((asteroidParams.size / 2) ** 3 * Math.PI * 4/3 * 3000 * (asteroidParams.velocity * 1000) ** 2 / 2 / 4.184e12).toFixed(2)} megatons TNT)
+                (Energy: {impactEnergy.toFixed(2)} MT TNT)
               </span>
             </label>
             <input
@@ -207,12 +275,16 @@ export default function AsteroidVisualization() {
           
           <div>
             <label className="block mb-2">
-              Distance from Earth: {asteroidParams.distance} Earth radii
+              Distance from Earth: {asteroidParams.distance.toFixed(1)} Earth radii
+              <span className="text-xs text-gray-400 ml-2">
+                ({(asteroidParams.distance * 6371).toFixed(0)} km)
+              </span>
             </label>
             <input
               type="range"
               min="6"
               max="50"
+              step="0.5"
               value={asteroidParams.distance}
               onChange={(e) => setAsteroidParams({ ...asteroidParams, distance: Number(e.target.value) })}
               className="w-full"
@@ -237,20 +309,70 @@ export default function AsteroidVisualization() {
         <div className="mt-6 p-4 bg-blue-900/50 rounded">
           <h3 className="font-bold mb-2">ℹ️ About this visualization</h3>
           <p className="text-sm text-gray-300">
-            This 3D simulation shows a near-Earth asteroid (Impactor-2025) approaching our planet. 
-            Adjust the parameters to see how size, velocity, and trajectory affect the potential impact.
+            This 3D simulation shows near-Earth asteroids approaching our planet. 
+            Use real NASA data or adjust parameters manually to explore different impact scenarios.
           </p>
         </div>
       </div>
       
+      {/* Impact Metrics Panel */}
+      <div className="absolute top-4 right-4 bg-black/70 text-white p-4 rounded-lg backdrop-blur-sm max-w-xs">
+        <h3 className="font-bold mb-3">📊 Impact Analysis</h3>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-400">Impact Energy:</span>
+            <span className="font-mono">{impactEnergy.toFixed(2)} MT</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">Crater Diameter:</span>
+            <span className="font-mono">{craterDiameter.toFixed(0)} m</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">Miss Distance:</span>
+            <span className="font-mono">{(asteroidParams.distance * 6371).toFixed(0)} km</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">Relative Velocity:</span>
+            <span className="font-mono">{asteroidParams.velocity} km/s</span>
+          </div>
+          {selectedAsteroid && (
+            <>
+              <hr className="border-gray-600 my-2" />
+              <div className="flex justify-between">
+                <span className="text-gray-400">Hazard Level:</span>
+                <span className={selectedAsteroid.isHazardous ? 'text-red-400' : 'text-green-400'}>
+                  {selectedAsteroid.isHazardous ? '⚠️ HIGH' : '✓ LOW'}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+        
+        {impactEnergy > 1000 && (
+          <div className="mt-3 p-2 bg-red-900/50 rounded text-xs">
+            ⚠️ Extinction-level event if impact occurs
+          </div>
+        )}
+        {impactEnergy > 100 && impactEnergy <= 1000 && (
+          <div className="mt-3 p-2 bg-orange-900/50 rounded text-xs">
+            ⚠️ Regional devastation possible
+          </div>
+        )}
+        {impactEnergy <= 100 && (
+          <div className="mt-3 p-2 bg-green-900/50 rounded text-xs">
+            ✓ Localized impact zone
+          </div>
+        )}
+      </div>
+      
       {/* Info Panel */}
       <div className="absolute bottom-4 right-4 bg-black/70 text-white p-4 rounded-lg backdrop-blur-sm max-w-xs">
-        <h3 className="font-bold mb-2">🌍 Earth Defense Simulation</h3>
+        <h3 className="font-bold mb-2">🌍 Visualization Guide</h3>
         <p className="text-sm text-gray-300">
-          Blue sphere: Earth<br />
-          Brown sphere: Asteroid<br />
-          Orange line: Orbital path<br />
-          White dots: Stars
+          🔵 Blue sphere: Earth<br />
+          🟤 Brown sphere: Asteroid<br />
+          🟠 Orange line: Orbital path<br />
+          ⚪ White dots: Stars
         </p>
       </div>
     </div>
