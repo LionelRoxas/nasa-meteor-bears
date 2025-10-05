@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import NASADataPanel from "@/components/NASADataPanel";
+import LeftSidebar from "@/components/LeftSidebar";
 import { useNASAData, type NASAAsteroidData } from "@/hooks/useNASAData";
 
 export default function Home() {
@@ -715,242 +716,22 @@ export default function Home() {
       </header>
 
       {/* Main Content Area */}
-      <div className="absolute top-16 left-0 right-0 bottom-0 flex">
+      <div className="absolute top-16 left-0 right-0 bottom-0 flex h-[calc(100vh-4rem)]">
         {/* Left Sidebar */}
-        <div
-          className={`${
-            isSidebarCollapsed ? "w-0" : "w-80"
-          } transition-all duration-300 bg-black/90 backdrop-blur-sm border-r border-gray-800 overflow-hidden`}
-        >
-          <div className="p-6 overflow-y-auto h-full">
-            {/* Mission Control */}
-            <section className="mb-8">
-              <h2 className="text-xl font-bold text-[#0066cc] mb-4">
-                Mission Control
-              </h2>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Asteroid Diameter:{" "}
-                    <span className="text-[#0066cc] font-bold">
-                      {asteroidParams.diameter}m
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                    min="50"
-                    max="1000"
-                    value={asteroidParams.diameter}
-                    onChange={(e) =>
-                      setAsteroidParams((prev) => ({
-                        ...prev,
-                        diameter: Number(e.target.value),
-                      }))
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Velocity:{" "}
-                    <span className="text-[#0066cc] font-bold">
-                      {asteroidParams.velocity} km/s
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                    min="5"
-                    max="50"
-                    value={asteroidParams.velocity}
-                    onChange={(e) =>
-                      setAsteroidParams((prev) => ({
-                        ...prev,
-                        velocity: Number(e.target.value),
-                      }))
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Entry Angle:{" "}
-                    <span className="text-[#0066cc] font-bold">
-                      {asteroidParams.angle}°
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                    min="15"
-                    max="90"
-                    value={asteroidParams.angle}
-                    onChange={(e) =>
-                      setAsteroidParams((prev) => ({
-                        ...prev,
-                        angle: Number(e.target.value),
-                      }))
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Distance:{" "}
-                    <span className="text-[#0066cc] font-bold">
-                      {asteroidParams.distance} km
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                    min="10000"
-                    max="500000"
-                    value={asteroidParams.distance}
-                    onChange={(e) =>
-                      setAsteroidParams((prev) => ({
-                        ...prev,
-                        distance: Number(e.target.value),
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* Control Buttons */}
-              <div className="mt-6 space-y-3">
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleStartImpact}
-                    className="flex-1 px-4 py-2.5 bg-[#0066cc] text-white rounded-md hover:bg-[#004499] transition-colors text-sm font-medium"
-                  >
-                    {isSimulating ? "Pause" : "Start Impact"}
-                  </button>
-                  <button
-                    onClick={handleReset}
-                    className="flex-1 px-4 py-2.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
-                  >
-                    Reset
-                  </button>
-                </div>
-
-                <button
-                  onClick={handleDeflect}
-                  className={`w-full px-4 py-2.5 rounded-md transition-colors text-sm font-medium ${
-                    deflectionApplied
-                      ? "bg-green-600 text-white"
-                      : "bg-orange-600 text-white hover:bg-orange-500"
-                  }`}
-                >
-                  {deflectionApplied ? "Deflected" : "Deflect"}
-                </button>
-
-                {/* Speed Controls - Work during active simulation */}
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-center">
-                    <span className="text-gray-400">Simulation Speed:</span>{" "}
-                    <span
-                      className={`${
-                        isSimulating ? "text-green-400 font-bold" : "text-white"
-                      }`}
-                    >
-                      {simulationSpeed}x {isSimulating ? "" : ""}
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    {[0.25, 0.5, 1, 2, 4, 8].map((speed) => (
-                      <button
-                        key={speed}
-                        onClick={() => setSimulationSpeed(speed)}
-                        className={`flex-1 px-2 py-2 rounded-md text-xs font-medium transition-all duration-200 ${
-                          simulationSpeed === speed
-                            ? "bg-green-600 text-white shadow-lg scale-105"
-                            : "bg-gray-700 text-white hover:bg-gray-600 hover:scale-102"
-                        } ${
-                          isSimulating && simulationSpeed === speed
-                            ? "animate-pulse"
-                            : ""
-                        }`}
-                      >
-                        {speed}x
-                      </button>
-                    ))}
-                  </div>
-                  {isSimulating && (
-                    <div className="text-xs text-center text-green-400 pt-2">
-                      Change speed anytime during simulation!
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            {/* Impact Analysis */}
-            <section>
-              <h2 className="text-xl font-bold text-[#0066cc] mb-4">
-                Impact Analysis
-                {selectedNASAAsteroid && (
-                  <span className="text-blue-400 text-sm ml-2">NASA</span>
-                )}
-              </h2>
-
-              <div className="bg-gray-900/50 rounded-lg p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300 text-sm">Kinetic Energy</span>
-                  <span className="text-[#0066cc] font-bold text-sm">
-                    {impactData.energy.toFixed(2)} MT TNT
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300 text-sm">Crater Diameter</span>
-                  <span className="text-[#0066cc] font-bold text-sm">
-                    {impactData.crater.toFixed(2)} km
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300 text-sm">Affected Radius</span>
-                  <span className="text-[#0066cc] font-bold text-sm">
-                    {impactData.radius.toFixed(1)} km
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300 text-sm">Time to Impact</span>
-                  <span className="text-[#0066cc] font-bold text-sm">
-                    {impactData.timeToImpact}
-                  </span>
-                </div>
-
-                <div className="pt-2 border-t border-gray-700">
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-300 text-sm">Threat Level:</span>
-                    <span
-                      className={`font-bold text-sm ${
-                        impactData.threatLevel === "GLOBAL"
-                          ? "text-red-500 animate-pulse"
-                          : impactData.threatLevel === "REGIONAL"
-                          ? "text-red-500 animate-pulse"
-                          : impactData.threatLevel === "LOCAL"
-                          ? "text-orange-500"
-                          : "text-green-500"
-                      }`}
-                    >
-                      {impactData.threatLevel === "GLOBAL" && "GLOBAL THREAT"}
-                      {impactData.threatLevel === "REGIONAL" &&
-                        "REGIONAL THREAT"}
-                      {impactData.threatLevel === "LOCAL" && "LOCAL THREAT"}
-                      {impactData.threatLevel === "MINIMAL" && "MINIMAL THREAT"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div>
-        </div>
+        <LeftSidebar
+          isCollapsed={isSidebarCollapsed}
+          asteroidParams={asteroidParams}
+          setAsteroidParams={setAsteroidParams}
+          isSimulating={isSimulating}
+          simulationSpeed={simulationSpeed}
+          setSimulationSpeed={setSimulationSpeed}
+          deflectionApplied={deflectionApplied}
+          impactData={impactData}
+          selectedNASAAsteroid={selectedNASAAsteroid}
+          onStartImpact={handleStartImpact}
+          onReset={handleReset}
+          onDeflect={handleDeflect}
+        />
 
         {/* Main 3D View */}
         <div className="flex-1 relative flex items-center justify-center">

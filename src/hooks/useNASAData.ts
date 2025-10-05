@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { logger } from '@/logger';
-import { useMLPredictions, type MLPrediction } from './useMLPredictions';
+import { useState, useEffect } from "react";
+import { logger } from "@/logger";
+import { useMLPredictions, type MLPrediction } from "./useMLPredictions";
 
 export interface NASAAsteroidData {
   id: string;
@@ -11,18 +11,21 @@ export interface NASAAsteroidData {
   velocity: number; // km/s
   distance: number; // km
   is_hazardous: boolean;
+  is_sentry_object?: boolean;
   approach_date?: string;
+  approach_date_full?: string;
   magnitude: number;
   nasa_url?: string;
-  is_sentry_object?: boolean;
-  sentry_data?: string;
-  raw_data: any; // Full NASA API response
+  miss_distance_lunar?: number;
+  orbiting_body?: string;
+  orbit_class?: string;
+  raw_data?: any;
 }
 
 export interface CometData {
   id: string;
   name: string;
-  type: 'comet';
+  type: "comet";
   diameter: number;
   velocity: number;
   distance: number;
@@ -67,13 +70,15 @@ export interface DataSummary {
 }
 
 export function useNASAData() {
-  const [simulationData, setSimulationData] = useState<SimulationDataset | null>(null);
+  const [simulationData, setSimulationData] =
+    useState<SimulationDataset | null>(null);
   const [summary, setSummary] = useState<DataSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // ML predictions integration
-  const { getMLPrediction, isMLAvailable, getHighRiskAsteroids } = useMLPredictions();
+  const { getMLPrediction, isMLAvailable, getHighRiskAsteroids } =
+    useMLPredictions();
 
   // Load data from local JSON files
   useEffect(() => {
@@ -83,27 +88,27 @@ export function useNASAData() {
         setError(null);
 
         // Load simulation data
-        const simResponse = await fetch('/data/simulation-data.json');
-        if (!simResponse.ok) throw new Error('Failed to load simulation data');
+        const simResponse = await fetch("/data/simulation-data.json");
+        if (!simResponse.ok) throw new Error("Failed to load simulation data");
         const simData = await simResponse.json();
         setSimulationData(simData);
 
         // Load summary
-        const summaryResponse = await fetch('/data/summary.json');
-        if (!summaryResponse.ok) throw new Error('Failed to load summary data');
+        const summaryResponse = await fetch("/data/summary.json");
+        if (!summaryResponse.ok) throw new Error("Failed to load summary data");
         const summaryData = await summaryResponse.json();
         setSummary(summaryData);
 
-        logger.info('NASA data loaded successfully', {
+        logger.info("NASA data loaded successfully", {
           totalAsteroids: simData.all.length,
           hazardousCount: simData.hazardous.length,
-          todayCount: simData.today.length
+          todayCount: simData.today.length,
         });
-
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load NASA data';
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to load NASA data";
         setError(errorMessage);
-        logger.error('Failed to load NASA data', { error: err });
+        logger.error("Failed to load NASA data", { error: err });
       } finally {
         setLoading(false);
       }
@@ -113,7 +118,9 @@ export function useNASAData() {
   }, []);
 
   // Get a random asteroid for simulation
-  const getRandomAsteroid = (category: 'all' | 'hazardous' | 'today' = 'all'): NASAAsteroidData | null => {
+  const getRandomAsteroid = (
+    category: "all" | "hazardous" | "today" = "all"
+  ): NASAAsteroidData | null => {
     if (!simulationData) return null;
 
     const dataset = simulationData[category];
@@ -124,12 +131,15 @@ export function useNASAData() {
   };
 
   // Get a random comet for simulation
-  const getRandomComet = (category: 'all' | 'hazardous' = 'all'): CometData | null => {
+  const getRandomComet = (
+    category: "all" | "hazardous" = "all"
+  ): CometData | null => {
     if (!simulationData) return null;
 
-    const dataset = category === 'hazardous'
-      ? (simulationData.hazardous_comets || [])
-      : (simulationData.comets || []);
+    const dataset =
+      category === "hazardous"
+        ? simulationData.hazardous_comets || []
+        : simulationData.comets || [];
 
     if (dataset.length === 0) return null;
 
@@ -138,27 +148,33 @@ export function useNASAData() {
   };
 
   // Get asteroids by size category
-  const getAsteroidsBySize = (category: 'small' | 'medium' | 'large' | 'huge'): NASAAsteroidData[] => {
+  const getAsteroidsBySize = (
+    category: "small" | "medium" | "large" | "huge"
+  ): NASAAsteroidData[] => {
     if (!simulationData) return [];
 
     const sizeRanges = {
       small: { min: 0, max: 50 },
       medium: { min: 50, max: 200 },
       large: { min: 200, max: 1000 },
-      huge: { min: 1000, max: Infinity }
+      huge: { min: 1000, max: Infinity },
     };
 
     const range = sizeRanges[category];
-    return simulationData.all.filter(asteroid =>
-      asteroid.diameter >= range.min && asteroid.diameter < range.max
+    return simulationData.all.filter(
+      (asteroid) =>
+        asteroid.diameter >= range.min && asteroid.diameter < range.max
     );
   };
 
   // Get asteroids approaching within a certain distance
-  const getCloseApproaches = (maxDistance: number = 50000): NASAAsteroidData[] => {
+  const getCloseApproaches = (
+    maxDistance: number = 50000
+  ): NASAAsteroidData[] => {
     if (!simulationData) return [];
 
-    return simulationData.today.filter(asteroid => asteroid.distance <= maxDistance)
+    return simulationData.today
+      .filter((asteroid) => asteroid.distance <= maxDistance)
       .sort((a, b) => a.distance - b.distance);
   };
 
@@ -180,10 +196,10 @@ export function useNASAData() {
     const affectedRadius = craterSize * 10;
 
     // Determine threat level
-    let threatLevel: 'MINIMAL' | 'LOCAL' | 'REGIONAL' | 'GLOBAL' = 'MINIMAL';
-    if (energyMt > 100) threatLevel = 'GLOBAL';
-    else if (energyMt > 10) threatLevel = 'REGIONAL';
-    else if (energyMt > 1) threatLevel = 'LOCAL';
+    let threatLevel: "MINIMAL" | "LOCAL" | "REGIONAL" | "GLOBAL" = "MINIMAL";
+    if (energyMt > 100) threatLevel = "GLOBAL";
+    else if (energyMt > 10) threatLevel = "REGIONAL";
+    else if (energyMt > 1) threatLevel = "LOCAL";
 
     // Get ML predictions if available
     const mlPrediction = getMLPrediction(asteroid.id);
@@ -204,19 +220,22 @@ export function useNASAData() {
       mlThreatCategory: mlPrediction.threat_category,
       // Combined risk assessment
       isHighMLRisk: mlPrediction.hazard_probability > 0.7,
-      combinedThreatLevel: getCombinedThreatLevel(threatLevel, mlPrediction.threat_category)
+      combinedThreatLevel: getCombinedThreatLevel(
+        threatLevel,
+        mlPrediction.threat_category
+      ),
     };
   };
 
   // Combine physics-based and ML threat levels
   const getCombinedThreatLevel = (
-    physicsThreat: 'MINIMAL' | 'LOCAL' | 'REGIONAL' | 'GLOBAL',
-    mlThreat: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
-  ): 'MINIMAL' | 'LOCAL' | 'REGIONAL' | 'GLOBAL' => {
+    physicsThreat: "MINIMAL" | "LOCAL" | "REGIONAL" | "GLOBAL",
+    mlThreat: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+  ): "MINIMAL" | "LOCAL" | "REGIONAL" | "GLOBAL" => {
     // If ML indicates critical threat, upgrade physics assessment
-    if (mlThreat === 'CRITICAL') return 'GLOBAL';
-    if (mlThreat === 'HIGH' && physicsThreat === 'MINIMAL') return 'LOCAL';
-    if (mlThreat === 'HIGH' && physicsThreat === 'LOCAL') return 'REGIONAL';
+    if (mlThreat === "CRITICAL") return "GLOBAL";
+    if (mlThreat === "HIGH" && physicsThreat === "MINIMAL") return "LOCAL";
+    if (mlThreat === "HIGH" && physicsThreat === "LOCAL") return "REGIONAL";
 
     return physicsThreat; // Default to physics-based assessment
   };
@@ -226,25 +245,29 @@ export function useNASAData() {
     if (!simulationData || !query.trim()) return [];
 
     const searchTerm = query.toLowerCase();
-    return simulationData.all.filter(asteroid =>
-      asteroid.name.toLowerCase().includes(searchTerm) ||
-      asteroid.id.includes(searchTerm)
+    return simulationData.all.filter(
+      (asteroid) =>
+        asteroid.name.toLowerCase().includes(searchTerm) ||
+        asteroid.id.includes(searchTerm)
     );
   };
 
   // Get comets by period category
-  const getCometsByPeriod = (category: 'short' | 'medium' | 'long'): CometData[] => {
+  const getCometsByPeriod = (
+    category: "short" | "medium" | "long"
+  ): CometData[] => {
     if (!simulationData?.comets) return [];
 
     const ranges = {
-      short: { min: 0, max: 20 },      // Short-period comets (< 20 years)
-      medium: { min: 20, max: 100 },   // Medium-period comets (20-100 years)
-      long: { min: 100, max: Infinity } // Long-period comets (> 100 years)
+      short: { min: 0, max: 20 }, // Short-period comets (< 20 years)
+      medium: { min: 20, max: 100 }, // Medium-period comets (20-100 years)
+      long: { min: 100, max: Infinity }, // Long-period comets (> 100 years)
     };
 
     const range = ranges[category];
-    return simulationData.comets.filter(comet =>
-      comet.period_years >= range.min && comet.period_years < range.max
+    return simulationData.comets.filter(
+      (comet) =>
+        comet.period_years >= range.min && comet.period_years < range.max
     );
   };
 
@@ -252,9 +275,16 @@ export function useNASAData() {
   const getFamousComets = (): CometData[] => {
     if (!simulationData?.comets) return [];
 
-    const famousNames = ['Halley', 'Encke', 'Tuttle', 'Giacobini', 'Swift-Tuttle', 'Tempel-Tuttle'];
-    return simulationData.comets.filter(comet =>
-      famousNames.some(name => comet.name.includes(name))
+    const famousNames = [
+      "Halley",
+      "Encke",
+      "Tuttle",
+      "Giacobini",
+      "Swift-Tuttle",
+      "Tempel-Tuttle",
+    ];
+    return simulationData.comets.filter((comet) =>
+      famousNames.some((name) => comet.name.includes(name))
     );
   };
 
@@ -263,9 +293,10 @@ export function useNASAData() {
     if (!simulationData?.comets || !query.trim()) return [];
 
     const searchTerm = query.toLowerCase();
-    return simulationData.comets.filter(comet =>
-      comet.name.toLowerCase().includes(searchTerm) ||
-      comet.id.includes(searchTerm)
+    return simulationData.comets.filter(
+      (comet) =>
+        comet.name.toLowerCase().includes(searchTerm) ||
+        comet.id.includes(searchTerm)
     );
   };
 
@@ -277,22 +308,22 @@ export function useNASAData() {
         diameter: 60,
         energy: 15,
         location: "Siberia, Russia",
-        description: "Largest impact event in recorded history"
+        description: "Largest impact event in recorded history",
       },
       {
         name: "Chelyabinsk Meteor (2013)",
         diameter: 20,
         energy: 0.5,
         location: "Chelyabinsk, Russia",
-        description: "Airburst that injured over 1,500 people"
+        description: "Airburst that injured over 1,500 people",
       },
       {
         name: "Chicxulub Impact (66 MYA)",
         diameter: 10000,
         energy: 100000000,
         location: "Yucatan Peninsula, Mexico",
-        description: "Asteroid that killed the dinosaurs"
-      }
+        description: "Asteroid that killed the dinosaurs",
+      },
     ];
   };
 
@@ -301,7 +332,9 @@ export function useNASAData() {
     if (!simulationData || !isMLAvailable()) return [];
 
     const highRiskIds = getHighRiskAsteroids(0.7);
-    return simulationData.all.filter(asteroid => highRiskIds.includes(asteroid.id));
+    return simulationData.all.filter((asteroid) =>
+      highRiskIds.includes(asteroid.id)
+    );
   };
 
   // Get ML-enhanced random asteroid
@@ -347,22 +380,26 @@ export function useNASAData() {
     asteroidCount: simulationData?.all.length || 0,
     hazardousCount: simulationData?.hazardous.length || 0,
     // Filter for actual today (2025-10-04) only
-    todayCount: simulationData?.today.filter(asteroid =>
-      asteroid.approach_date === '2025-10-04'
-    ).length || 0,
+    todayCount:
+      simulationData?.today.filter(
+        (asteroid) => asteroid.approach_date === "2025-10-04"
+      ).length || 0,
     // Get this week count (next 7 days)
-    weekCount: simulationData?.today.filter(asteroid => {
-      const approachDate = new Date(asteroid.approach_date || '2025-10-04');
-      const today = new Date('2025-10-04');
-      const weekFromNow = new Date(today);
-      weekFromNow.setDate(today.getDate() + 7);
-      return approachDate >= today && approachDate <= weekFromNow;
-    }).length || 0,
+    weekCount:
+      simulationData?.today.filter((asteroid) => {
+        if (!asteroid.approach_date) return false;
+        const approachDate = new Date(asteroid.approach_date);
+        const today = new Date("2025-10-04");
+        const weekFromNow = new Date(today);
+        weekFromNow.setDate(today.getDate() + 7);
+        return approachDate >= today && approachDate <= weekFromNow;
+      }).length || 0,
     cometCount: simulationData?.comet_count || 0,
     // Count only actually hazardous comets (not the array which has 85)
-    hazardousCometCount: simulationData?.comets?.filter(comet => comet.is_hazardous).length || 0,
+    hazardousCometCount:
+      simulationData?.comets?.filter((comet) => comet.is_hazardous).length || 0,
     // ML status
     isMLAvailable: isMLAvailable(),
-    mlHighRiskCount: getMLHighRiskAsteroids().length
+    mlHighRiskCount: getMLHighRiskAsteroids().length,
   };
 }
