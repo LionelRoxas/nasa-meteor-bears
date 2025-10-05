@@ -2,7 +2,10 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import type { MouseEvent } from 'react';
+import Image from 'next/image';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { EnhancedEarth } from '../lib/EnhancedEarth';
 
 interface AsteroidData {
   id: string;
@@ -191,7 +194,9 @@ export const AsteroidDefenseGame3D = () => {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
   const earthRef = useRef<THREE.Mesh | null>(null);
+  const enhancedEarthRef = useRef<EnhancedEarth | null>(null);
   const asteroidsRef = useRef<GameAsteroid[]>([]);
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
   const mouseRef = useRef<THREE.Vector2 | null>(null);
@@ -364,91 +369,62 @@ export const AsteroidDefenseGame3D = () => {
 
     // Scene setup
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000011);
+    scene.background = new THREE.Color(0x000000); // Pure black background
     sceneRef.current = scene;
 
-    // Camera setup with better positioning and correct aspect ratio
+    // Camera setup with better positioning for larger Earth
     const camera = new THREE.PerspectiveCamera(75, (window.innerWidth * 0.75) / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 5, 15); // Moved camera up and closer for better view
+    camera.position.set(0, 8, 25); // Moved further back for larger Earth
     camera.lookAt(0, 0, 0); // Look at Earth center
     cameraRef.current = camera;
 
-    // Renderer setup
+    // Enhanced renderer setup to match the original Earth model
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth * 0.75, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    
+    // Enhanced tone mapping and color space for better visuals
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    
     rendererRef.current = renderer;
 
     currentMount.appendChild(renderer.domElement);
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+    // Setup OrbitControls for camera movement
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, 0); // Always look at Earth center
+    controls.enableDamping = true; // Smooth camera movement
+    controls.dampingFactor = 0.05;
+    controls.enableZoom = true; // Allow zoom with scroll wheel
+    controls.minDistance = 8; // Closest zoom (don't go inside larger Earth)
+    controls.maxDistance = 80; // Furthest zoom (increased for larger Earth)
+    controls.enablePan = false; // Disable panning to keep Earth centered
+    controls.enableRotate = true; // Allow rotation around Earth
+    controls.autoRotate = false; // Don't auto-rotate
+    controls.update();
+    controlsRef.current = controls;
+
+    // Enhanced lighting setup to match the original Earth model
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(10, 10, 5);
-    directionalLight.castShadow = true;
-    scene.add(directionalLight);
+    // Sun light - positioned to simulate sunlight hitting Earth
+    const sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
+    sunLight.position.set(-2, 0.5, 1.5);
+    sunLight.castShadow = true;
+    scene.add(sunLight);
 
-    // Create Earth with perfect sphere geometry
-    const earthGeometry = new THREE.SphereGeometry(2, 64, 64); // Increased segments for smoother sphere
-    const earthMaterial = new THREE.MeshPhongMaterial({
-      color: 0x4169E1,
-      shininess: 100
-    });
-    const earth = new THREE.Mesh(earthGeometry, earthMaterial);
-    earth.position.set(0, 0, 0);
-    earth.castShadow = true;
-    earth.receiveShadow = true;
-    scene.add(earth);
-    earthRef.current = earth;
-
-    // Add Earth continents (simple green patches)
-    const continentGeometry1 = new THREE.SphereGeometry(2.01, 32, 32);
-    const continentMaterial = new THREE.MeshPhongMaterial({
-      color: 0x228B22,
-      transparent: true,
-      opacity: 0.8
-    });
+    // Create Enhanced Earth with multiple layers
+    const enhancedEarth = new EnhancedEarth(scene);
+    enhancedEarthRef.current = enhancedEarth;
     
-    // Create continent patches
-    for (let i = 0; i < 5; i++) {
-      const continent = new THREE.Mesh(continentGeometry1, continentMaterial);
-      const phi = Math.random() * Math.PI;
-      const theta = Math.random() * Math.PI * 2;
-      continent.position.set(
-        2.01 * Math.sin(phi) * Math.cos(theta),
-        2.01 * Math.cos(phi),
-        2.01 * Math.sin(phi) * Math.sin(theta)
-      );
-      continent.scale.set(0.3, 0.3, 0.3);
-      earth.add(continent);
-    }
-
-    // Add Earth atmosphere
-    const atmosphereGeometry = new THREE.SphereGeometry(2.2, 32, 32);
-    const atmosphereMaterial = new THREE.MeshBasicMaterial({
-      color: 0x87ceeb,
-      transparent: true,
-      opacity: 0.2
-    });
-    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
-    earth.add(atmosphere);
-
-    // Add stars
-    const starsGeometry = new THREE.BufferGeometry();
-    const starsCount = 1000;
-    const positions = new Float32Array(starsCount * 3);
-
-    for (let i = 0; i < starsCount * 3; i++) {
-      positions[i] = (Math.random() - 0.5) * 100;
-    }
-
-    starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const starsMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.1 });
-    const stars = new THREE.Points(starsGeometry, starsMaterial);
-    scene.add(stars);
+    // Scale the enhanced Earth to match our game scale (radius 6 for better size ratio)
+    enhancedEarth.setScale(6);
+    
+    // Set the main Earth mesh reference for collision detection
+    earthRef.current = enhancedEarth.earthMesh;
 
     // Raycaster for mouse interaction
     const raycaster = new THREE.Raycaster();
@@ -464,6 +440,11 @@ export const AsteroidDefenseGame3D = () => {
         cameraRef.current.aspect = (window.innerWidth * 0.75) / window.innerHeight;
         cameraRef.current.updateProjectionMatrix();
         rendererRef.current.setSize(window.innerWidth * 0.75, window.innerHeight);
+        
+        // Update controls on resize
+        if (controlsRef.current) {
+          controlsRef.current.update();
+        }
       }
     };
 
@@ -471,6 +452,9 @@ export const AsteroidDefenseGame3D = () => {
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+      }
       if (currentMount && renderer.domElement) {
         currentMount.removeChild(renderer.domElement);
       }
@@ -531,16 +515,16 @@ export const AsteroidDefenseGame3D = () => {
     let distance: number;
     
     if (data.is_potentially_hazardous_asteroid) {
-      // Hazardous asteroids spawn further out
-      distance = 25 + Math.random() * 10;
+      // Hazardous asteroids spawn further out (updated for larger Earth)
+      distance = 40 + Math.random() * 15; // Increased spawn distance
     } else {
-      // Non-hazardous asteroids spawn much closer for tighter orbits
-      distance = 8 + Math.random() * 4; // Much closer: 8-12 units from Earth
+      // Non-hazardous asteroids spawn closer for tighter orbits (updated for larger Earth)
+      distance = 15 + Math.random() * 8; // Updated: 15-23 units from larger Earth
     }
     
     mesh.position.set(
       Math.cos(angle) * distance,
-      (Math.random() - 0.5) * 8, // Reduced vertical spread
+      (Math.random() - 0.5) * 12, // Increased vertical spread for larger scale
       Math.sin(angle) * distance
     );
 
@@ -629,15 +613,27 @@ export const AsteroidDefenseGame3D = () => {
       return;
     }
 
-    console.log('Spawning single asteroid for wave', wave);
+    console.log('🚀 SPAWNING ASTEROID for wave', wave, '- Available asteroids:', asteroidData.length);
     
-    // Spawn only one asteroid at a time
-    const randomData = asteroidData[Math.floor(Math.random() * asteroidData.length)];
-    const asteroid = createAsteroid(randomData);
-    if (asteroid) {
-      asteroidsRef.current.push(asteroid);
-      console.log('Spawned asteroid:', asteroid.data.name, 'Total asteroids now:', asteroidsRef.current.length);
+    // Spawn multiple asteroids for higher waves to increase difficulty
+    const asteroidsToSpawn = Math.min(1 + Math.floor(wave / 5), 3); // 1-3 asteroids depending on wave
+    
+    for (let i = 0; i < asteroidsToSpawn; i++) {
+      const randomIndex = Math.floor(Math.random() * asteroidData.length);
+      const randomData = asteroidData[randomIndex];
+      console.log('Selected asteroid index:', randomIndex, 'Name:', randomData.name, `(${i + 1}/${asteroidsToSpawn})`);
+      
+      const asteroid = createAsteroid(randomData);
+      if (asteroid) {
+        asteroidsRef.current.push(asteroid);
+        console.log('✅ Successfully spawned asteroid:', asteroid.data.name);
+      } else {
+        console.log('❌ Failed to create asteroid');
+      }
     }
+    
+    const totalActive = asteroidsRef.current.filter(a => !a.destroyed).length;
+    console.log('🎯 Wave', wave, 'spawned', asteroidsToSpawn, 'asteroids. Total active:', totalActive);
   }, [asteroidData, createAsteroid, wave]);
 
   const handleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
@@ -746,18 +742,19 @@ export const AsteroidDefenseGame3D = () => {
   const gameLoop = useCallback(() => {
     if (!rendererRef.current || !sceneRef.current || !cameraRef.current || gamePaused) return;
 
-    // Rotate Earth more visibly
+    // Animate Enhanced Earth with multiple layers
+    if (enhancedEarthRef.current) {
+      enhancedEarthRef.current.animate();
+    }
+    
+    // Keep basic Earth rotation as fallback (much slower)
     if (earthRef.current) {
-      earthRef.current.rotation.y += 0.01; // Increased from 0.005 to 0.01 for more visible rotation
+      earthRef.current.rotation.y += 0.002; // Reduced from 0.01 to 0.002 to match enhanced Earth
     }
 
-    // Add gentle camera orbital movement for dynamic view
-    const time = Date.now() * 0.0001;
-    if (cameraRef.current) {
-      const radius = 15;
-      cameraRef.current.position.x = Math.cos(time) * radius * 0.3; // Gentle side-to-side movement
-      cameraRef.current.position.z = 15 + Math.sin(time) * 2; // Gentle forward-backward movement
-      cameraRef.current.lookAt(0, 0, 0); // Always look at Earth
+    // Update camera controls for smooth user interaction
+    if (controlsRef.current) {
+      controlsRef.current.update();
     }
 
     // Update asteroids
@@ -776,14 +773,14 @@ export const AsteroidDefenseGame3D = () => {
         const distanceFromCenter = Math.sqrt(position.x ** 2 + position.y ** 2 + position.z ** 2);
         
         // If asteroid gets too far from Earth, apply centripetal force
-        if (distanceFromCenter > 15) { // Much closer boundary
+        if (distanceFromCenter > 30) { // Updated for larger Earth scale
           console.log('🛰️ Asteroid too far, applying centripetal force');
           const centerDirection = position.clone().negate().normalize();
           asteroid.velocity.add(centerDirection.multiplyScalar(0.0003));
         }
         
         // If asteroid gets too close, apply outward force
-        if (distanceFromCenter < 5) { // Closer minimum distance
+        if (distanceFromCenter < 10) { // Updated minimum distance for larger Earth
           console.log('🛰️ Asteroid too close, applying outward force');
           const outwardDirection = position.clone().normalize();
           asteroid.velocity.add(outwardDirection.multiplyScalar(0.0001));
@@ -804,7 +801,7 @@ export const AsteroidDefenseGame3D = () => {
         // Non-hazardous asteroids maintain stable orbit
         // Apply slight centripetal force to maintain orbit
         if (distance > 0) {
-          const orbitRadius = 12 + Math.random() * 8; // Target orbit radius
+          const orbitRadius = 18 + Math.random() * 12; // Updated target orbit radius for larger Earth
           const radiusDiff = distance - orbitRadius;
           
           if (Math.abs(radiusDiff) > 1) {
@@ -826,20 +823,21 @@ export const AsteroidDefenseGame3D = () => {
       }
 
       // Check collision with Earth (only hazardous asteroids cause damage)
-      if (distance < 2.5) {
+      if (distance < 7.5) { // Updated for larger Earth (radius 6 + some margin)
         if (asteroid.isHazardous) {
           // Only hazardous asteroids damage Earth
           const damage = 20;
           setEarthHealth(prev => {
             const newHealth = Math.max(0, prev - damage);
             if (newHealth === 0) {
+              // Only end game when Earth health reaches 0
               setGameOver(true);
             }
             return newHealth;
           });
           console.log('💥 Hazardous asteroid hit Earth! Damage:', damage);
           sceneRef.current?.remove(asteroid.mesh);
-          return false;
+          return false; // Remove asteroid but continue game if health > 0
         } else {
           // Non-hazardous asteroids just bounce off or get destroyed without damage
           console.log('🌍 Non-hazardous asteroid safely passed by Earth');
@@ -849,7 +847,7 @@ export const AsteroidDefenseGame3D = () => {
       }
 
       // Remove if too far away
-      if (distance > 50) {
+      if (distance > 100) { // Increased removal distance for larger Earth scale
         sceneRef.current?.remove(asteroid.mesh);
         return false;
       }
@@ -903,19 +901,61 @@ export const AsteroidDefenseGame3D = () => {
   // Spawn new waves with longer delays
   useEffect(() => {
     const activeAsteroids = asteroidsRef.current.filter(a => !a.destroyed);
-    console.log('Wave check - Active asteroids:', activeAsteroids.length, 'Destroyed:', asteroidsDestroyed, 'Game started:', gameStarted, 'Game over:', gameOver);
+    console.log('Wave check - Active asteroids:', activeAsteroids.length, 'Destroyed:', asteroidsDestroyed, 'Game started:', gameStarted, 'Game over:', gameOver, 'Game paused:', gamePaused, 'Current wave:', wave);
     
-    if (gameStarted && !gameOver && !gamePaused && activeAsteroids.length === 0 && asteroidsDestroyed > 0) {
-      console.log('Starting new wave timer...');
+    // Spawn a new wave if:
+    // 1. Game is started and not over/paused
+    // 2. No active asteroids remaining 
+    // 3. Wave number is reasonable (not stuck)
+    if (gameStarted && !gameOver && !gamePaused && activeAsteroids.length === 0) {
+      console.log('Conditions met for new wave - Starting wave timer for wave', wave + 1);
       const timer = setTimeout(() => {
-        console.log('Spawning new wave!');
+        console.log('Timer fired - Spawning new wave', wave + 1);
+        setWave(prev => {
+          const newWave = prev + 1;
+          console.log('Wave incremented from', prev, 'to', newWave);
+          return newWave;
+        });
+        // Force spawn regardless of current state
+        setTimeout(() => {
+          console.log('Delayed spawn call for wave', wave + 1);
+          spawnWave();
+        }, 100);
+      }, 3000); // 3 seconds delay
+
+      return () => {
+        console.log('Clearing wave timer for wave', wave);
+        clearTimeout(timer);
+      };
+    } else {
+      console.log('Wave spawn conditions not met:', {
+        gameStarted,
+        gameOver,
+        gamePaused,
+        activeAsteroids: activeAsteroids.length,
+        wave
+      });
+    }
+  }, [gameStarted, gameOver, gamePaused, asteroidsDestroyed, spawnWave, wave]);
+
+  // Backup wave spawning mechanism - ensures game continues
+  useEffect(() => {
+    if (!gameStarted || gameOver || gamePaused) return;
+    
+    const interval = setInterval(() => {
+      const activeAsteroids = asteroidsRef.current.filter(a => !a.destroyed);
+      console.log('Backup check - Active asteroids:', activeAsteroids.length, 'Wave:', wave);
+      
+      // If no asteroids are active for more than 5 seconds, force spawn
+      if (activeAsteroids.length === 0) {
+        console.log('Backup spawning triggered for wave', wave + 1);
         setWave(prev => prev + 1);
         spawnWave();
-      }, 5000); // Increased to 5 seconds between waves for breathing room
+      }
+    }, 5000); // Check every 5 seconds
 
-      return () => clearTimeout(timer);
-    }
-  }, [gameStarted, gameOver, gamePaused, asteroidsDestroyed, spawnWave]);
+    return () => clearInterval(interval);
+  }, [gameStarted, gameOver, gamePaused, spawnWave, wave]);
 
   return (
     <div className="flex h-screen bg-black overflow-hidden">
@@ -979,8 +1019,20 @@ export const AsteroidDefenseGame3D = () => {
         )}
 
         {gameOver && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-90 z-20">
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-95 z-20">
             <div className="text-center text-white">
+              {/* End Game GIF */}
+              <div className="mb-6">
+                <Image 
+                  src="/images/endGameGif.gif" 
+                  alt="Earth Destroyed" 
+                  width={400}
+                  height={300}
+                  className="mx-auto rounded-lg shadow-2xl"
+                  unoptimized={true}
+                />
+              </div>
+              
               <h1 className="text-4xl font-bold mb-4 text-red-500">GAME OVER</h1>
               <p className="text-xl mb-2">Earth has been destroyed!</p>
               <p className="text-lg mb-2">Final Score: {score}</p>

@@ -126,7 +126,7 @@ const AsteroidInfoPanel = ({ asteroid }: AsteroidInfoPanelProps) => {
 
 export const AsteroidDefenseGame = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | null>(null);
   const [asteroids, setAsteroids] = useState<GameAsteroid[]>([]);
   const [selectedAsteroid, setSelectedAsteroid] = useState<AsteroidData | null>(null);
   const [score, setScore] = useState(0);
