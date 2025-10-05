@@ -13,7 +13,7 @@ export default function GameNavbar() {
             {/* Title */}
             <div className="flex items-center gap-2">
               <h1 className="text-white font-light tracking-wide text-sm">
-                NASA IMPACT SIMULATOR
+                Meteor Madness Game
               </h1>
             </div>
           </div>

@@ -2134,7 +2134,7 @@ export const AsteroidDefenseGame3D = () => {
         {/* Game UI */}
         <div className="absolute top-4 left-4 text-white z-10">
           <div className="bg-black bg-opacity-70 p-4 rounded">
-            <h1 className="text-2xl font-bold mb-2">Asteroid Defense 3D</h1>
+            <h1 className="text-2xl font-bold mb-2">Meteor Madness</h1>
             <p>Score: {score}</p>
             <p>Wave: {wave}</p>
             <p>Destroyed: {asteroidsDestroyed}</p>
@@ -2177,7 +2177,7 @@ export const AsteroidDefenseGame3D = () => {
         {!gameStarted && (
           <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-80 z-20">
             <div className="text-center text-white">
-              <h1 className="text-4xl font-bold mb-4">Asteroid Defense 3D</h1>
+              <h1 className="text-4xl font-bold mb-4">Meteor Madness</h1>
               <p className="text-lg mb-6">Protect Earth by clicking on incoming asteroids!</p>
               <p className="text-sm mb-2">🔴 Red rings = Hazardous asteroids on collision course (150 points, 20 damage)</p>
               <p className="text-sm mb-4">🟢 Green rings = Non-hazardous asteroids in safe orbit (75 points, 10 damage)</p>
@@ -2245,7 +2245,7 @@ export const AsteroidDefenseGame3D = () => {
               <p className="text-lg mb-2 text-blue-300">Final Score: {score}</p>
               <p className="text-lg mb-2 text-blue-300">Waves Completed: {wave}</p>
               <p className="text-lg mb-6 text-blue-300">Asteroids Destroyed: {asteroidsDestroyed}</p>
-              <p className="text-lg mb-6 text-green-300">🏆 EARTH DEFENDER CHAMPION 🏆</p>
+              <p className="text-lg mb-6 text-green-300">🏆</p>
               <button
                 onClick={startGame}
                 className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded text-lg"
@@ -2266,11 +2266,10 @@ export const AsteroidDefenseGame3D = () => {
                 <div className="text-8xl mb-4">☄️</div>
               </div>
               
-              <h1 className="text-4xl font-bold mb-4 text-red-400 animate-pulse">INCOMING THREAT DETECTED</h1>
+              <h1 className="text-4xl font-bold mb-4 text-red-400 animate-pulse">FINAL THREAT DETECTED</h1>
               <p className="text-2xl mb-4 text-yellow-300">MASSIVE ASTEROID APPROACHING</p>
               <p className="text-xl mb-2">Scientists have detected Impactor-2025,</p>
               <p className="text-xl mb-2">a massive asteroid on a collision course with Earth!</p>
-              <p className="text-lg mb-4 text-orange-300">This is our final battle...</p>
               <p className="text-md mb-6 text-gray-300">
                 ⚠️ Warning: This asteroid requires multiple hits to destroy<br/>
                 🔴 It will split into 2 fragments, each fragment splits into 2 more<br/>
