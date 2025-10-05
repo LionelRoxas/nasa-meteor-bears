@@ -1,0 +1,11 @@
+id,magnitude,location,time,latitude,longitude,depth_km,tsunami_warning,felt_reports,damage_alert,significance,magnitude_type,energy_mt,impact_comparison
+us7000qx2g,7.8,"127 km E of Petropavlovsk-Kamchatsky, Russia",2025-09-18T18:58:13.903Z,53.1928,160.5129,19.5,true,26,orange,1023,mww,7.558025000402436,Regional impact
+us7000qvw5,7.4,"111 km E of Petropavlovsk-Kamchatsky, Russia",2025-09-13T02:37:54.754Z,53.1043,160.2938,39.465,true,20,green,859,mww,1.8984900447521162,Regional impact
+us6000rdrz,6.9,"10 km E of Bateria, Philippines",2025-09-30T13:59:43.322Z,11.1357,124.1266,10,true,594,orange,1541,mww,0.3376045756746561,Chelyabinsk-class
+us7000quvp,6.4,Vanuatu region,2025-09-08T21:47:48.117Z,-21.0026,173.7046,10,true,1,green,630,mww,0.06003552656571684,Small airburst
+us6000rcqw,6.3,"27 km ENE of Mene Grande, Venezuela",2025-09-25T03:51:39.731Z,9.9272,-70.6916,14,true,224,yellow,845,mww,0.04250189794548095,Small airburst
+us6000rcnw,6.2,"24 km ENE of Mene Grande, Venezuela",2025-09-24T22:21:55.207Z,9.9222,-70.7174,7.815,true,242,yellow,858,mww,0.030089039478828187,Small airburst
+us6000rcrj,5.8,"28 km E of Mene Grande, Venezuela",2025-09-25T06:55:38.603Z,9.894,-70.6699,10,false,32,yellow,675,mb,0.007558025000402436,Fireball event
+us7000qw56,5.5,"10 km NNE of Khārupatia, India",2025-09-14T11:11:51.105Z,26.6066,92.1963,29,false,120,orange,1088,mww,0.002681688466304888,Fireball event
+nc75240492,4.29,"2 km ESE of Berkeley, CA",2025-09-22T09:56:12.520Z,37.863,-122.254,7.58,true,31786,green,723,mw,0.00004105899586896716,Small meteorite
+nc75237607,3.48,"7 km SW of Atascadero, CA",2025-09-14T02:50:00.380Z,35.4375,-120.7225,7.15,false,900,none,600,mw,0.0000025026972945767175,Small meteorite

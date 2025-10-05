@@ -1,0 +1,14 @@
+{
+  "last_updated": "2025-10-04T21:34:42.378Z",
+  "total_asteroids_tracked": 100,
+  "hazardous_asteroids": 31,
+  "todays_approaches": 242,
+  "largest_asteroid": {
+    "name": "1036 Ganymed (A924 UB)",
+    "diameter": 86704.1687200281
+  },
+  "closest_approach": {
+    "name": "(2025 SP23)",
+    "distance": 494631.758708617
+  }
+}

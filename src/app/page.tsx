@@ -1,103 +1,969 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+import NASADataPanel from "@/components/NASADataPanel";
+import { useNASAData, type NASAAsteroidData } from "@/hooks/useNASAData";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const containerRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const earthRef = useRef<THREE.Group | null>(null);
+  const asteroidRef = useRef<THREE.Mesh | null>(null);
+  const moonRef = useRef<THREE.Mesh | null>(null);
+  const animationIdRef = useRef<number | null>(null);
+  const asteroidTrailRef = useRef<THREE.Mesh[]>([]);
+  const impactParticlesRef = useRef<THREE.Mesh[]>([]);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulationSpeed, setSimulationSpeed] = useState(1);
+  const [deflectionApplied, setDeflectionApplied] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [asteroidParams, setAsteroidParams] = useState({
+    diameter: 200,
+    velocity: 20,
+    angle: 45,
+    distance: 100000,
+    mass: 0,
+    energy: 0,
+    craterSize: 0,
+    affectedRadius: 0,
+  });
+  const [impactData, setImpactData] = useState({
+    energy: 0,
+    crater: 0,
+    radius: 0,
+    timeToImpact: "--",
+    threatLevel: "MINIMAL",
+  });
+
+  // NASA data integration
+  const {} = useNASAData();
+  const [selectedNASAAsteroid, setSelectedNASAAsteroid] =
+    useState<NASAAsteroidData | null>(null);
+  const [showNASAPanel, setShowNASAPanel] = useState(false);
+
+  // Initialize Three.js scene
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Create scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000011);
+    sceneRef.current = scene;
+
+    // Setup camera
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000000
+    );
+    camera.position.set(0, 0, 50000);
+    cameraRef.current = camera;
+
+    // Setup renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
+
+    // Create Earth with more realistic appearance
+    const earthGroup = new THREE.Group();
+    const earthGeometry = new THREE.SphereGeometry(6371, 128, 128);
+    const earthMaterial = new THREE.MeshPhongMaterial({
+      color: 0x4a90e2,
+      shininess: 100,
+      specular: 0x222222,
+    });
+    const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+    earth.castShadow = true;
+    earth.receiveShadow = true;
+    earthGroup.add(earth);
+
+    // Add enhanced atmosphere
+    const atmosphereGeometry = new THREE.SphereGeometry(6471, 64, 64);
+    const atmosphereMaterial = new THREE.MeshBasicMaterial({
+      color: 0x87ceeb,
+      transparent: true,
+      opacity: 0.15,
+      side: THREE.BackSide,
+    });
+    const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+    earthGroup.add(atmosphere);
+
+    // Add cloud layer
+    const cloudGeometry = new THREE.SphereGeometry(6375, 64, 64);
+    const cloudMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.08,
+    });
+    const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+    clouds.name = "clouds"; // Add name for reference
+    earthGroup.add(clouds);
+
+    // Add more realistic continents with varied colors and shapes
+    const continentColors = [0x2d5016, 0x1e3a0f, 0x3d6b1a, 0x4a7c1f, 0x5a8c2a];
+    for (let i = 0; i < 15; i++) {
+      const continentGeometry = new THREE.SphereGeometry(6372, 32, 32);
+      const continentMaterial = new THREE.MeshPhongMaterial({
+        color: continentColors[i % continentColors.length],
+        transparent: true,
+        opacity: 0.6,
+        shininess: 20,
+      });
+      const continent = new THREE.Mesh(continentGeometry, continentMaterial);
+      continent.scale.set(
+        0.2 + Math.random() * 0.3,
+        0.1 + Math.random() * 0.2,
+        0.2 + Math.random() * 0.3
+      );
+      continent.position.set(
+        Math.random() * 6000 - 3000,
+        Math.random() * 6000 - 3000,
+        Math.random() * 6000 - 3000
+      );
+      continent.lookAt(0, 0, 0);
+      earthGroup.add(continent);
+    }
+    scene.add(earthGroup);
+    earthRef.current = earthGroup;
+
+    // Create Moon
+    const moonGeometry = new THREE.SphereGeometry(1737, 32, 32);
+    const moonMaterial = new THREE.MeshPhongMaterial({
+      color: 0xcccccc,
+      shininess: 10,
+    });
+    const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+    moon.position.set(38440, 0, 0);
+    moon.castShadow = true;
+    scene.add(moon);
+    moonRef.current = moon;
+
+    // Create initial asteroid (will be updated by separate useEffect)
+    const createAsteroid = (diameter: number, distance: number) => {
+      const asteroidGeometry = new THREE.IcosahedronGeometry(diameter / 2, 1);
+      const asteroidMaterial = new THREE.MeshPhongMaterial({
+        color: 0x8b4513,
+        shininess: 5,
+      });
+
+      // Make it irregular
+      const vertices = asteroidGeometry.attributes.position
+        .array as Float32Array;
+      for (let i = 0; i < vertices.length; i += 3) {
+        vertices[i] *= 0.8 + Math.random() * 0.4;
+        vertices[i + 1] *= 0.8 + Math.random() * 0.4;
+        vertices[i + 2] *= 0.8 + Math.random() * 0.4;
+      }
+      asteroidGeometry.attributes.position.needsUpdate = true;
+      asteroidGeometry.computeVertexNormals();
+
+      const asteroid = new THREE.Mesh(asteroidGeometry, asteroidMaterial);
+      const angle = Math.random() * Math.PI * 2;
+      asteroid.position.set(
+        Math.cos(angle) * distance,
+        Math.sin(angle) * distance * 0.5,
+        Math.sin(angle) * distance
+      );
+      asteroid.lookAt(0, 0, 0);
+      return asteroid;
+    };
+
+    const asteroid = createAsteroid(200, 100000); // Use initial values
+    scene.add(asteroid);
+    asteroidRef.current = asteroid;
+
+    // Create Stars
+    const starGeometry = new THREE.BufferGeometry();
+    const starPositions = [];
+    for (let i = 0; i < 10000; i++) {
+      starPositions.push(
+        (Math.random() - 0.5) * 2000000,
+        (Math.random() - 0.5) * 2000000,
+        (Math.random() - 0.5) * 2000000
+      );
+    }
+    starGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(starPositions, 3)
+    );
+    const starMaterial = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 100,
+    });
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+
+    // Setup Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1);
+    sunLight.position.set(100000, 50000, 50000);
+    sunLight.castShadow = true;
+    sunLight.shadow.camera.near = 1000;
+    sunLight.shadow.camera.far = 200000;
+    sunLight.shadow.camera.left = -50000;
+    sunLight.shadow.camera.right = 50000;
+    sunLight.shadow.camera.top = 50000;
+    sunLight.shadow.camera.bottom = -50000;
+    scene.add(sunLight);
+
+    // Mouse controls
+    let mouseDown = false;
+    let mouseX = 0;
+    let mouseY = 0;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      mouseDown = true;
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    };
+
+    const handleMouseUp = () => {
+      mouseDown = false;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!mouseDown || !camera) return;
+
+      const deltaX = e.clientX - mouseX;
+      const deltaY = e.clientY - mouseY;
+
+      const spherical = new THREE.Spherical();
+      spherical.setFromVector3(camera.position);
+      spherical.theta -= deltaX * 0.01;
+      spherical.phi += deltaY * 0.01;
+      spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+
+      camera.position.setFromSpherical(spherical);
+      camera.lookAt(0, 0, 0);
+
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      if (!camera) return;
+      const distance = camera.position.length();
+      const newDistance = distance + e.deltaY * distance * 0.0005;
+      camera.position
+        .normalize()
+        .multiplyScalar(Math.max(8000, Math.min(200000, newDistance)));
+    };
+
+    renderer.domElement.addEventListener("mousedown", handleMouseDown);
+    renderer.domElement.addEventListener("mouseup", handleMouseUp);
+    renderer.domElement.addEventListener("mousemove", handleMouseMove);
+    renderer.domElement.addEventListener("wheel", handleWheel);
+
+    // Window resize handler
+    const handleResize = () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    };
+    window.addEventListener("resize", handleResize);
+
+    // Animation loop will be set up in a separate useEffect
+
+    // Cleanup
+    return () => {
+      renderer.domElement.removeEventListener("mousedown", handleMouseDown);
+      renderer.domElement.removeEventListener("mouseup", handleMouseUp);
+      renderer.domElement.removeEventListener("mousemove", handleMouseMove);
+      renderer.domElement.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("resize", handleResize);
+      renderer.dispose();
+      if (container) {
+        container.removeChild(renderer.domElement);
+      }
+    };
+  }, []); // Only run once on mount
+
+  // Animation loop
+  useEffect(() => {
+    if (!sceneRef.current || !cameraRef.current || !rendererRef.current) return;
+
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    const renderer = rendererRef.current;
+
+    const animate = () => {
+      animationIdRef.current = requestAnimationFrame(animate);
+
+      // Rotate Earth (slow and realistic)
+      if (earthRef.current) {
+        const earthRotationSpeed = 0.00000001; // Base rotation speed
+        earthRef.current.rotation.y += earthRotationSpeed;
+
+        // Rotate clouds slightly faster for atmospheric effect (synchronized)
+        const clouds = earthRef.current.getObjectByName("clouds");
+        if (clouds) {
+          clouds.rotation.y += earthRotationSpeed * 1.1; // 10% faster than Earth
+        }
+      }
+
+      // Rotate Moon (synchronized with consistent timing)
+      if (moonRef.current) {
+        const moonOrbitSpeed = 0.0001;
+        const time = Date.now() * moonOrbitSpeed;
+        moonRef.current.position.x = Math.cos(time) * 38440;
+        moonRef.current.position.z = Math.sin(time) * 38440;
+      }
+
+      // Update simulation
+      if (isSimulating && asteroidRef.current) {
+        const direction = new THREE.Vector3(0, 0, 0)
+          .sub(asteroidRef.current.position)
+          .normalize();
+        // Make speed difference more dramatic and noticeable
+        const baseSpeed = asteroidParams.velocity * 15;
+        const speed = baseSpeed * simulationSpeed * simulationSpeed; // Square the speed for more dramatic effect
+        asteroidRef.current.position.add(direction.multiplyScalar(speed));
+
+        // Create trail
+        if (asteroidTrailRef.current.length > 50) {
+          const oldTrail = asteroidTrailRef.current.shift();
+          if (oldTrail) scene.remove(oldTrail);
+        }
+
+        const trailGeometry = new THREE.SphereGeometry(
+          asteroidParams.diameter / 4,
+          8,
+          8
+        );
+        const trailMaterial = new THREE.MeshBasicMaterial({
+          color: 0xff4500,
+          transparent: true,
+          opacity: 0.6,
+        });
+        const trailPoint = new THREE.Mesh(trailGeometry, trailMaterial);
+        trailPoint.position.copy(asteroidRef.current.position);
+        scene.add(trailPoint);
+        asteroidTrailRef.current.push(trailPoint);
+
+        // Check for impact
+        const distanceToEarth = asteroidRef.current.position.length();
+        if (distanceToEarth < 6500) {
+          setIsSimulating(false);
+        }
+
+        // Update time to impact
+        const timeToImpact =
+          (distanceToEarth - 6371) / (asteroidParams.velocity * 3.6);
+        setImpactData((prev) => ({
+          ...prev,
+          timeToImpact:
+            timeToImpact > 0 ? `${timeToImpact.toFixed(1)} hours` : "IMPACT!",
+        }));
+      }
+
+      // Animate particles
+      impactParticlesRef.current.forEach((particle, index) => {
+        const velocity = (particle.userData as { velocity: THREE.Vector3 })
+          .velocity;
+        particle.position.add(velocity);
+        velocity.multiplyScalar(0.98);
+        (particle.material as THREE.MeshBasicMaterial).opacity -= 0.01;
+
+        if ((particle.material as THREE.MeshBasicMaterial).opacity <= 0) {
+          scene.remove(particle);
+          impactParticlesRef.current.splice(index, 1);
+        }
+      });
+
+      // Fade trail
+      asteroidTrailRef.current.forEach((trail, index) => {
+        (trail.material as THREE.MeshBasicMaterial).opacity -= 0.02;
+        if ((trail.material as THREE.MeshBasicMaterial).opacity <= 0) {
+          scene.remove(trail);
+          asteroidTrailRef.current.splice(index, 1);
+        }
+      });
+
+      renderer.render(scene, camera);
+    };
+
+    animate();
+
+    return () => {
+      if (animationIdRef.current) {
+        cancelAnimationFrame(animationIdRef.current);
+      }
+    };
+  }, [
+    isSimulating,
+    simulationSpeed,
+    asteroidParams.velocity,
+    asteroidParams.diameter,
+  ]);
+
+  // Calculate impact data whenever params change
+  useEffect(() => {
+    const volume = (4 / 3) * Math.PI * Math.pow(asteroidParams.diameter / 2, 3);
+    const mass = volume * 3000;
+    const velocityMs = asteroidParams.velocity * 1000;
+    const energy = 0.5 * mass * velocityMs * velocityMs;
+    const energyMt = energy / 4.184e15;
+    const craterSize = (1.8 * Math.pow(energy / (2700 * 9.81), 0.25)) / 1000;
+    const affectedRadius = craterSize * 10;
+
+    let threatLevel = "MINIMAL";
+    if (energyMt > 100) threatLevel = "GLOBAL";
+    else if (energyMt > 10) threatLevel = "REGIONAL";
+    else if (energyMt > 1) threatLevel = "LOCAL";
+
+    setImpactData((prev) => ({
+      ...prev,
+      energy: energyMt,
+      crater: craterSize,
+      radius: affectedRadius,
+      threatLevel,
+    }));
+
+    setAsteroidParams((prev) => ({
+      ...prev,
+      mass,
+      energy: energyMt,
+      craterSize,
+      affectedRadius,
+    }));
+  }, [asteroidParams.diameter, asteroidParams.velocity]);
+
+  // Update asteroid when diameter or distance changes
+  useEffect(() => {
+    if (!asteroidRef.current || !sceneRef.current) return;
+
+    const createAsteroid = (diameter: number, distance: number) => {
+      const asteroidGeometry = new THREE.IcosahedronGeometry(diameter / 2, 1);
+      const asteroidMaterial = new THREE.MeshPhongMaterial({
+        color: 0x8b4513,
+        shininess: 5,
+      });
+
+      const vertices = asteroidGeometry.attributes.position
+        .array as Float32Array;
+      for (let i = 0; i < vertices.length; i += 3) {
+        vertices[i] *= 0.8 + Math.random() * 0.4;
+        vertices[i + 1] *= 0.8 + Math.random() * 0.4;
+        vertices[i + 2] *= 0.8 + Math.random() * 0.4;
+      }
+      asteroidGeometry.attributes.position.needsUpdate = true;
+      asteroidGeometry.computeVertexNormals();
+
+      const asteroid = new THREE.Mesh(asteroidGeometry, asteroidMaterial);
+      const angle = Math.random() * Math.PI * 2;
+      asteroid.position.set(
+        Math.cos(angle) * distance,
+        Math.sin(angle) * distance * 0.5,
+        Math.sin(angle) * distance
+      );
+      asteroid.lookAt(0, 0, 0);
+      return asteroid;
+    };
+
+    sceneRef.current.remove(asteroidRef.current);
+    const asteroid = createAsteroid(
+      asteroidParams.diameter,
+      asteroidParams.distance
+    );
+    sceneRef.current.add(asteroid);
+    asteroidRef.current = asteroid;
+  }, [asteroidParams.diameter, asteroidParams.distance]);
+
+  const handleStartImpact = () => {
+    setIsSimulating(!isSimulating);
+    setDeflectionApplied(false);
+  };
+
+  const handleReset = () => {
+    setIsSimulating(false);
+    setDeflectionApplied(false);
+
+    // Clear trail
+    if (sceneRef.current) {
+      asteroidTrailRef.current.forEach((trail) =>
+        sceneRef.current!.remove(trail)
+      );
+      asteroidTrailRef.current = [];
+      impactParticlesRef.current.forEach((particle) =>
+        sceneRef.current!.remove(particle)
+      );
+      impactParticlesRef.current = [];
+    }
+
+    // Reset asteroid position
+    if (asteroidRef.current) {
+      const angle = Math.random() * Math.PI * 2;
+      asteroidRef.current.position.set(
+        Math.cos(angle) * asteroidParams.distance,
+        Math.sin(angle) * asteroidParams.distance * 0.5,
+        Math.sin(angle) * asteroidParams.distance
+      );
+      asteroidRef.current.lookAt(0, 0, 0);
+    }
+
+    setImpactData((prev) => ({ ...prev, timeToImpact: "--" }));
+  };
+
+  const handleDeflect = () => {
+    if (!deflectionApplied && asteroidRef.current && sceneRef.current) {
+      setDeflectionApplied(true);
+
+      // Visual effect
+      const deflectionGeometry = new THREE.SphereGeometry(500, 16, 16);
+      const deflectionMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ff00,
+        transparent: true,
+        opacity: 0.5,
+      });
+      const deflectionEffect = new THREE.Mesh(
+        deflectionGeometry,
+        deflectionMaterial
+      );
+      deflectionEffect.position.copy(asteroidRef.current.position);
+      sceneRef.current.add(deflectionEffect);
+
+      // Animate and remove effect
+      let scale = 1;
+      const animateDeflection = () => {
+        scale += 0.1;
+        deflectionEffect.scale.setScalar(scale);
+        deflectionMaterial.opacity -= 0.02;
+
+        if (deflectionMaterial.opacity <= 0) {
+          sceneRef.current!.remove(deflectionEffect);
+        } else {
+          requestAnimationFrame(animateDeflection);
+        }
+      };
+      animateDeflection();
+
+      // Change trajectory
+      const offset = new THREE.Vector3(
+        (Math.random() - 0.5) * 20000,
+        (Math.random() - 0.5) * 20000,
+        (Math.random() - 0.5) * 20000
+      );
+      asteroidRef.current.position.add(offset);
+    }
+  };
+
+  const setView = (view: string) => {
+    if (!cameraRef.current) return;
+
+    switch (view) {
+      case "orbital":
+        cameraRef.current.position.set(0, 0, 50000);
+        cameraRef.current.lookAt(0, 0, 0);
+        break;
+      case "surface":
+        cameraRef.current.position.set(8000, 2000, 8000);
+        cameraRef.current.lookAt(0, 0, 0);
+        break;
+      case "impact":
+        if (asteroidRef.current) {
+          cameraRef.current.position.copy(asteroidRef.current.position);
+          cameraRef.current.position.add(new THREE.Vector3(1000, 1000, 1000));
+          cameraRef.current.lookAt(0, 0, 0);
+        }
+        break;
+    }
+  };
+
+  // Load NASA asteroid into simulation
+  const loadNASAAsteroid = (asteroid: NASAAsteroidData) => {
+    // Reset simulation first
+    setIsSimulating(false);
+    setDeflectionApplied(false);
+
+    // Clear existing trail and particles
+    if (sceneRef.current) {
+      asteroidTrailRef.current.forEach((trail) =>
+        sceneRef.current!.remove(trail)
+      );
+      asteroidTrailRef.current = [];
+      impactParticlesRef.current.forEach((particle) =>
+        sceneRef.current!.remove(particle)
+      );
+      impactParticlesRef.current = [];
+    }
+
+    // Update asteroid parameters with NASA data
+    setAsteroidParams((prev) => ({
+      ...prev,
+      diameter: Number(asteroid.diameter) || prev.diameter,
+      velocity: Number(asteroid.velocity) || prev.velocity,
+      distance: Number(asteroid.distance) || prev.distance,
+      angle: 45, // Keep current angle
+      mass: 0, // Will be calculated
+      energy: 0, // Will be calculated
+      craterSize: 0, // Will be calculated
+      affectedRadius: 0, // Will be calculated
+    }));
+
+    // Store the selected NASA asteroid
+    setSelectedNASAAsteroid(asteroid as NASAAsteroidData);
+
+    // Reset impact data
+    setImpactData((prev) => ({ ...prev, timeToImpact: "--" }));
+
+    console.log("Loaded NASA asteroid:", asteroid.name, asteroid);
+  };
+
+  return (
+    <div className="relative w-screen h-screen overflow-hidden bg-black">
+      {/* 3D Scene */}
+      <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Header */}
+      <header className="absolute top-0 left-0 right-0 z-20 bg-black/90 backdrop-blur-sm border-b border-gray-800">
+        <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="p-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors"
+              title={isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
+            >
+              {isSidebarCollapsed ? (
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+              )}
+            </button>
+            <h1 className="text-2xl font-bold text-white">
+              <span className="text-[#0066cc]">NASA</span> Impact Simulator
+            </h1>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setView("orbital")}
+                className="px-3 py-1.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
+              >
+                Orbital
+              </button>
+              <button
+                onClick={() => setView("surface")}
+                className="px-3 py-1.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
+              >
+                Surface
+              </button>
+              <button
+                onClick={() => setView("impact")}
+                className="px-3 py-1.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
+              >
+                Impact
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setShowNASAPanel(!showNASAPanel)}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                showNASAPanel
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-700 text-white hover:bg-gray-600"
+              }`}
+            >
+              {showNASAPanel ? "Hide NASA Data" : "Show NASA Data"}
+            </button>
+            {selectedNASAAsteroid && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-blue-900/50 border border-blue-800 rounded-md">
+                <span className="text-blue-400 text-sm font-medium">
+                  NASA Data Loaded
+                </span>
+                <span className="text-white text-sm">
+                  {selectedNASAAsteroid.name}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+      </header>
+
+      {/* Main Content Area */}
+      <div className="absolute top-16 left-0 right-0 bottom-0 flex">
+        {/* Left Sidebar */}
+        <div
+          className={`${
+            isSidebarCollapsed ? "w-0" : "w-80"
+          } transition-all duration-300 bg-black/90 backdrop-blur-sm border-r border-gray-800 overflow-hidden`}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <div className="p-6 overflow-y-auto h-full">
+            {/* Mission Control */}
+            <section className="mb-8">
+              <h2 className="text-xl font-bold text-[#0066cc] mb-4">
+                Mission Control
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Asteroid Diameter:{" "}
+                    <span className="text-[#0066cc] font-bold">
+                      {asteroidParams.diameter}m
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                    min="50"
+                    max="1000"
+                    value={asteroidParams.diameter}
+                    onChange={(e) =>
+                      setAsteroidParams((prev) => ({
+                        ...prev,
+                        diameter: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Velocity:{" "}
+                    <span className="text-[#0066cc] font-bold">
+                      {asteroidParams.velocity} km/s
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                    min="5"
+                    max="50"
+                    value={asteroidParams.velocity}
+                    onChange={(e) =>
+                      setAsteroidParams((prev) => ({
+                        ...prev,
+                        velocity: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Entry Angle:{" "}
+                    <span className="text-[#0066cc] font-bold">
+                      {asteroidParams.angle}°
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                    min="15"
+                    max="90"
+                    value={asteroidParams.angle}
+                    onChange={(e) =>
+                      setAsteroidParams((prev) => ({
+                        ...prev,
+                        angle: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Distance:{" "}
+                    <span className="text-[#0066cc] font-bold">
+                      {asteroidParams.distance} km
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                    min="10000"
+                    max="500000"
+                    value={asteroidParams.distance}
+                    onChange={(e) =>
+                      setAsteroidParams((prev) => ({
+                        ...prev,
+                        distance: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* Control Buttons */}
+              <div className="mt-6 space-y-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleStartImpact}
+                    className="flex-1 px-4 py-2.5 bg-[#0066cc] text-white rounded-md hover:bg-[#004499] transition-colors text-sm font-medium"
+                  >
+                    {isSimulating ? "Pause" : "Start Impact"}
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="flex-1 px-4 py-2.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleDeflect}
+                  className={`w-full px-4 py-2.5 rounded-md transition-colors text-sm font-medium ${
+                    deflectionApplied
+                      ? "bg-green-600 text-white"
+                      : "bg-orange-600 text-white hover:bg-orange-500"
+                  }`}
+                >
+                  {deflectionApplied ? "Deflected" : "Deflect"}
+                </button>
+
+                {/* Speed Controls - Work during active simulation */}
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-center">
+                    <span className="text-gray-400">Simulation Speed:</span>{" "}
+                    <span
+                      className={`${
+                        isSimulating ? "text-green-400 font-bold" : "text-white"
+                      }`}
+                    >
+                      {simulationSpeed}x {isSimulating ? "" : ""}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    {[0.25, 0.5, 1, 2, 4, 8].map((speed) => (
+                      <button
+                        key={speed}
+                        onClick={() => setSimulationSpeed(speed)}
+                        className={`flex-1 px-2 py-2 rounded-md text-xs font-medium transition-all duration-200 ${
+                          simulationSpeed === speed
+                            ? "bg-green-600 text-white shadow-lg scale-105"
+                            : "bg-gray-700 text-white hover:bg-gray-600 hover:scale-102"
+                        } ${
+                          isSimulating && simulationSpeed === speed
+                            ? "animate-pulse"
+                            : ""
+                        }`}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
+                  {isSimulating && (
+                    <div className="text-xs text-center text-green-400 pt-2">
+                      Change speed anytime during simulation!
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Impact Analysis */}
+            <section>
+              <h2 className="text-xl font-bold text-[#0066cc] mb-4">
+                Impact Analysis
+                {selectedNASAAsteroid && (
+                  <span className="text-blue-400 text-sm ml-2">NASA</span>
+                )}
+              </h2>
+
+              <div className="bg-gray-900/50 rounded-lg p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300 text-sm">Kinetic Energy</span>
+                  <span className="text-[#0066cc] font-bold text-sm">
+                    {impactData.energy.toFixed(2)} MT TNT
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300 text-sm">Crater Diameter</span>
+                  <span className="text-[#0066cc] font-bold text-sm">
+                    {impactData.crater.toFixed(2)} km
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300 text-sm">Affected Radius</span>
+                  <span className="text-[#0066cc] font-bold text-sm">
+                    {impactData.radius.toFixed(1)} km
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300 text-sm">Time to Impact</span>
+                  <span className="text-[#0066cc] font-bold text-sm">
+                    {impactData.timeToImpact}
+                  </span>
+                </div>
+
+                <div className="pt-2 border-t border-gray-700">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-300 text-sm">Threat Level:</span>
+                    <span
+                      className={`font-bold text-sm ${
+                        impactData.threatLevel === "GLOBAL"
+                          ? "text-red-500 animate-pulse"
+                          : impactData.threatLevel === "REGIONAL"
+                          ? "text-red-500 animate-pulse"
+                          : impactData.threatLevel === "LOCAL"
+                          ? "text-orange-500"
+                          : "text-green-500"
+                      }`}
+                    >
+                      {impactData.threatLevel === "GLOBAL" && "GLOBAL THREAT"}
+                      {impactData.threatLevel === "REGIONAL" &&
+                        "REGIONAL THREAT"}
+                      {impactData.threatLevel === "LOCAL" && "LOCAL THREAT"}
+                      {impactData.threatLevel === "MINIMAL" && "MINIMAL THREAT"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        {/* Main 3D View */}
+        <div className="flex-1 relative flex items-center justify-center">
+          {/* NASA Data Panel Overlay */}
+          {showNASAPanel && (
+            <div className="absolute top-4 right-4 bottom-4 z-10 flex flex-col">
+              <div className="flex-1 overflow-y-auto">
+                <NASADataPanel onSelectAsteroid={loadNASAAsteroid} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

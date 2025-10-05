@@ -1,0 +1,123 @@
+{
+  "predictions": {
+    "2000433": {
+      "hazard_probability": 0.85,
+      "risk_score": 85,
+      "confidence": 0.92,
+      "recommendation": "High-risk object requiring immediate monitoring and potential deflection planning",
+      "threat_category": "HIGH",
+      "model_version": "RandomForest_v1.0"
+    },
+    "2001566": {
+      "hazard_probability": 0.95,
+      "risk_score": 95,
+      "confidence": 0.88,
+      "recommendation": "Critical threat - extremely high kinetic energy and close approach distance",
+      "threat_category": "CRITICAL",
+      "model_version": "RandomForest_v1.0"
+    },
+    "2247517": {
+      "hazard_probability": 0.25,
+      "risk_score": 25,
+      "confidence": 0.75,
+      "recommendation": "Low risk - large distance and moderate velocity pose minimal threat",
+      "threat_category": "LOW",
+      "model_version": "RandomForest_v1.0"
+    },
+    "2000719": {
+      "hazard_probability": 0.72,
+      "risk_score": 72,
+      "confidence": 0.83,
+      "recommendation": "Significant risk - large size combined with moderate approach distance",
+      "threat_category": "HIGH",
+      "model_version": "RandomForest_v1.0"
+    },
+    "2000887": {
+      "hazard_probability": 0.68,
+      "risk_score": 68,
+      "confidence": 0.79,
+      "recommendation": "Moderate-high risk - substantial kinetic energy potential",
+      "threat_category": "MEDIUM",
+      "model_version": "RandomForest_v1.0"
+    },
+    "2001036": {
+      "hazard_probability": 0.91,
+      "risk_score": 91,
+      "confidence": 0.95,
+      "recommendation": "Extremely high risk - massive object with significant energy potential",
+      "threat_category": "CRITICAL",
+      "model_version": "RandomForest_v1.0"
+    },
+    "2001221": {
+      "hazard_probability": 0.45,
+      "risk_score": 45,
+      "confidence": 0.71,
+      "recommendation": "Moderate risk - high velocity but smaller size reduces overall threat",
+      "threat_category": "MEDIUM",
+      "model_version": "RandomForest_v1.0"
+    },
+    "2001580": {
+      "hazard_probability": 0.78,
+      "risk_score": 78,
+      "confidence": 0.86,
+      "recommendation": "High risk - large object with substantial approach velocity",
+      "threat_category": "HIGH",
+      "model_version": "RandomForest_v1.0"
+    },
+    "2001620": {
+      "hazard_probability": 0.89,
+      "risk_score": 89,
+      "confidence": 0.91,
+      "recommendation": "Very high risk - extremely close approach with high velocity",
+      "threat_category": "CRITICAL",
+      "model_version": "RandomForest_v1.0"
+    },
+    "2001627": {
+      "hazard_probability": 0.76,
+      "risk_score": 76,
+      "confidence": 0.84,
+      "recommendation": "High risk - large diameter creates significant impact potential",
+      "threat_category": "HIGH",
+      "model_version": "RandomForest_v1.0"
+    }
+  },
+  "model_stats": {
+    "accuracy": 0.893,
+    "precision": 0.876,
+    "recall": 0.912,
+    "f1_score": 0.894,
+    "model_type": "Random Forest Classifier",
+    "training_date": "2025-10-04T12:30:00Z",
+    "feature_importance": [
+      {
+        "feature": "kinetic_energy_mt",
+        "importance": 0.342
+      },
+      {
+        "feature": "diameter_m",
+        "importance": 0.287
+      },
+      {
+        "feature": "velocity_km_s",
+        "importance": 0.221
+      },
+      {
+        "feature": "distance_km",
+        "importance": 0.150
+      }
+    ]
+  },
+  "metadata": {
+    "total_objects": 10,
+    "high_risk_objects": 6,
+    "model_confidence_avg": 0.844,
+    "last_updated": "2025-10-04T12:30:00Z",
+    "training_dataset_size": 210,
+    "cross_validation_score": 0.887,
+    "hyperparameters": {
+      "n_estimators": 100,
+      "max_depth": 10,
+      "class_weight": "balanced"
+    }
+  }
+}
