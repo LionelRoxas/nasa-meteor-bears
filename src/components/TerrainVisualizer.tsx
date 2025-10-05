@@ -1363,17 +1363,6 @@ export default function TerrainVisualizer({
 
   return (
     <div className="terrain-visualizer">
-      <div className="mb-4">
-        <h3 className="text-lg font-bold text-white mb-2">
-          Dynamic Impact Zone Terrain
-        </h3>
-        <p className="text-sm text-gray-400">
-          {enhancedPrediction?.impact_location
-            ? "Showing realistic terrain at predicted impact coordinates from trajectory calculation."
-            : "Click anywhere to set impact location. Real-time terrain with biomes, elevation, and population centers."}
-        </p>
-      </div>
-
       <div className="relative border border-gray-600 rounded-lg overflow-hidden">
         <canvas
           ref={canvasRef}
