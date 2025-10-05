@@ -240,6 +240,7 @@ export const AsteroidDefenseGame3D = () => {
   const [gameVictory, setGameVictory] = useState(false);
   const [showBossCutscene, setShowBossCutscene] = useState(false);
   const [bossSpawned, setBossSpawned] = useState(false);
+  const [impactorPartsDestroyed, setImpactorPartsDestroyed] = useState(0);
   const [asteroidsDestroyed, setAsteroidsDestroyed] = useState(0);
   const [earthHealth, setEarthHealth] = useState(100);
   const [asteroidData, setAsteroidData] = useState<AsteroidData[]>([]);
@@ -1297,6 +1298,38 @@ export const AsteroidDefenseGame3D = () => {
               // Destroy the asteroid
               laser.targetAsteroid.destroyed = true;
               
+              // Clean up impactor trail system immediately
+              if (laser.targetAsteroid.trailSystem && sceneRef.current) {
+                console.log('🧹 Cleaning up impactor trail system');
+                sceneRef.current.remove(laser.targetAsteroid.trailSystem.particles);
+                laser.targetAsteroid.trailSystem.particles.geometry.dispose();
+                if (laser.targetAsteroid.trailSystem.particles.material instanceof THREE.Material) {
+                  laser.targetAsteroid.trailSystem.particles.material.dispose();
+                }
+                // Clean up trail line
+                if (laser.targetAsteroid.trailSystem.trailLine) {
+                  sceneRef.current.remove(laser.targetAsteroid.trailSystem.trailLine);
+                  laser.targetAsteroid.trailSystem.trailLine.geometry.dispose();
+                  if (laser.targetAsteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+                    laser.targetAsteroid.trailSystem.trailLine.material.dispose();
+                  }
+                }
+              }
+              
+              // Increment impactor parts destroyed counter
+              setImpactorPartsDestroyed(prev => {
+                const newCount = prev + 1;
+                console.log(`🔴 Impactor part destroyed! Count: ${newCount}/6`);
+                
+                // Check for immediate victory if all 6 parts destroyed
+                if (newCount >= 6) {
+                  console.log('🎉 ALL IMPACTOR PARTS DESTROYED - TRIGGERING VICTORY!');
+                  setTimeout(() => setGameVictory(true), 1000); // Delay for explosion effect
+                }
+                
+                return newCount;
+              });
+              
               // Set impacting flag to freeze trail
               laser.targetAsteroid.impacting = true;
               
@@ -1470,21 +1503,24 @@ export const AsteroidDefenseGame3D = () => {
       
       return true;
     });
-  }, [setSelectedAsteroid, setGamePaused, setScore, setAsteroidsDestroyed, splitImpactor2025]);
+  }, [setSelectedAsteroid, setGamePaused, setScore, setAsteroidsDestroyed, splitImpactor2025, setImpactorPartsDestroyed]);
 
   const spawnWave = useCallback(() => {
     console.log('🚀 SPAWNING ASTEROIDS for wave', wave, '- Available asteroids:', asteroidData.length);
     
-    // Special handling for wave 6 - final boss wave
-    if (wave === 6) {
-      console.log('🔴 FINAL BOSS WAVE - Spawning Impactor-2025');
-      const bossAsteroid = createImpactor2025(0);
-      if (bossAsteroid) {
-        asteroidsRef.current.push(bossAsteroid);
-        setBossSpawned(true); // Track that boss has been spawned
-        console.log('✅ Successfully spawned Impactor-2025 boss asteroid');
-      } else {
-        console.log('❌ Failed to create Impactor-2025');
+    // ABSOLUTE PROTECTION: Only boss for wave 6+
+    if (wave >= 6) {
+      console.log('🔴 WAVE 6+ DETECTED - Only boss spawning allowed');
+      if (wave === 6) {
+        console.log('🔴 FINAL BOSS WAVE - Spawning Impactor-2025');
+        const bossAsteroid = createImpactor2025(0);
+        if (bossAsteroid) {
+          asteroidsRef.current.push(bossAsteroid);
+          setBossSpawned(true); // Track that boss has been spawned
+          console.log('✅ Successfully spawned Impactor-2025 boss asteroid');
+        } else {
+          console.log('❌ Failed to create Impactor-2025');
+        }
       }
       return;
     }
@@ -1817,33 +1853,54 @@ export const AsteroidDefenseGame3D = () => {
     setGameVictory(false);
     setShowBossCutscene(false);
     setBossSpawned(false);
+    setImpactorPartsDestroyed(0);
     setScore(0);
     setWave(1);
     setAsteroidsDestroyed(0);
     setEarthHealth(100);
     
-    // Clear existing asteroids
+    // Clear existing asteroids and their trail systems
     asteroidsRef.current.forEach(asteroid => {
-      sceneRef.current?.remove(asteroid.mesh);
-      // Clean up trail system if it exists
-      if (asteroid.trailSystem) {
-        sceneRef.current?.remove(asteroid.trailSystem.particles);
-        asteroid.trailSystem.particles.geometry.dispose();
-        if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
-          asteroid.trailSystem.particles.material.dispose();
-        }
-        // Clean up trail line
-        if (asteroid.trailSystem.trailLine) {
-          sceneRef.current?.remove(asteroid.trailSystem.trailLine);
-          asteroid.trailSystem.trailLine.geometry.dispose();
-          if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
-            asteroid.trailSystem.trailLine.material.dispose();
+      if (sceneRef.current) {
+        sceneRef.current.remove(asteroid.mesh);
+        
+        // Clean up trail system if it exists
+        if (asteroid.trailSystem) {
+          sceneRef.current.remove(asteroid.trailSystem.particles);
+          asteroid.trailSystem.particles.geometry.dispose();
+          if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
+            asteroid.trailSystem.particles.material.dispose();
+          }
+          // Clean up trail line
+          if (asteroid.trailSystem.trailLine) {
+            sceneRef.current.remove(asteroid.trailSystem.trailLine);
+            asteroid.trailSystem.trailLine.geometry.dispose();
+            if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+              asteroid.trailSystem.trailLine.material.dispose();
+            }
           }
         }
-        // Aura is attached to mesh, so it gets cleaned up automatically
+        
+        // Dispose asteroid mesh
+        asteroid.mesh.geometry.dispose();
+        if (asteroid.mesh.material instanceof THREE.Material) {
+          asteroid.mesh.material.dispose();
+        }
       }
     });
     asteroidsRef.current = [];
+    
+    // Clear any active lasers
+    lasersRef.current.forEach(laser => {
+      if (sceneRef.current) {
+        sceneRef.current.remove(laser.mesh);
+        laser.mesh.geometry.dispose();
+        if (laser.mesh.material instanceof THREE.Material) {
+          laser.mesh.material.dispose();
+        }
+      }
+    });
+    lasersRef.current = [];
     
     spawnWave();
   };
@@ -1857,12 +1914,61 @@ export const AsteroidDefenseGame3D = () => {
     console.log('🚀 Continuing to boss wave 6');
     setShowBossCutscene(false);
     setWave(6);
-    // Clear any existing asteroids to ensure clean boss fight
+    
+    // Clear only asteroids and related debris, not the entire scene
+    asteroidsRef.current.forEach(asteroid => {
+      if (sceneRef.current) {
+        sceneRef.current.remove(asteroid.mesh);
+        
+        // Clean up trail system if it exists
+        if (asteroid.trailSystem) {
+          sceneRef.current.remove(asteroid.trailSystem.particles);
+          asteroid.trailSystem.particles.geometry.dispose();
+          if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
+            asteroid.trailSystem.particles.material.dispose();
+          }
+          // Clean up trail line
+          if (asteroid.trailSystem.trailLine) {
+            sceneRef.current.remove(asteroid.trailSystem.trailLine);
+            asteroid.trailSystem.trailLine.geometry.dispose();
+            if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+              asteroid.trailSystem.trailLine.material.dispose();
+            }
+          }
+        }
+        
+        // Dispose asteroid mesh
+        asteroid.mesh.geometry.dispose();
+        if (asteroid.mesh.material instanceof THREE.Material) {
+          asteroid.mesh.material.dispose();
+        }
+      }
+    });
     asteroidsRef.current = [];
-    // Force spawn the boss after a brief delay
+    
+    // Clear any active lasers
+    lasersRef.current.forEach(laser => {
+      if (sceneRef.current) {
+        sceneRef.current.remove(laser.mesh);
+        laser.mesh.geometry.dispose();
+        if (laser.mesh.material instanceof THREE.Material) {
+          laser.mesh.material.dispose();
+        }
+      }
+    });
+    lasersRef.current = [];
+    
+    // Force spawn ONLY the boss after a brief delay
     setTimeout(() => {
-      console.log('⚡ Manually spawning boss for wave 6');
-      spawnWave();
+      console.log('⚡ BOSS ONLY - Manually spawning Impactor-2025 for wave 6');
+      const bossAsteroid = createImpactor2025(0);
+      if (bossAsteroid) {
+        asteroidsRef.current.push(bossAsteroid);
+        setBossSpawned(true);
+        console.log('✅ Successfully spawned ONLY Impactor-2025 boss asteroid');
+      } else {
+        console.log('❌ Failed to create Impactor-2025');
+      }
     }, 500);
   };
 
@@ -1879,14 +1985,34 @@ export const AsteroidDefenseGame3D = () => {
     };
   }, [gameStarted, gameOver, gameVictory, gameLoop]);
 
+  // Victory detection for boss fight
+  useEffect(() => {
+    if (wave === 6 && bossSpawned && impactorPartsDestroyed >= 6 && !gameVictory) {
+      console.log('🎉 BOSS VICTORY DETECTED! All 6 impactor parts destroyed!');
+      setGameVictory(true);
+    }
+  }, [wave, bossSpawned, impactorPartsDestroyed, gameVictory]);
+
   // Spawn new waves with longer delays
   useEffect(() => {
+    // ABSOLUTELY NO WAVE SPAWNING DURING BOSS FIGHT
+    if (wave >= 6) {
+      console.log('🚫 BLOCKED: Wave progression blocked for wave', wave, '- Boss fight in progress');
+      return;
+    }
+    
     const activeAsteroids = asteroidsRef.current.filter(a => !a.destroyed);
-    console.log('Wave check - Active asteroids:', activeAsteroids.length, 'Destroyed:', asteroidsDestroyed, 'Game started:', gameStarted, 'Game over:', gameOver, 'Game paused:', gamePaused, 'Current wave:', wave, 'Cutscene:', showBossCutscene);
+    console.log('Wave check - Active asteroids:', activeAsteroids.length, 'Destroyed:', asteroidsDestroyed, 'Game started:', gameStarted, 'Game over:', gameOver, 'Game paused:', gamePaused, 'Current wave:', wave, 'Cutscene:', showBossCutscene, 'Impactor parts:', impactorPartsDestroyed);
     
     // Don't check wave progression during cutscene
     if (showBossCutscene) {
       console.log('⏸️ Skipping wave progression - cutscene is showing');
+      return;
+    }
+    
+    // Don't spawn new waves if we're already on wave 6 or higher (boss fight)
+    if (wave >= 6) {
+      console.log('🔴 Wave 6+ detected - NO MORE WAVES during boss fight');
       return;
     }
     
@@ -1895,14 +2021,8 @@ export const AsteroidDefenseGame3D = () => {
     // 2. No active asteroids remaining 
     // 3. Wave number is reasonable (not stuck)
     // 4. Not showing cutscene
+    // 5. Not during boss fight (wave < 6)
     if (gameStarted && !gameOver && !gameVictory && !gamePaused && activeAsteroids.length === 0) {
-      // Check for victory condition after wave 6 (boss defeated)
-      if (wave === 6 && bossSpawned) {
-        console.log('🎉 VICTORY! Impactor-2025 and all fragments defeated!');
-        setGameVictory(true);
-        return;
-      }
-      
       // Show cutscene before wave 6 (final boss)
       if (wave === 5) {
         console.log('📽️ Showing boss cutscene after wave 5');
@@ -1938,7 +2058,7 @@ export const AsteroidDefenseGame3D = () => {
         wave
       });
     }
-  }, [gameStarted, gameOver, gameVictory, gamePaused, asteroidsDestroyed, spawnWave, wave, showBossCutscene, bossSpawned]);
+  }, [gameStarted, gameOver, gameVictory, gamePaused, asteroidsDestroyed, spawnWave, wave, showBossCutscene, bossSpawned, impactorPartsDestroyed]);
 
   // Backup wave spawning mechanism - ensures game continues
   useEffect(() => {
@@ -2074,6 +2194,7 @@ export const AsteroidDefenseGame3D = () => {
               <p className="text-2xl mb-4 text-yellow-300">Impactor-2025 Destroyed!</p>
               <p className="text-xl mb-2">You successfully defeated the massive asteroid</p>
               <p className="text-xl mb-2">and all its deadly fragments!</p>
+              <p className="text-lg mb-2 text-red-400">💥 Impactor Parts Destroyed: {impactorPartsDestroyed}/6</p>
               <p className="text-lg mb-2 text-blue-300">Final Score: {score}</p>
               <p className="text-lg mb-2 text-blue-300">Waves Completed: {wave}</p>
               <p className="text-lg mb-6 text-blue-300">Asteroids Destroyed: {asteroidsDestroyed}</p>
