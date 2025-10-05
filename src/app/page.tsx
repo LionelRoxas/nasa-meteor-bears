@@ -134,14 +134,15 @@ export default function Home() {
 
             // Use real impact location from prediction if available
             if (prediction.impact_location) {
-              setImpactLocation({
-                lat: prediction.impact_location.latitude,
-                lng: prediction.impact_location.longitude,
-              });
+              const lat = prediction.impact_location.latitude ?? 0;
+              const lng = prediction.impact_location.longitude ?? 0;
+              setImpactLocation({ lat, lng });
               console.log(
-                "📍 Impact location set:",
-                prediction.impact_location
+                "📍 Impact location set to:",
+                `${lat.toFixed(2)}°, ${lng.toFixed(2)}° (${prediction.impact_location.type || "unknown"})`
               );
+            } else {
+              console.warn("⚠️ No impact_location in prediction, using default (0, 0)");
             }
           }
         } catch (error) {
@@ -205,7 +206,7 @@ export default function Home() {
 
   const handleStartImpact = () => {
     if (!isSimulating && !countdown) {
-      setCountdown(5);
+      setCountdown(10);
       setHasImpacted(false);
       setAsteroidClicked(false);
       setSimulationPhase("countdown");
@@ -235,25 +236,21 @@ export default function Home() {
   const handleImpact = () => {
     console.log("💥 Impact detected! Starting 3D→2D transition...");
     setHasImpacted(true);
-
-    // Start transition with orange flash
     setSimulationPhase("transition");
     console.log("🔥 Transition phase active - flash should show!");
 
-    // Transition to 2D after flash completes (400ms)
     setTimeout(() => {
       console.log("🎯 Transitioning to 2D impact visualization...");
-      setSimulationPhase("2d-impact");
       setIsSimulating(false);
-    }, 500);
+      setSimulationPhase("2d-impact");
+    }, 400);
 
-    // Move to aftermath after 3s
     setTimeout(() => {
       console.log("📊 Moving to aftermath analysis...");
       setSimulationPhase("2d-aftermath");
       setIsSidebarCollapsed(false);
       setShowNASAPanel(false);
-    }, 3000);
+    }, 3400);
   };
 
   const loadNASAAsteroid = (asteroid: NASAAsteroidData) => {
@@ -307,8 +304,10 @@ export default function Home() {
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black">
       {/* OPTIMIZED: Conditional rendering - only mount active layer */}
-      {simulationPhase === "2d-impact" || simulationPhase === "2d-aftermath" ? (
-        /* 2D Layer - Only mounted during 2D phases */
+      {simulationPhase === "2d-impact" ||
+      simulationPhase === "2d-aftermath" ||
+      simulationPhase === "transition" ? (
+        /* 2D Layer - Only mounted during 2D phases AND transition */
         <div
           className="absolute inset-0 animate-in fade-in duration-700"
           style={{ zIndex: 0 }}
