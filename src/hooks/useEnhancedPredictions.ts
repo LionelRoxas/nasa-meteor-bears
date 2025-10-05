@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState } from 'react';
@@ -183,7 +184,7 @@ export function useEnhancedPredictions() {
   };
 
   // Get consequence prediction with trajectory data
-  const getConsequencePrediction = async (asteroidId: string, correlationData: AsteroidCorrelationData): Promise<Record<string, unknown> | null> => {
+  const getConsequencePrediction = async (asteroidId: string, correlationData: AsteroidCorrelationData): Promise<any> => {
     console.log("🚀 Starting getConsequencePrediction for asteroid:", asteroidId);
     try {
       // Import the consequence predictor dynamically to avoid server-side issues

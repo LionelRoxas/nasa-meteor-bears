@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/correlate-asteroid-earthquakes/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
@@ -270,7 +271,7 @@ function extractAsteroidFeaturesFromAPI(
 
   // Get velocity from next approach or use default
   let avgVelocity = 20; // Default velocity km/s
-  let approachCount = asteroid.total_approaches || 0;
+  const approachCount = asteroid.total_approaches || 0;
   let minApproachDistance = 0;
 
   if (asteroid.next_approach) {

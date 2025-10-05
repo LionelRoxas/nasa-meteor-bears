@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 interface EnhancedPrediction {
+  impact_physics: any;
   hazard_probability: number;
   risk_score: number;
   confidence: number;
