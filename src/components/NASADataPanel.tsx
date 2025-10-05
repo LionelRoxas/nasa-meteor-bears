@@ -1,642 +1,727 @@
+// components/NASADataPanel.tsx
 "use client";
 
-import { useState } from "react";
-import {
-  useNASAData,
-  type NASAAsteroidData as BaseNASAAsteroidData,
-} from "@/hooks/useNASAData";
-import { useMLPredictions } from "@/hooks/useMLPredictions";
+import { useState, useEffect } from "react";
 
-interface ExtendedNASAAsteroidData extends BaseNASAAsteroidData {
-  energy?: number;
-  threatLevel?: string;
-  mlPrediction?: Record<string, unknown>;
-  mlRiskScore?: number;
-  mlConfidence?: number;
-  mlThreatCategory?: string;
-  mlRecommendation?: string;
-  isHighMLRisk?: boolean;
+interface NASAAsteroidData {
+  id: string;
+  name: string;
+  diameter: number; // meters
+  velocity: number; // km/s
+  distance: number; // km
+  is_hazardous: boolean;
+  is_sentry_object?: boolean;
+  approach_date?: string;
+  approach_date_full?: string;
+  magnitude: number;
+  nasa_url?: string;
+  miss_distance_lunar?: number;
+  orbiting_body?: string;
+  orbit_class?: string;
+  raw_data?: any;
 }
 
 interface Props {
-  onSelectAsteroid?: (asteroid: ExtendedNASAAsteroidData) => void;
+  onSelectAsteroid: (asteroid: NASAAsteroidData) => void;
 }
 
+type DataMode = "selection" | "browse" | "feed" | "lookup";
+
 export default function NASADataPanel({ onSelectAsteroid }: Props) {
-  const {
-    simulationData,
-    summary,
-    loading,
-    error,
-    getRandomAsteroid,
-    enhanceAsteroidData,
-    searchAsteroids,
-    getRandomComet,
-    getFamousComets,
-    isDataAvailable,
-    asteroidCount,
-    hazardousCount,
-    todayCount,
-    weekCount,
-    cometCount,
-    hazardousCometCount,
-    getMLRecommendedAsteroid,
-    isMLAvailable,
-    mlHighRiskCount,
-  } = useNASAData();
+  const [dataMode, setDataMode] = useState<DataMode>("selection");
+  const [asteroids, setAsteroids] = useState<NASAAsteroidData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const {
-    getMLRecommendations,
-    totalPredictions,
-    averageConfidence,
-    modelAccuracy,
-  } = useMLPredictions();
+  // Feed mode state
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
-  const [selectedAsteroid, setSelectedAsteroid] =
-    useState<ExtendedNASAAsteroidData | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<
-    | "today"
-    | "week"
-    | "hazardous"
-    | "comets"
-    | "search"
-    | "stats"
-    | "ml-insights"
-  >("today");
+  // Browse mode state
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
 
-  const handleSelectAsteroid = (asteroid: ExtendedNASAAsteroidData) => {
-    const enhanced = enhanceAsteroidData(asteroid);
-    setSelectedAsteroid(enhanced as unknown as ExtendedNASAAsteroidData);
+  // Lookup mode state
+  const [asteroidId, setAsteroidId] = useState("");
+  const [lookupResult, setLookupResult] = useState<any>(null);
+
+  // Expanded card state
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+
+  // Initialize dates to today and 7 days ago
+  useEffect(() => {
+    const today = new Date();
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    setEndDate(today.toISOString().split("T")[0]);
+    setStartDate(weekAgo.toISOString().split("T")[0]);
+  }, []);
+
+  // Get min and max dates for calendar inputs
+  const getDateLimits = () => {
+    const today = new Date();
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + 30);
+
+    const minDate = new Date(today);
+    minDate.setFullYear(minDate.getFullYear() - 1);
+
+    return {
+      min: minDate.toISOString().split("T")[0],
+      max: maxDate.toISOString().split("T")[0],
+      today: today.toISOString().split("T")[0],
+    };
   };
 
-  const handleRandomAsteroid = (
-    category: "all" | "hazardous" | "today" | "ml-recommended" = "all"
-  ) => {
-    let asteroid;
+  const dateLimits = getDateLimits();
 
-    if (category === "ml-recommended" && isMLAvailable) {
-      asteroid = getMLRecommendedAsteroid();
-    } else {
-      asteroid = getRandomAsteroid(
-        category === "ml-recommended" ? "all" : category
+  // Fetch Feed Data
+  const fetchFeedData = async () => {
+    setLoading(true);
+    setError(null);
+
+    // Validate date range
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const daysDifference = Math.ceil(
+      (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (daysDifference > 7) {
+      setError(
+        `Date range is ${daysDifference} days. NASA API only allows maximum 7 days per request.`
+      );
+      setLoading(false);
+      return;
+    }
+
+    if (start > end) {
+      setError("Start date must be before end date");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const url = `/api/neo-feed?start_date=${startDate}&end_date=${endDate}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.success) {
+        setAsteroids(data.data);
+      } else {
+        setError(data.message || data.error || "Failed to fetch feed data");
+      }
+    } catch (err) {
+      setError("Error loading feed data");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch Browse Data
+  const fetchBrowseData = async (page = 0) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const url = `/api/neo-browse?page=${page}&size=20`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.success) {
+        setAsteroids(data.data);
+        setCurrentPage(data.pagination.current_page);
+        setTotalPages(data.pagination.total_pages);
+        setTotalElements(data.pagination.total_elements);
+      } else {
+        setError(data.error || "Failed to fetch browse data");
+      }
+    } catch (err) {
+      setError("Error loading browse data");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch Lookup Data
+  const fetchLookupData = async () => {
+    if (!asteroidId.trim()) {
+      setError("Please enter an asteroid ID");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const url = `/api/neo-lookup?id=${asteroidId}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.success) {
+        setLookupResult(data.asteroid);
+        // Convert to standard format for display
+        const formattedAsteroid: NASAAsteroidData = {
+          id: data.asteroid.id,
+          name: data.asteroid.name,
+          diameter: data.asteroid.diameter.meters,
+          velocity: data.asteroid.next_approach?.velocity_km_s || 0,
+          distance: data.asteroid.next_approach?.miss_distance_km || 0,
+          is_hazardous: data.asteroid.is_hazardous,
+          is_sentry_object: data.asteroid.is_sentry_object,
+          approach_date: data.asteroid.next_approach?.date,
+          magnitude: data.asteroid.absolute_magnitude,
+          nasa_url: data.asteroid.nasa_url,
+          miss_distance_lunar: data.asteroid.next_approach?.miss_distance_lunar,
+          orbiting_body: data.asteroid.next_approach?.orbiting_body,
+          orbit_class: data.asteroid.orbital_data.orbit_class,
+          raw_data: data.asteroid,
+        };
+        setAsteroids([formattedAsteroid]);
+      } else {
+        setError(data.error || "Asteroid not found");
+        setAsteroids([]);
+      }
+    } catch (err) {
+      setError("Error loading asteroid data");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getThreatLevelColor = (asteroid: NASAAsteroidData) => {
+    if (asteroid.is_sentry_object) return "border-amber-600/50 bg-amber-950/20";
+    if (asteroid.is_hazardous) return "border-red-600/50 bg-red-950/20";
+    if (asteroid.diameter > 500) return "border-orange-600/50 bg-orange-950/20";
+    return "border-slate-600/50 bg-slate-900/50";
+  };
+
+  const getThreatBadge = (asteroid: NASAAsteroidData) => {
+    const badges = [];
+    if (asteroid.is_sentry_object) {
+      badges.push(
+        <span
+          key="sentry"
+          className="px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-sm text-[10px] font-medium uppercase tracking-wider border border-amber-500/30"
+        >
+          Sentry
+        </span>
       );
     }
-
-    if (asteroid) {
-      handleSelectAsteroid(asteroid);
+    if (asteroid.is_hazardous) {
+      badges.push(
+        <span
+          key="hazard"
+          className="px-2 py-0.5 bg-red-500/20 text-red-400 rounded-sm text-[10px] font-medium uppercase tracking-wider border border-red-500/30"
+        >
+          Hazardous
+        </span>
+      );
     }
+    if (asteroid.diameter > 1000) {
+      badges.push(
+        <span
+          key="size"
+          className="px-2 py-0.5 bg-violet-500/20 text-violet-400 rounded-sm text-[10px] font-medium uppercase tracking-wider border border-violet-500/30"
+        >
+          Massive
+        </span>
+      );
+    }
+    return badges;
   };
 
-  if (loading) {
-    return (
-      <div className="w-80 bg-black/95 p-6 rounded-lg border border-gray-700">
-        <div className="animate-pulse space-y-4">
-          <div className="h-6 bg-gray-700 rounded w-1/2"></div>
-          <div className="h-4 bg-gray-700 rounded w-3/4"></div>
-          <div className="h-4 bg-gray-700 rounded w-1/2"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-80 bg-black/95 p-6 rounded-lg border border-red-700">
-        <h3 className="text-red-400 font-bold mb-2">Data Error</h3>
-        <p className="text-sm text-red-300">{error}</p>
-      </div>
-    );
-  }
-
-  if (!isDataAvailable) {
-    return (
-      <div className="w-80 bg-black/95 p-6 rounded-lg border border-gray-700">
-        <p className="text-gray-400">No NASA data available</p>
-      </div>
-    );
-  }
-
-  const searchResults = searchQuery ? searchAsteroids(searchQuery) : [];
+  const formatNumber = (num: number, decimals = 2) => {
+    if (num >= 1000000) return `${(num / 1000000).toFixed(decimals)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(decimals)}k`;
+    return num.toFixed(decimals);
+  };
 
   return (
-    <div className="w-80 bg-black/95 rounded-lg border border-gray-700 overflow-hidden">
+    <div className="w-[420px] bg-slate-950 rounded-md border border-slate-800 overflow-hidden flex flex-col h-[85vh] shadow-2xl">
       {/* Header */}
-      <div className="p-6 border-b border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[#0066cc] font-bold text-xl">NASA Data</h3>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-sm text-gray-400">Live</span>
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="text-center p-3 bg-gray-800/50 rounded">
-            <div className="text-[#0066cc] font-bold text-base">
-              {asteroidCount.toLocaleString()}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700">
+        <div className="px-5 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-slate-300 uppercase tracking-wider">
+                NASA NEO Database
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Near-Earth Object Tracking System
+              </p>
             </div>
-            <div className="text-gray-400 text-xs">Total Asteroids</div>
-          </div>
-          <div className="text-center p-3 bg-gray-800/50 rounded">
-            <div className="text-purple-400 font-bold text-base">
-              {cometCount.toLocaleString()}
-            </div>
-            <div className="text-gray-400 text-xs">Comets (Orbital)</div>
-          </div>
-          <div className="text-center p-3 bg-gray-800/50 rounded">
-            <div className="text-red-400 font-bold text-base">
-              {(hazardousCount + hazardousCometCount).toLocaleString()}
-            </div>
-            <div className="text-gray-400 text-xs">Hazardous</div>
-          </div>
-          <div className="text-center p-3 bg-gray-800/50 rounded">
-            <div className="text-blue-400 font-bold text-base">
-              {todayCount}
-            </div>
-            <div className="text-gray-400 text-xs">Today (Oct 4)</div>
-          </div>
-        </div>
-
-        {/* Real-time Activity */}
-        <div className="mt-3 p-3 bg-blue-900/20 border border-blue-700 rounded">
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-              <span className="text-blue-300">Weekly</span>
-            </div>
-            <span className="text-blue-200 font-semibold">
-              {weekCount} approaches
-            </span>
-          </div>
-          <div className="text-blue-300/70 text-xs mt-1">
-            Next 7 days (Oct 4-11, 2025)
-          </div>
-        </div>
-
-        {isMLAvailable && (
-          <div className="mt-3 p-3 bg-green-900/20 border border-green-700 rounded">
-            <div className="flex items-center gap-2">
-              <span className="text-green-400">AI</span>
-              <span className="text-green-300 text-sm">
-                Active ({totalPredictions.toLocaleString()} objects)
-              </span>
-            </div>
-            {mlHighRiskCount > 0 && (
-              <div className="text-red-300 text-xs mt-1">
-                {mlHighRiskCount} high-risk detected
-              </div>
+            {dataMode !== "selection" && (
+              <button
+                onClick={() => {
+                  setDataMode("selection");
+                  setAsteroids([]);
+                  setError(null);
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-700/50 rounded transition-all"
+              >
+                Back
+              </button>
             )}
           </div>
-        )}
+        </div>
+        <div className="h-0.5 bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-600"></div>
       </div>
 
-      {/* Navigation */}
-      <div className="p-4 border-b border-gray-700">
-        <div className="grid grid-cols-3 gap-2">
-          {(["today", "week", "hazardous"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-2 rounded text-sm font-medium transition-colors flex items-center justify-center ${
-                activeTab === tab
-                  ? "bg-[#0066cc] text-white"
-                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-              }`}
-            >
-              {tab === "today"
-                ? "Today"
-                : tab === "week"
-                ? "Weekly"
-                : "Hazardous"}
-            </button>
-          ))}
+      {/* Mode Selection */}
+      {dataMode === "selection" && (
+        <div className="flex-1 p-6 space-y-4 bg-gradient-to-b from-slate-900 to-slate-950">
+          <div className="mb-8">
+            <h4 className="text-lg font-light text-white mb-2">
+              Data Source Selection
+            </h4>
+            <p className="text-sm text-slate-400">
+              Choose your preferred method to access asteroid data
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              setDataMode("feed");
+              fetchFeedData();
+            }}
+            className="w-full p-5 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 border border-slate-700 hover:border-blue-600/50 rounded transition-all group"
+          >
+            <div className="text-left">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded bg-blue-600/20 flex items-center justify-center">
+                  <span className="text-blue-400 text-sm font-bold">F</span>
+                </div>
+                <div className="text-white font-medium text-sm uppercase tracking-wide">
+                  Date Range Feed
+                </div>
+              </div>
+              <div className="text-slate-400 text-xs leading-relaxed">
+                Access asteroids approaching Earth within specified date ranges
+              </div>
+              <div className="text-slate-500 text-[10px] mt-2 uppercase tracking-wider">
+                7-Day Maximum • Real-Time Data
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => {
+              setDataMode("browse");
+              fetchBrowseData(0);
+            }}
+            className="w-full p-5 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 border border-slate-700 hover:border-violet-600/50 rounded transition-all group"
+          >
+            <div className="text-left">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded bg-violet-600/20 flex items-center justify-center">
+                  <span className="text-violet-400 text-sm font-bold">B</span>
+                </div>
+                <div className="text-white font-medium text-sm uppercase tracking-wide">
+                  Browse Database
+                </div>
+              </div>
+              <div className="text-slate-400 text-xs leading-relaxed">
+                Navigate through the complete NEO catalog with pagination
+              </div>
+              <div className="text-slate-500 text-[10px] mt-2 uppercase tracking-wider">
+                30,000+ Objects • Paginated Access
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setDataMode("lookup")}
+            className="w-full p-5 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 border border-slate-700 hover:border-emerald-600/50 rounded transition-all group"
+          >
+            <div className="text-left">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded bg-emerald-600/20 flex items-center justify-center">
+                  <span className="text-emerald-400 text-sm font-bold">L</span>
+                </div>
+                <div className="text-white font-medium text-sm uppercase tracking-wide">
+                  Direct Lookup
+                </div>
+              </div>
+              <div className="text-slate-400 text-xs leading-relaxed">
+                Query specific asteroids by their unique identifier
+              </div>
+              <div className="text-slate-500 text-[10px] mt-2 uppercase tracking-wider">
+                Instant Access • Detailed Data
+              </div>
+            </div>
+          </button>
+
+          <div className="mt-8 p-4 bg-slate-900/50 rounded border border-slate-800">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-light text-blue-400">30K+</div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">
+                  Tracked
+                </div>
+              </div>
+              <div>
+                <div className="text-2xl font-light text-amber-400">1.9K</div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">
+                  Hazardous
+                </div>
+              </div>
+              <div>
+                <div className="text-2xl font-light text-emerald-400">24/7</div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">
+                  Monitoring
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-4 gap-2 mt-2">
-          {(["comets", "search", "stats", "ml-insights"] as const).map(
-            (tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 py-2 rounded text-sm font-medium transition-colors flex items-center justify-center ${
-                  activeTab === tab
-                    ? "bg-[#0066cc] text-white"
-                    : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                } ${
-                  tab === "ml-insights" && !isMLAvailable
-                    ? "opacity-50 cursor-not-allowed"
-                    : ""
-                }`}
-                disabled={tab === "ml-insights" && !isMLAvailable}
-              >
-                {tab === "comets"
-                  ? "Comets"
-                  : tab === "search"
-                  ? "Search"
-                  : tab === "stats"
-                  ? "Stats"
-                  : "AI"}
-              </button>
-            )
+      )}
+
+      {/* Feed Mode Controls */}
+      {dataMode === "feed" && (
+        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+          <div className="space-y-3">
+            <div className="p-3 bg-amber-950/30 border border-amber-900/50 rounded">
+              <div className="flex items-start gap-2">
+                <div className="w-1 h-12 bg-amber-500 rounded-full"></div>
+                <div className="flex-1">
+                  <div className="text-amber-400 text-xs font-medium uppercase tracking-wider mb-1">
+                    API Constraint
+                  </div>
+                  <div className="text-amber-200/80 text-xs">
+                    Maximum date range limited to 7 days per request
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  min={dateLimits.min}
+                  max={dateLimits.today}
+                  onChange={(e) => {
+                    const newStartDate = e.target.value;
+                    setStartDate(newStartDate);
+
+                    const start = new Date(newStartDate);
+                    const end = new Date(endDate);
+                    const daysDiff = Math.ceil(
+                      (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+                    );
+
+                    if (daysDiff > 7 || end < start) {
+                      const newEnd = new Date(start);
+                      newEnd.setDate(newEnd.getDate() + 6);
+                      setEndDate(newEnd.toISOString().split("T")[0]);
+                    }
+                  }}
+                  className="w-full mt-1 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  min={dateLimits.min}
+                  max={dateLimits.max}
+                  onChange={(e) => {
+                    const newEndDate = e.target.value;
+                    setEndDate(newEndDate);
+
+                    const end = new Date(newEndDate);
+                    const start = new Date(startDate);
+                    const daysDiff = Math.ceil(
+                      (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+                    );
+
+                    if (daysDiff > 7 || start > end) {
+                      const newStart = new Date(end);
+                      newStart.setDate(newStart.getDate() - 6);
+                      setStartDate(newStart.toISOString().split("T")[0]);
+                    }
+                  }}
+                  className="w-full mt-1 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+            </div>
+            {(() => {
+              const start = new Date(startDate);
+              const end = new Date(endDate);
+              const daysDiff = Math.ceil(
+                (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+              );
+              return (
+                daysDiff > 0 && (
+                  <div className="text-center">
+                    <span
+                      className={`text-xs font-medium ${
+                        daysDiff > 7 ? "text-red-400" : "text-slate-500"
+                      }`}
+                    >
+                      Range: {daysDiff} day{daysDiff !== 1 ? "s" : ""}
+                      {daysDiff > 7 && " (exceeds limit)"}
+                    </span>
+                  </div>
+                )
+              );
+            })()}
+            <button
+              onClick={fetchFeedData}
+              disabled={loading}
+              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded text-sm font-medium transition-colors uppercase tracking-wider"
+            >
+              {loading ? "Processing..." : "Execute Query"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Browse Mode Controls */}
+      {dataMode === "browse" && !loading && (
+        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => fetchBrowseData(currentPage - 1)}
+              disabled={currentPage === 0}
+              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:text-slate-600 text-white rounded text-xs font-medium transition-colors"
+            >
+              Previous
+            </button>
+            <div className="text-center">
+              <div className="text-sm text-white font-medium">
+                Page {currentPage + 1} / {totalPages}
+              </div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                {totalElements.toLocaleString()} Total Objects
+              </div>
+            </div>
+            <button
+              onClick={() => fetchBrowseData(currentPage + 1)}
+              disabled={currentPage >= totalPages - 1}
+              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:text-slate-600 text-white rounded text-xs font-medium transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lookup Mode Controls */}
+      {dataMode === "lookup" && (
+        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+          <div className="space-y-3">
+            <div>
+              <label className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                Asteroid Identifier
+              </label>
+              <input
+                type="text"
+                value={asteroidId}
+                onChange={(e) => setAsteroidId(e.target.value)}
+                placeholder="Enter asteroid ID (e.g., 2000433)"
+                className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white text-sm placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+            </div>
+            <button
+              onClick={fetchLookupData}
+              disabled={loading}
+              className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded text-sm font-medium transition-colors uppercase tracking-wider"
+            >
+              {loading ? "Searching..." : "Execute Lookup"}
+            </button>
+            <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500">
+              <div className="text-center">433 (Eros)</div>
+              <div className="text-center">99942 (Apophis)</div>
+              <div className="text-center">3122 (Florence)</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Results Area */}
+      <div className="flex-1 overflow-y-auto bg-slate-950 p-4">
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-slate-500 text-sm">Processing request...</div>
+          </div>
+        )}
+
+        {error && (
+          <div className="p-4 bg-red-950/30 border border-red-900/50 rounded">
+            <div className="text-red-400 text-sm">{error}</div>
+          </div>
+        )}
+
+        {!loading &&
+          !error &&
+          asteroids.length === 0 &&
+          dataMode !== "selection" && (
+            <div className="text-center text-slate-500 py-12 text-sm">
+              No data available. Adjust search parameters.
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* Content */}
-      <div className="p-4 flex-1 overflow-y-auto">
-        {activeTab === "today" && (
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleRandomAsteroid("today")}
-                className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-500"
+        {/* Asteroid Cards */}
+        {!loading && asteroids.length > 0 && (
+          <div className="space-y-2">
+            {asteroids.map((asteroid) => (
+              <div
+                key={asteroid.id}
+                className={`p-4 rounded border cursor-pointer transition-all hover:shadow-lg ${getThreatLevelColor(
+                  asteroid
+                )}`}
+                onClick={() => onSelectAsteroid(asteroid)}
               >
-                Random Today
-              </button>
-              {isMLAvailable && (
-                <button
-                  onClick={() => handleRandomAsteroid("ml-recommended")}
-                  className="flex-1 px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-500"
-                >
-                  AI Pick
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              {simulationData?.today
-                .filter((asteroid) => asteroid.approach_date === "2025-10-04")
-                .slice(0, 6)
-                .map((asteroid) => (
-                  <div
-                    key={asteroid.id}
-                    onClick={() => handleSelectAsteroid(asteroid)}
-                    className="p-3 bg-gray-800/50 rounded cursor-pointer hover:bg-gray-700/50 border border-gray-700/50"
-                  >
-                    <div className="font-semibold text-blue-400 text-sm">
+                {/* Header */}
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <div className="text-white font-medium text-sm">
                       {asteroid.name}
                     </div>
-                    <div className="text-gray-400 text-xs mt-1">
-                      {asteroid.diameter}m • {asteroid.velocity.toFixed(1)} km/s
-                      • {(asteroid.distance / 1000).toFixed(0)}k km
-                    </div>
-                    <div className="text-blue-300/70 text-xs mt-1">
-                      Approaching today
+                    <div className="text-slate-500 text-[10px] font-mono">
+                      ID: {asteroid.id}
                     </div>
                   </div>
-                ))}
-              {todayCount === 0 && (
-                <div className="text-center text-gray-400 text-sm py-4">
-                  No asteroids approaching Earth today
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === "week" && (
-          <div className="space-y-3">
-            <div className="text-center p-2 bg-blue-900/20 rounded">
-              <div className="text-blue-300 font-semibold text-sm">
-                {weekCount} approaches this week
-              </div>
-              <div className="text-blue-300/70 text-xs">October 4-11, 2025</div>
-            </div>
-
-            <div className="space-y-2">
-              {simulationData?.today
-                .filter((asteroid) => {
-                  if (!asteroid.approach_date) return false;
-                  const approachDate = new Date(asteroid.approach_date);
-                  const today = new Date("2025-10-04");
-                  const weekFromNow = new Date(today);
-                  weekFromNow.setDate(today.getDate() + 7);
-                  return approachDate >= today && approachDate <= weekFromNow;
-                })
-                .slice(0, 8)
-                .map((asteroid) => (
-                  <div
-                    key={asteroid.id}
-                    onClick={() => handleSelectAsteroid(asteroid)}
-                    className="p-3 bg-gray-800/50 rounded cursor-pointer hover:bg-gray-700/50 border border-gray-700/50"
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedCard(
+                        expandedCard === asteroid.id ? null : asteroid.id
+                      );
+                    }}
+                    className="text-slate-500 hover:text-white text-xs px-2 py-0.5"
                   >
-                    <div className="font-semibold text-blue-400 text-sm">
-                      {asteroid.name}
-                    </div>
-                    <div className="text-gray-400 text-xs mt-1">
-                      {asteroid.diameter}m • {asteroid.velocity.toFixed(1)} km/s
-                      • {(asteroid.distance / 1000).toFixed(0)}k km
-                    </div>
-                    <div className="text-blue-300/70 text-xs mt-1">
-                      {asteroid.approach_date
-                        ? new Date(asteroid.approach_date).toLocaleDateString(
-                            "en-US",
-                            {
-                              weekday: "short",
-                              month: "short",
-                              day: "numeric",
-                            }
-                          )
-                        : "Unknown date"}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === "hazardous" && (
-          <div className="space-y-3">
-            <button
-              onClick={() => handleRandomAsteroid("hazardous")}
-              className="w-full px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-500"
-            >
-              Random Hazardous
-            </button>
-
-            <div className="space-y-2">
-              {simulationData?.hazardous.slice(0, 6).map((asteroid) => (
-                <div
-                  key={asteroid.id}
-                  onClick={() => handleSelectAsteroid(asteroid)}
-                  className="p-3 bg-red-900/20 rounded cursor-pointer hover:bg-red-900/30 border border-red-800/50"
-                >
-                  <div className="font-semibold text-red-400 text-sm">
-                    {asteroid.name}
-                  </div>
-                  <div className="text-gray-400 text-xs mt-1">
-                    {asteroid.diameter}m • {asteroid.velocity.toFixed(1)} km/s
-                  </div>
-                  {asteroid.is_sentry_object && (
-                    <div className="text-yellow-400 text-xs mt-1">
-                      Sentry Object
-                    </div>
-                  )}
+                    {expandedCard === asteroid.id ? "−" : "+"}
+                  </button>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {activeTab === "search" && (
-          <div className="space-y-3">
-            <input
-              type="text"
-              placeholder="Search asteroids..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0066cc]"
-            />
+                {/* Classification Badges */}
+                <div className="flex gap-1.5 mb-3">
+                  {getThreatBadge(asteroid)}
+                </div>
 
-            <div className="space-y-2">
-              {searchResults.slice(0, 6).map((asteroid) => (
-                <div
-                  key={asteroid.id}
-                  onClick={() => handleSelectAsteroid(asteroid)}
-                  className="p-3 bg-gray-800/50 rounded cursor-pointer hover:bg-gray-700/50 border border-gray-700/50"
-                >
-                  <div className="font-semibold text-yellow-400 text-sm">
-                    {asteroid.name}
+                {/* Metrics Grid */}
+                <div className="grid grid-cols-4 gap-3 mb-3">
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                      Size
+                    </div>
+                    <div className="text-white font-medium text-xs">
+                      {formatNumber(asteroid.diameter, 0)}m
+                    </div>
                   </div>
-                  <div className="text-gray-400 text-xs mt-1">
-                    ID: {asteroid.id} • {asteroid.diameter}m • Mag:{" "}
-                    {asteroid.magnitude.toFixed(1)}
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                      Speed
+                    </div>
+                    <div className="text-white font-medium text-xs">
+                      {asteroid.velocity.toFixed(1)} km/s
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                      Range
+                    </div>
+                    <div className="text-white font-medium text-xs">
+                      {formatNumber(asteroid.distance, 0)} km
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                      Mag
+                    </div>
+                    <div className="text-white font-medium text-xs">
+                      {asteroid.magnitude.toFixed(1)} H
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {activeTab === "comets" && (
-          <div className="space-y-3">
-            <div className="text-center p-2 bg-purple-900/20 rounded">
-              <div className="text-purple-300 font-semibold text-sm">
-                Orbital Comet Database
-              </div>
-              <div className="text-purple-300/70 text-xs">
-                Historical orbital elements (not real-time approaches)
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  const comet = getRandomComet("all");
-                  if (comet) handleSelectAsteroid(comet);
-                }}
-                className="flex-1 px-3 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-500"
-              >
-                Random Comet
-              </button>
-              <button
-                onClick={() => {
-                  const comet = getRandomComet("hazardous");
-                  if (comet) handleSelectAsteroid(comet);
-                }}
-                className="flex-1 px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-500"
-              >
-                Hazardous
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {getFamousComets()
-                .slice(0, 7)
-                .map((comet) => (
-                  <div
-                    key={comet.id}
-                    onClick={() => handleSelectAsteroid(comet)}
-                    className="p-3 bg-purple-900/20 rounded cursor-pointer hover:bg-purple-900/30 border border-purple-800/50"
-                  >
-                    <div className="font-semibold text-purple-400 text-sm">
-                      {comet.name}
+                {/* Approach Data */}
+                {asteroid.approach_date && (
+                  <div className="pt-2 border-t border-slate-800">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                        Approach:{" "}
+                        {new Date(asteroid.approach_date).toLocaleDateString()}
+                      </span>
+                      {asteroid.miss_distance_lunar && (
+                        <span className="text-[10px] text-cyan-400">
+                          {asteroid.miss_distance_lunar.toFixed(1)} LD
+                        </span>
+                      )}
                     </div>
-                    <div className="text-gray-400 text-xs mt-1">
-                      {comet.diameter}m • {comet.velocity.toFixed(1)} km/s •{" "}
-                      {comet.period_years.toFixed(1)}y
-                    </div>
-                    {comet.is_hazardous && (
-                      <div className="text-red-400 text-xs mt-1">
-                        Potentially Hazardous
+                  </div>
+                )}
+
+                {/* Expanded View */}
+                {expandedCard === asteroid.id && asteroid.raw_data && (
+                  <div className="mt-3 pt-3 border-t border-slate-800 space-y-2">
+                    {asteroid.raw_data.estimated_diameter && (
+                      <div>
+                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                          Diameter Range
+                        </div>
+                        <div className="text-xs text-slate-300">
+                          {asteroid.raw_data.estimated_diameter.meters.estimated_diameter_min.toFixed(
+                            0
+                          )}
+                          -
+                          {asteroid.raw_data.estimated_diameter.meters.estimated_diameter_max.toFixed(
+                            0
+                          )}
+                          m
+                        </div>
+                      </div>
+                    )}
+
+                    {asteroid.nasa_url && (
+                      <div className="pt-2">
+                        <a
+                          href={asteroid.nasa_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-cyan-400 hover:text-cyan-300 text-[10px] uppercase tracking-wider"
+                        >
+                          NASA JPL Database →
+                        </a>
                       </div>
                     )}
                   </div>
-                ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === "stats" && summary && (
-          <div className="space-y-4">
-            <div>
-              <div className="text-[#0066cc] font-semibold text-sm mb-2">
-                Largest Asteroid
+                )}
               </div>
-              <div className="text-gray-300 text-sm">
-                {summary.largest_asteroid.name}
-              </div>
-              <div className="text-gray-400 text-xs">
-                {Math.round(summary.largest_asteroid.diameter)}m diameter
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[#0066cc] font-semibold text-sm mb-2">
-                Closest Approach
-              </div>
-              <div className="text-gray-300 text-sm">
-                {summary.closest_approach.name}
-              </div>
-              <div className="text-gray-400 text-xs">
-                {(summary.closest_approach.distance / 1000).toFixed(0)}k km away
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[#0066cc] font-semibold text-sm mb-2">
-                Data Source
-              </div>
-              <div className="text-gray-400 text-xs">NASA NEO API</div>
-              <div className="text-gray-500 text-xs">
-                Updated: {new Date(summary.last_updated).toLocaleDateString()}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "ml-insights" && (
-          <div className="space-y-4">
-            {isMLAvailable ? (
-              <>
-                <div className="p-3 bg-gray-800 rounded">
-                  <div className="text-green-400 font-semibold text-sm mb-2">
-                    AI Model Performance
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Accuracy:</span>
-                      <span className="text-white">
-                        {(modelAccuracy * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Confidence:</span>
-                      <span className="text-white">
-                        {(averageConfidence * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Objects:</span>
-                      <span className="text-white">
-                        {totalPredictions.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-gray-800 rounded">
-                  <div className="text-red-400 font-semibold text-sm mb-2">
-                    High-Risk Predictions
-                  </div>
-                  <div className="space-y-2">
-                    {getMLRecommendations(3).map(({ id, prediction }) => {
-                      const asteroid = simulationData?.all.find(
-                        (a) => a.id === id
-                      );
-                      if (!asteroid) return null;
-
-                      return (
-                        <div
-                          key={id}
-                          onClick={() => handleSelectAsteroid(asteroid)}
-                          className="p-2 bg-red-900/20 rounded cursor-pointer hover:bg-red-900/30 border border-red-800"
-                        >
-                          <div className="font-semibold text-red-400 text-xs">
-                            {asteroid.name}
-                          </div>
-                          <div className="text-gray-400 text-xs">
-                            Risk: {prediction.risk_score}% | Confidence:{" "}
-                            {(prediction.confidence * 100).toFixed(0)}%
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="p-3 bg-yellow-900/20 border border-yellow-800 rounded">
-                <div className="text-yellow-400 font-semibold text-sm">
-                  AI System Status
-                </div>
-                <div className="text-gray-300 text-xs mt-1">
-                  ML predictions not yet available
-                </div>
-              </div>
-            )}
+            ))}
           </div>
         )}
       </div>
 
-      {/* Selected Asteroid */}
-      {selectedAsteroid && (
-        <div className="p-4 border-t border-gray-700 bg-gray-900/50">
-          <h4 className="text-[#0066cc] font-bold text-sm mb-3">
-            Selected: {selectedAsteroid.name}
-          </h4>
-
-          <div className="space-y-2 text-xs mb-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Diameter:</span>
-              <span className="text-white">{selectedAsteroid.diameter}m</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Velocity:</span>
-              <span className="text-white">
-                {selectedAsteroid.velocity.toFixed(1)} km/s
+      {/* Status Bar */}
+      {asteroids.length > 0 && !loading && (
+        <div className="px-4 py-2 border-t border-slate-800 bg-slate-900">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+              {asteroids.length} Object{asteroids.length !== 1 ? "s" : ""}{" "}
+              Loaded
+            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-red-400">
+                {asteroids.filter((a) => a.is_hazardous).length} HAZ
+              </span>
+              <span className="text-[10px] text-amber-400">
+                {asteroids.filter((a) => a.is_sentry_object).length} SENTRY
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Distance:</span>
-              <span className="text-white">
-                {(selectedAsteroid.distance / 1000).toFixed(0)}k km
-              </span>
-            </div>
-            {selectedAsteroid.energy && (
-              <div className="flex justify-between">
-                <span className="text-gray-400">Energy:</span>
-                <span className="text-[#0066cc] font-bold">
-                  {selectedAsteroid.energy.toFixed(2)} MT
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                if (onSelectAsteroid && selectedAsteroid) {
-                  onSelectAsteroid(selectedAsteroid);
-                }
-              }}
-              className="flex-1 px-4 py-2 bg-[#0066cc] text-white rounded text-sm font-medium hover:bg-[#004499] transition-colors"
-            >
-              Load in Simulation
-            </button>
-
-            {selectedAsteroid.nasa_url && (
-              <a
-                href={selectedAsteroid.nasa_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm font-medium transition-colors flex items-center"
-                title="View in NASA JPL Database"
-              >
-                Link
-              </a>
-            )}
           </div>
         </div>
       )}
