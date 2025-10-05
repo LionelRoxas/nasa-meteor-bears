@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useEnhancedPredictions, type EnhancedPrediction } from "@/hooks/useEnhancedPredictions";
 
 interface NASAAsteroidData {
   id: string;
@@ -18,7 +19,14 @@ interface NASAAsteroidData {
   miss_distance_lunar?: number;
   orbiting_body?: string;
   orbit_class?: string;
-  raw_data?: any;
+  raw_data?: {
+    estimated_diameter?: {
+      meters?: {
+        estimated_diameter_min: number;
+        estimated_diameter_max: number;
+      };
+    };
+  };
 }
 
 interface Props {
@@ -33,6 +41,11 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Enhanced predictions
+  const { getEnhancedPrediction, loading: predictionLoading } = useEnhancedPredictions();
+  const [enhancedPredictions, setEnhancedPredictions] = useState<Record<string, EnhancedPrediction>>({});
+  const [showPredictionFor, setShowPredictionFor] = useState<string | null>(null);
+
   // Feed mode state
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -44,7 +57,6 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
 
   // Lookup mode state
   const [asteroidId, setAsteroidId] = useState("");
-  const [lookupResult, setLookupResult] = useState<any>(null);
 
   // Expanded card state
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
@@ -135,7 +147,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
         setCurrentPage(data.pagination.current_page);
         setTotalPages(data.pagination.total_pages);
         setTotalElements(data.pagination.total_elements);
-      } else {
+    } else {
         setError(data.error || "Failed to fetch browse data");
       }
     } catch (err) {
@@ -161,7 +173,6 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
       const data = await response.json();
 
       if (data.success) {
-        setLookupResult(data.asteroid);
         // Convert to standard format for display
         const formattedAsteroid: NASAAsteroidData = {
           id: data.asteroid.id,
@@ -240,6 +251,50 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
     return num.toFixed(decimals);
   };
 
+  // Generate enhanced prediction for an asteroid
+  const generateEnhancedPrediction = async (asteroid: NASAAsteroidData) => {
+    try {
+      setShowPredictionFor(asteroid.id);
+      const prediction = await getEnhancedPrediction(asteroid.id);
+
+      if (prediction) {
+        setEnhancedPredictions(prev => ({
+          ...prev,
+          [asteroid.id]: prediction
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to generate enhanced prediction:', err);
+    }
+  };
+
+  // Get threat color based on enhanced prediction
+  const getEnhancedThreatColor = (prediction: EnhancedPrediction) => {
+    switch (prediction.threat_category) {
+      case 'CRITICAL': return 'border-red-500 bg-red-950/30';
+      case 'HIGH': return 'border-orange-500 bg-orange-950/30';
+      case 'MEDIUM': return 'border-yellow-500 bg-yellow-950/30';
+      default: return 'border-green-500 bg-green-950/30';
+    }
+  };
+
+  // Generate user-friendly 1-sentence analysis
+  const generateQuickAnalysis = (asteroid: NASAAsteroidData, prediction: EnhancedPrediction): string => {
+    const { threat_category, risk_score, correlation_context } = prediction;
+    const { top_similar_earthquakes } = correlation_context;
+    const size = asteroid.diameter > 1000 ? 'massive' : asteroid.diameter > 500 ? 'large' : asteroid.diameter > 100 ? 'medium' : 'small';
+
+    if (threat_category === 'CRITICAL') {
+      return `This ${size} asteroid poses extreme danger with ${risk_score}% risk based on ${top_similar_earthquakes} similar earthquake patterns - immediate monitoring required.`;
+    } else if (threat_category === 'HIGH') {
+      return `Analysis of ${top_similar_earthquakes} comparable earthquakes indicates ${risk_score}% risk of significant regional impact from this ${size} asteroid.`;
+    } else if (threat_category === 'MEDIUM') {
+      return `Based on ${top_similar_earthquakes} earthquake correlations, this ${size} asteroid shows ${risk_score}% risk of localized damage if impact occurs.`;
+    } else {
+      return `Historical data from ${top_similar_earthquakes} similar events suggests this ${size} asteroid has minimal impact risk (${risk_score}%) with limited consequences.`;
+    }
+  };
+
   return (
     <div className="w-[420px] bg-slate-950 rounded-md border border-slate-800 overflow-hidden flex flex-col h-[85vh] shadow-2xl">
       {/* Header */}
@@ -304,8 +359,8 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
               </div>
               <div className="text-slate-500 text-[10px] mt-2 uppercase tracking-wider">
                 7-Day Maximum • Real-Time Data
-              </div>
-            </div>
+          </div>
+        </div>
           </button>
 
           <button
@@ -329,11 +384,11 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
               </div>
               <div className="text-slate-500 text-[10px] mt-2 uppercase tracking-wider">
                 30,000+ Objects • Paginated Access
-              </div>
-            </div>
-          </button>
+          </div>
+        </div>
+            </button>
 
-          <button
+            <button
             onClick={() => setDataMode("lookup")}
             className="w-full p-5 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 border border-slate-700 hover:border-emerald-600/50 rounded transition-all group"
           >
@@ -351,8 +406,8 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
               </div>
               <div className="text-slate-500 text-[10px] mt-2 uppercase tracking-wider">
                 Instant Access • Detailed Data
-              </div>
-            </div>
+          </div>
+        </div>
           </button>
 
           <div className="mt-8 p-4 bg-slate-900/50 rounded border border-slate-800">
@@ -367,14 +422,14 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                 <div className="text-2xl font-light text-amber-400">1.9K</div>
                 <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">
                   Hazardous
-                </div>
-              </div>
-              <div>
+          </div>
+        </div>
+          <div>
                 <div className="text-2xl font-light text-emerald-400">24/7</div>
                 <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">
                   Monitoring
-                </div>
-              </div>
+          </div>
+          </div>
             </div>
           </div>
         </div>
@@ -396,7 +451,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                   </div>
                 </div>
               </div>
-            </div>
+                      </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
@@ -471,7 +526,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                     >
                       Range: {daysDiff} day{daysDiff !== 1 ? "s" : ""}
                       {daysDiff > 7 && " (exceeds limit)"}
-                    </span>
+                        </span>
                   </div>
                 )
               );
@@ -483,9 +538,9 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
             >
               {loading ? "Processing..." : "Execute Query"}
             </button>
-          </div>
-        </div>
-      )}
+                  </div>
+                </div>
+              )}
 
       {/* Browse Mode Controls */}
       {dataMode === "browse" && !loading && (
@@ -628,16 +683,16 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                     <div className="text-white font-medium text-xs">
                       {asteroid.velocity.toFixed(1)} km/s
                     </div>
-                  </div>
-                  <div>
+            </div>
+            <div>
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider">
                       Range
                     </div>
                     <div className="text-white font-medium text-xs">
                       {formatNumber(asteroid.distance, 0)} km
                     </div>
-                  </div>
-                  <div>
+            </div>
+            <div>
                     <div className="text-[10px] text-slate-500 uppercase tracking-wider">
                       Mag
                     </div>
@@ -658,8 +713,77 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                       {asteroid.miss_distance_lunar && (
                         <span className="text-[10px] text-cyan-400">
                           {asteroid.miss_distance_lunar.toFixed(1)} LD
-                        </span>
+              </span>
                       )}
+                    </div>
+            </div>
+                )}
+
+                {/* Enhanced AI Analysis Button */}
+                <div className="pt-2 border-t border-slate-800 mt-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      generateEnhancedPrediction(asteroid);
+                    }}
+                    disabled={predictionLoading && showPredictionFor === asteroid.id}
+                    className="w-full px-3 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-slate-600 disabled:to-slate-700 text-white rounded text-[10px] font-medium uppercase tracking-wider transition-all"
+                  >
+                    {predictionLoading && showPredictionFor === asteroid.id
+                      ? 'Analyzing...'
+                      : enhancedPredictions[asteroid.id]
+                        ? 'Update AI Analysis'
+                        : 'AI Impact Analysis'
+                    }
+                  </button>
+                </div>
+
+                {/* Enhanced Prediction Display */}
+                {enhancedPredictions[asteroid.id] && (
+                  <div className={`mt-2 p-2 rounded border ${getEnhancedThreatColor(enhancedPredictions[asteroid.id])}`}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+                        AI Risk Assessment
+                      </span>
+                      <span className={`text-[10px] font-bold ${
+                        enhancedPredictions[asteroid.id].threat_category === 'CRITICAL' ? 'text-red-400' :
+                        enhancedPredictions[asteroid.id].threat_category === 'HIGH' ? 'text-orange-400' :
+                        enhancedPredictions[asteroid.id].threat_category === 'MEDIUM' ? 'text-yellow-400' :
+                        'text-green-400'
+                      }`}>
+                        {enhancedPredictions[asteroid.id].threat_category}
+                      </span>
+                    </div>
+
+                    {/* Quick Analysis Summary */}
+                    <div className="mb-2 p-1.5 bg-slate-800/50 rounded">
+                      <div className="text-[9px] text-slate-300 italic leading-relaxed">
+                        {generateQuickAnalysis(asteroid, enhancedPredictions[asteroid.id])}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase">Risk</div>
+                        <div className="text-[10px] font-medium text-white">
+                          {enhancedPredictions[asteroid.id].risk_score}%
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase">Confidence</div>
+                        <div className="text-[10px] font-medium text-white">
+                          {(enhancedPredictions[asteroid.id].confidence * 100).toFixed(0)}%
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-[9px] text-slate-400 uppercase">Correlations</div>
+                        <div className="text-[10px] font-medium text-white">
+                          {enhancedPredictions[asteroid.id].correlation_context.top_similar_earthquakes}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-[9px] text-slate-300 leading-relaxed">
+                      {enhancedPredictions[asteroid.id].recommendation}
                     </div>
                   </div>
                 )}
@@ -667,17 +791,17 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                 {/* Expanded View */}
                 {expandedCard === asteroid.id && asteroid.raw_data && (
                   <div className="mt-3 pt-3 border-t border-slate-800 space-y-2">
-                    {asteroid.raw_data.estimated_diameter && (
+                    {asteroid.raw_data?.estimated_diameter && (
                       <div>
                         <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">
                           Diameter Range
                         </div>
                         <div className="text-xs text-slate-300">
-                          {asteroid.raw_data.estimated_diameter.meters.estimated_diameter_min.toFixed(
+                          {asteroid.raw_data.estimated_diameter.meters?.estimated_diameter_min.toFixed(
                             0
                           )}
                           -
-                          {asteroid.raw_data.estimated_diameter.meters.estimated_diameter_max.toFixed(
+                          {asteroid.raw_data.estimated_diameter.meters?.estimated_diameter_max.toFixed(
                             0
                           )}
                           m
@@ -702,7 +826,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                 )}
               </div>
             ))}
-          </div>
+                </div>
         )}
       </div>
 

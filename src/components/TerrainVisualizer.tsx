@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 interface TerrainVisualizerProps {
   width?: number;
@@ -48,6 +48,7 @@ export default function TerrainVisualizer({
 
     glRef.current = gl;
     generateTerrain();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width, height]);
 
   // Animation loop
@@ -62,9 +63,10 @@ export default function TerrainVisualizer({
 
     animate();
     return () => cancelAnimationFrame(animationId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terrain, impactPoint, asteroidData]);
 
-  const generateTerrain = () => {
+  const generateTerrain = useCallback(() => {
     const terrainGrid: TerrainPoint[][] = [];
     const gridWidth = Math.floor(width / 4);
     const gridHeight = Math.floor(height / 4);
@@ -74,7 +76,7 @@ export default function TerrainVisualizer({
       for (let x = 0; x < gridWidth; x++) {
         const elevation = generateRealisticElevation(x, y, gridWidth, gridHeight);
         const biome = determineBiome(elevation, x, y, gridWidth, gridHeight);
-        const populated = determinePopulation(biome, elevation, x, y);
+        const populated = determinePopulation(biome, elevation);
 
         row.push({
           x: x * 4,
@@ -88,7 +90,7 @@ export default function TerrainVisualizer({
     }
 
     setTerrain(terrainGrid);
-  };
+  }, [width, height]);
 
   const generateRealisticElevation = (x: number, y: number, gridWidth: number, gridHeight: number): number => {
     // Normalize coordinates
@@ -127,7 +129,7 @@ export default function TerrainVisualizer({
     return 'land';
   };
 
-  const determinePopulation = (biome: TerrainPoint['biome'], elevation: number, x: number, y: number): boolean => {
+  const determinePopulation = (biome: TerrainPoint['biome'], elevation: number): boolean => {
     if (biome === 'ocean' || biome === 'ice' || elevation > 0.5) return false;
 
     // Higher population density near coasts and rivers
@@ -155,7 +157,7 @@ export default function TerrainVisualizer({
     return `rgb(${Math.floor(base.r * elevationFactor)}, ${Math.floor(base.g * elevationFactor)}, ${Math.floor(base.b * elevationFactor)})`;
   };
 
-  const renderTerrain = () => {
+  const renderTerrain = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -252,7 +254,7 @@ export default function TerrainVisualizer({
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.font = '12px monospace';
     ctx.fillText('1 pixel ≈ 1 km', 10, height - 10);
-  };
+  }, [width, height, terrain, impactPoint, asteroidData, animationTime]);
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;

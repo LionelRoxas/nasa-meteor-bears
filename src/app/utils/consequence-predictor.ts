@@ -74,6 +74,7 @@ export interface ConsequencePrediction {
   threatLevel: "LOW" | "MODERATE" | "HIGH" | "CATASTROPHIC";
   trajectory: AsteroidTrajectory; // Precise trajectory data
   fullResponse: Record<string, unknown>; // Complete JSON response from LLM
+  quickAnalysis?: string; // User-friendly 1-sentence explanation
 }
 
 class ConsequencePredictor {
@@ -288,6 +289,83 @@ class ConsequencePredictor {
       .slice(0, 3); // Top 3 closest matches
   }
 
+  // Build correlation context for enhanced LLM analysis
+  private buildCorrelationContext(correlationData: any, energy: number, impactLocation: ImpactLocation): string {
+    const { asteroidFeatures, nasaData, correlatedEarthquakes } = correlationData;
+    const megatonsEquivalent = energy / (this.TNT_ENERGY_PER_KG * 1e9);
+
+    return `
+ASTEROID IMPACT SIMULATION ANALYSIS:
+
+Current Simulation Parameters:
+- Asteroid: ${correlationData.asteroidName} (${correlationData.asteroidId})
+- Calculated Energy: ${energy.toExponential(3)} Joules (${megatonsEquivalent.toExponential(2)} MT TNT equivalent)
+- Impact Location: ${impactLocation.name} (${impactLocation.type})
+- Population at Risk: ${impactLocation.population.toLocaleString()}
+
+CORRELATED HISTORICAL EARTHQUAKE DATA (Top ${correlatedEarthquakes.length} Most Similar):
+
+${correlatedEarthquakes.map((eq: any, index: number) => `
+${index + 1}. ${eq.location} - ${new Date(eq.time).toLocaleDateString()}
+   - Magnitude: ${eq.magnitude} ${eq.magnitude_type}
+   - Energy: ${eq.energy_joules ? (eq.energy_joules / 4.184e15).toFixed(2) + ' MT TNT equivalent' : 'N/A'}
+   - Depth: ${eq.depth_km} km
+   - Correlation Score: ${eq.correlationScore} (similarity to asteroid impact)
+   - Tsunami Warning: ${eq.tsunami_warning ? 'YES' : 'NO'}
+   - Significance: ${eq.significance}
+   - Damage Alert: ${eq.damage_alert}
+`).join('')}
+
+ANALYSIS REQUIREMENTS:
+Based on these historical correlations, provide enhanced consequence predictions that incorporate:
+1. Patterns from similar-energy seismic events
+2. Geographic impact factors based on correlated earthquake locations
+3. Population risk assessment using historical damage patterns
+4. Enhanced confidence metrics based on correlation strength
+
+Focus on realistic impact modeling that bridges asteroid physics with observed seismic event consequences.
+`;
+  }
+
+  // Generate user-friendly quick analysis based on enhanced predictions or physics
+  private generateQuickAnalysis(
+    asteroid: AsteroidData,
+    threatLevel: string,
+    megatonsEquivalent: number,
+    populationAtRisk: number,
+    enhancedRiskAssessment?: any
+  ): string {
+    const diameter = asteroid.diameter_meters ||
+      (asteroid.estimated_diameter?.kilometers.estimated_diameter_max || 0.1) * 1000;
+    const size = diameter > 1000 ? 'massive' : diameter > 500 ? 'large' : diameter > 100 ? 'medium' : 'small';
+
+    if (enhancedRiskAssessment) {
+      const correlations = enhancedRiskAssessment.correlation_context.top_similar_earthquakes;
+      const riskScore = enhancedRiskAssessment.risk_score;
+
+      if (threatLevel === 'CATASTROPHIC') {
+        return `This ${size} asteroid poses extreme danger with ${riskScore}% risk based on ${correlations} similar earthquake patterns - ${populationAtRisk.toLocaleString()} people at risk.`;
+      } else if (threatLevel === 'HIGH') {
+        return `Analysis of ${correlations} comparable earthquakes indicates significant regional impact risk affecting ${populationAtRisk.toLocaleString()} people.`;
+      } else if (threatLevel === 'MODERATE') {
+        return `Based on ${correlations} earthquake correlations, this ${size} asteroid could cause localized damage affecting ${populationAtRisk.toLocaleString()} people.`;
+      } else {
+        return `Historical data from ${correlations} similar events suggests minimal impact risk with limited casualties.`;
+      }
+    } else {
+      // Physics-based analysis
+      if (threatLevel === 'CATASTROPHIC') {
+        return `This ${size} asteroid (${megatonsEquivalent.toFixed(1)} MT) could cause global devastation affecting ${populationAtRisk.toLocaleString()} people in the immediate impact zone.`;
+      } else if (threatLevel === 'HIGH') {
+        return `This ${size} asteroid (${megatonsEquivalent.toFixed(1)} MT) poses significant regional threat to ${populationAtRisk.toLocaleString()} people.`;
+      } else if (threatLevel === 'MODERATE') {
+        return `This ${size} asteroid (${megatonsEquivalent.toFixed(1)} MT) could cause localized damage affecting ${populationAtRisk.toLocaleString()} people.`;
+      } else {
+        return `This ${size} asteroid (${megatonsEquivalent.toFixed(1)} MT) presents minimal threat with limited impact.`;
+      }
+    }
+  }
+
   async predictConsequences(
     asteroid: AsteroidData
   ): Promise<ConsequencePrediction> {
@@ -323,25 +401,83 @@ class ConsequencePredictor {
       megatonsEquivalent: megatonsEquivalent.toExponential(3),
     });
 
-    // Step 2: Load top 10 data for context (partner's analysis will enhance this)
-    const top10Earthquakes = await this.loadTop10EarthquakeData();
+    // Step 2: Get enhanced correlation data from partner's API (top 10 best matches)
+    let correlationData = null;
+    let enhancedRiskAssessment = null;
+
+    try {
+      console.log("Fetching correlation data for asteroid:", asteroid.id);
+      const correlationResponse = await fetch('/api/correlate-asteroid-earthquakes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asteroidId: asteroid.id }),
+      });
+
+      if (correlationResponse.ok) {
+        correlationData = await correlationResponse.json();
+        console.log("Retrieved correlation data:", {
+          earthquakes: correlationData.correlatedEarthquakes.length,
+          asteroidName: correlationData.asteroidName
+        });
+
+        // Generate enhanced LLM analysis using the correlation context
+        const enhancedResponse = await fetch('/api/llm-enhanced-prediction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            asteroidId: asteroid.id,
+            context: this.buildCorrelationContext(correlationData, energy, actualImpactLocation),
+            asteroidData: correlationData.nasaData,
+            correlatedEarthquakes: correlationData.correlatedEarthquakes
+          }),
+        });
+
+        if (enhancedResponse.ok) {
+          enhancedRiskAssessment = await enhancedResponse.json();
+          console.log("Enhanced risk assessment generated:", enhancedRiskAssessment.threat_category);
+        }
+      }
+    } catch (error) {
+      console.warn("Could not fetch enhanced correlation data, using fallback analysis:", error);
+    }
+
+    // Step 3: Use enhanced data or fallback to original method
+    const top10Earthquakes = correlationData?.correlatedEarthquakes || await this.loadTop10EarthquakeData();
     const top10Asteroids = await this.loadTop10AsteroidData();
     const similarEarthquakes = this.findSimilarEarthquakes(
       energy,
       top10Earthquakes
     );
 
-    // Step 3: Determine threat level based on exact TNT equivalent
+    // Step 3: Determine threat level - use enhanced assessment if available, otherwise fallback to physics
     let threatLevel: "LOW" | "MODERATE" | "HIGH" | "CATASTROPHIC";
-    if (megatonsEquivalent < 0.01) threatLevel = "LOW"; // Kiloton range
-    else if (megatonsEquivalent < 1) threatLevel = "MODERATE"; // Sub-megaton
-    else if (megatonsEquivalent < 100) threatLevel = "HIGH"; // Multi-megaton
-    else threatLevel = "CATASTROPHIC"; // 100+ megatons
 
-    console.log("Threat assessment:", {
-      megatonsEquivalent: megatonsEquivalent.toExponential(3),
-      threatLevel,
-    });
+    if (enhancedRiskAssessment) {
+      // Use enhanced threat assessment from correlation analysis
+      const enhancedThreat = enhancedRiskAssessment.threat_category;
+      threatLevel = enhancedThreat === 'CRITICAL' ? 'CATASTROPHIC' :
+                   enhancedThreat === 'HIGH' ? 'HIGH' :
+                   enhancedThreat === 'MEDIUM' ? 'MODERATE' : 'LOW';
+
+      console.log("Enhanced threat assessment:", {
+        original: enhancedThreat,
+        mapped: threatLevel,
+        riskScore: enhancedRiskAssessment.risk_score,
+        confidence: enhancedRiskAssessment.confidence,
+        correlations: enhancedRiskAssessment.correlation_context.top_similar_earthquakes
+      });
+    } else {
+      // Fallback to physics-based assessment
+      if (megatonsEquivalent < 0.01) threatLevel = "LOW"; // Kiloton range
+      else if (megatonsEquivalent < 1) threatLevel = "MODERATE"; // Sub-megaton
+      else if (megatonsEquivalent < 100) threatLevel = "HIGH"; // Multi-megaton
+      else threatLevel = "CATASTROPHIC"; // 100+ megatons
+
+      console.log("Physics-based threat assessment:", {
+        megatonsEquivalent: megatonsEquivalent.toExponential(3),
+        threatLevel,
+      });
+    }
 
     // Step 4: Create detailed scientific prompt for LLM with exact physics and context data
     const asteroidDiameter =
@@ -465,7 +601,7 @@ MANDATORY JSON STRUCTURE:
   },
   "historicalComparison": "Energy comparable to: ${
     similarEarthquakes
-      .map((eq) => `${eq.location} (M${eq.magnitude.toFixed(1)})`)
+      .map((eq: any) => `${eq.location} (M${eq.magnitude.toFixed(1)})`)
       .join(", ") || "No comparable historical seismic events"
   }"
 }
@@ -508,7 +644,7 @@ IMPACT LOCATION:
 TOP 10 CONTEXT DATA:
 - Similar Energy Earthquakes: ${top10Earthquakes
       .slice(0, 3)
-      .map((eq) => `${eq.location} (M${eq.magnitude.toFixed(1)})`)
+      .map((eq: any) => `${eq.location} (M${eq.magnitude.toFixed(1)})`)
       .join(", ")}
 - Comparable Asteroids: ${top10Asteroids
       .slice(0, 3)
@@ -662,6 +798,14 @@ Return ONLY the JSON object for 2D terrain visualization.`;
 
       console.log("Final consequence prediction calculated with exact physics");
 
+      const quickAnalysis = this.generateQuickAnalysis(
+        asteroid,
+        threatLevel,
+        megatonsEquivalent,
+        Math.round(populationAtRisk),
+        enhancedRiskAssessment
+      );
+
       return {
         impactPhysics: {
           energy,
@@ -676,12 +820,21 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         threatLevel,
         trajectory,
         fullResponse,
+        quickAnalysis,
       };
     } catch (error) {
       console.error("Error calling Groq API:", error);
 
       // Physics-only fallback using exact formulas
       console.log("Using exact physics-only fallback analysis");
+
+      const fallbackPopulation = Math.round(affectedRadius * affectedRadius * 200);
+      const fallbackQuickAnalysis = this.generateQuickAnalysis(
+        asteroid,
+        threatLevel,
+        megatonsEquivalent,
+        fallbackPopulation
+      );
 
       return {
         impactPhysics: {
@@ -692,7 +845,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
           tsunamiHeight,
           megatonsEquivalent,
         },
-        populationAtRisk: Math.round(affectedRadius * affectedRadius * 200),
+        populationAtRisk: fallbackPopulation,
         economicDamage: Math.round(craterDiameter * 10),
         threatLevel,
         trajectory,
@@ -730,6 +883,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
             ],
           },
         },
+        quickAnalysis: fallbackQuickAnalysis,
       };
     }
   }
