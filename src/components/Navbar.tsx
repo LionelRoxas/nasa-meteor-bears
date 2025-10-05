@@ -106,7 +106,7 @@ export default function Navbar({
   };
 
   return (
-    <header className="absolute top-0 left-0 right-0 z-20 border-b border-white/10">
+    <header className="absolute top-0 left-0 right-0 z-20">
       <nav className="bg-black/40 backdrop-blur-md">
         <div className="px-6 h-14 flex items-center justify-between">
           {/* Left Section */}

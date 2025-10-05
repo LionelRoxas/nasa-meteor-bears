@@ -43,7 +43,7 @@ export default function ImpactSimulator({
   // Simulation state
   const asteroidVelocityRef = useRef<THREE.Vector3>(new THREE.Vector3());
   const explosionParticlesRef = useRef<THREE.Mesh[]>([]);
-  const asteroidTrailRef = useRef<THREE.Points[]>([]);
+  const asteroidTrailRef = useRef<THREE.Mesh[]>([]); // Changed from Points[] to Mesh[]
   const impactOccurredRef = useRef(false);
 
   // Initialize Three.js scene
@@ -85,8 +85,8 @@ export default function ImpactSimulator({
     controls.enableZoom = true;
     controls.minDistance = 10;
     controls.maxDistance = 100;
-    controls.enablePan = true; // Allow panning
-    controls.enableRotate = true; // Ensure rotation is enabled
+    controls.enablePan = true;
+    controls.enableRotate = true;
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.DOLLY,
@@ -97,7 +97,7 @@ export default function ImpactSimulator({
 
     // Create Enhanced Earth
     const enhancedEarth = new EnhancedEarth(scene);
-    enhancedEarth.setScale(EARTH_RADIUS_UNITS); // Earth radius = 6 units
+    enhancedEarth.setScale(EARTH_RADIUS_UNITS);
     enhancedEarthRef.current = enhancedEarth;
 
     // Lighting
@@ -133,7 +133,7 @@ export default function ImpactSimulator({
     // Create asteroid
     const createAsteroid = () => {
       // Scale asteroid size appropriately
-      const radius = asteroidParams.diameter / 1000; // Convert to scene scale
+      const radius = asteroidParams.diameter / 1000;
       const asteroidGeometry = new THREE.IcosahedronGeometry(radius, 1);
 
       // Make it irregular
@@ -155,7 +155,7 @@ export default function ImpactSimulator({
 
       // Hazardous asteroid coloring
       const asteroidMaterial = new THREE.MeshPhongMaterial({
-        color: 0x8b0000, // Dark red like hazardous asteroids
+        color: 0x8b0000, // Dark red
         shininess: 30,
         emissive: 0x442211,
         emissiveIntensity: 0.1,
@@ -163,7 +163,7 @@ export default function ImpactSimulator({
 
       const asteroid = new THREE.Mesh(asteroidGeometry, asteroidMaterial);
 
-      // Position asteroid at starting distance (distance is from Earth's surface)
+      // Position asteroid at starting distance
       const scaledDistance =
         asteroidParams.distance / KM_PER_UNIT + EARTH_RADIUS_UNITS;
       const angle = (asteroidParams.angle * Math.PI) / 180;
@@ -178,7 +178,7 @@ export default function ImpactSimulator({
       const direction = new THREE.Vector3(0, 0, 0)
         .sub(asteroid.position)
         .normalize();
-      const speed = asteroidParams.velocity * 0.001; // Scale velocity
+      const speed = asteroidParams.velocity * 0.001;
       asteroidVelocityRef.current = direction.multiplyScalar(speed);
 
       asteroid.castShadow = true;
@@ -238,7 +238,7 @@ export default function ImpactSimulator({
       });
       explosionParticlesRef.current = [];
 
-      // Create explosion particles (like the game's orange explosion)
+      // Create explosion particles
       for (let i = 0; i < 20; i++) {
         const particleGeometry = new THREE.SphereGeometry(
           0.1 + Math.random() * 0.2,
@@ -246,7 +246,7 @@ export default function ImpactSimulator({
           4
         );
         const particleMaterial = new THREE.MeshBasicMaterial({
-          color: 0xffa500, // Orange like in game
+          color: 0xffa500, // Orange
           transparent: true,
           opacity: 1,
         });
@@ -279,7 +279,7 @@ export default function ImpactSimulator({
     const scene = sceneRef.current;
     const camera = cameraRef.current;
     const renderer = rendererRef.current;
-    const earthRadius = EARTH_RADIUS_UNITS; // Use constant
+    const earthRadius = EARTH_RADIUS_UNITS;
 
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
@@ -302,20 +302,19 @@ export default function ImpactSimulator({
         const earthPosition = new THREE.Vector3(0, 0, 0);
         const distanceToEarthCenter = asteroid.position.length();
 
-        // Convert scene units to kilometers correctly
-        // Subtract Earth's radius to get distance from surface, not center
+        // Convert to kilometers from surface
         const distanceFromSurface = Math.max(
           0,
           (distanceToEarthCenter - EARTH_RADIUS_UNITS) * KM_PER_UNIT
         );
         onDistanceUpdate?.(distanceFromSurface);
 
-        // Apply gravity (increases as asteroid gets closer)
+        // Apply gravity
         const gravityDirection = earthPosition
           .clone()
           .sub(asteroid.position)
           .normalize();
-        const gravity = 0.001 * (50 / Math.max(distanceToEarthCenter, 1)); // Stronger gravity when closer
+        const gravity = 0.001 * (50 / Math.max(distanceToEarthCenter, 1));
         asteroidVelocityRef.current.add(
           gravityDirection.multiplyScalar(gravity)
         );
@@ -333,17 +332,15 @@ export default function ImpactSimulator({
           ring.lookAt(camera.position);
         }
 
-        // Create trail effect
+        // Create trail effect (FIXED: using Mesh instead of Points)
         if (Math.random() > 0.3) {
-          // Not every frame to optimize
           const trailGeometry = new THREE.SphereGeometry(0.05, 4, 4);
-          const trailMaterial = new THREE.PointsMaterial({
+          const trailMaterial = new THREE.MeshBasicMaterial({
             color: distanceToEarthCenter < 20 ? 0xff0000 : 0xff4500,
             transparent: true,
             opacity: 0.7,
-            size: 0.1,
           });
-          const trail = new THREE.Points(trailGeometry, trailMaterial);
+          const trail = new THREE.Mesh(trailGeometry, trailMaterial);
           trail.position.copy(asteroid.position);
           scene.add(trail);
           asteroidTrailRef.current.push(trail);
@@ -355,12 +352,10 @@ export default function ImpactSimulator({
           }
         }
 
-        // Dynamic camera movement during approach (ONLY during simulation)
+        // Dynamic camera movement during approach
         if (distanceToEarthCenter > 25) {
-          // Wide view
           camera.position.lerp(new THREE.Vector3(10, 15, 35), 0.02);
         } else if (distanceToEarthCenter > 15) {
-          // Follow asteroid
           const offset = asteroid.position
             .clone()
             .normalize()
@@ -368,7 +363,6 @@ export default function ImpactSimulator({
           offset.y += 10;
           camera.position.lerp(asteroid.position.clone().add(offset), 0.05);
         } else {
-          // Close-up impact view
           camera.position.lerp(new THREE.Vector3(8, 10, 20), 0.05);
         }
         camera.lookAt(0, 0, 0);
@@ -383,7 +377,7 @@ export default function ImpactSimulator({
           impactOccurredRef.current = true;
         }
       } else if (!isSimulating) {
-        // When NOT simulating, update orbit controls normally
+        // Update orbit controls when not simulating
         controlsRef.current?.update();
       }
 
@@ -391,7 +385,7 @@ export default function ImpactSimulator({
       explosionParticlesRef.current.forEach((particle, index) => {
         if (particle.userData.velocity) {
           particle.position.add(particle.userData.velocity);
-          particle.userData.velocity.multiplyScalar(0.95); // Slow down
+          particle.userData.velocity.multiplyScalar(0.95);
 
           // Fade out
           const material = particle.material as THREE.MeshBasicMaterial;
@@ -404,9 +398,9 @@ export default function ImpactSimulator({
         }
       });
 
-      // Fade trail
+      // Fade trail (FIXED: using MeshBasicMaterial instead of PointsMaterial)
       asteroidTrailRef.current.forEach((trail, index) => {
-        const material = trail.material as THREE.PointsMaterial;
+        const material = trail.material as THREE.MeshBasicMaterial;
         material.opacity -= 0.01;
         if (material.opacity <= 0) {
           scene.remove(trail);
@@ -461,7 +455,7 @@ export default function ImpactSimulator({
       explosionParticlesRef.current = [];
       impactOccurredRef.current = false;
 
-      // Reset asteroid (distance from surface + Earth radius)
+      // Reset asteroid
       asteroidRef.current.visible = true;
       const scaledDistance =
         asteroidParams.distance / KM_PER_UNIT + EARTH_RADIUS_UNITS;
