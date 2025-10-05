@@ -1,7 +1,7 @@
 // app/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar";
 import Navbar from "@/components/Navbar";
@@ -93,6 +93,12 @@ export default function Home() {
     consequence: boolean;
     usgs: boolean;
   }>({ asteroid: true, consequence: false, usgs: false });
+  const [resetTimer, setResetTimer] = useState<number | null>(null);
+
+  // Timeout refs for cleanup
+  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const aftermathTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Handle countdown and automatic start
   useEffect(() => {
@@ -171,6 +177,24 @@ export default function Home() {
     }
   }, [countdown, simulationPhase, isSimulating]);
 
+  // Reset timer countdown
+  useEffect(() => {
+    if (resetTimer !== null && resetTimer > 0) {
+      console.log(`⏱️ Reset timer: ${resetTimer} seconds remaining`);
+      const timer = setTimeout(() => {
+        console.log(
+          `⏱️ Timer tick - decrementing from ${resetTimer} to ${resetTimer - 1}`
+        );
+        setResetTimer(resetTimer - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (resetTimer === 0) {
+      console.log(
+        "⏱️ Reset timer reached 0 (but auto-reset timeout should have already fired)"
+      );
+    }
+  }, [resetTimer]);
+
   useEffect(() => {
     if (!isSimulating) {
       setCurrentDistance(undefined);
@@ -227,6 +251,22 @@ export default function Home() {
   };
 
   const handleReset = () => {
+    console.log("🔄 handleReset called");
+
+    // Clear any pending timeouts
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+    }
+    if (aftermathTimeoutRef.current) {
+      clearTimeout(aftermathTimeoutRef.current);
+      aftermathTimeoutRef.current = null;
+    }
+    if (autoResetTimeoutRef.current) {
+      clearTimeout(autoResetTimeoutRef.current);
+      autoResetTimeoutRef.current = null;
+    }
+
     setIsSimulating(false);
     setCountdown(null);
     setHasImpacted(false);
@@ -235,26 +275,68 @@ export default function Home() {
     setEnhancedPrediction(null);
     setIsSidebarCollapsed(false);
     setShowNASAPanel(wasNASAPanelOpen);
+    setResetTimer(null);
+    console.log("✅ Reset complete");
   };
 
   const handleImpact = () => {
-    console.log("💥 Impact detected! Starting 3D→2D transition...");
+    const impactTime = Date.now();
+    console.log("💥 Impact detected! Starting 3D→2D transition...", {
+      time: impactTime,
+    });
     setHasImpacted(true);
     setSimulationPhase("transition");
     console.log("🔥 Transition phase active - flash should show!");
 
-    setTimeout(() => {
-      console.log("🎯 Transitioning to 2D impact visualization...");
+    // Clear any existing timeouts
+    if (transitionTimeoutRef.current) {
+      console.log("⚠️ Clearing existing transition timeout");
+      clearTimeout(transitionTimeoutRef.current);
+    }
+    if (aftermathTimeoutRef.current) {
+      console.log("⚠️ Clearing existing aftermath timeout");
+      clearTimeout(aftermathTimeoutRef.current);
+    }
+    if (autoResetTimeoutRef.current) {
+      console.log("⚠️ Clearing existing auto-reset timeout");
+      clearTimeout(autoResetTimeoutRef.current);
+    }
+
+    // Transition to 2D after 400ms
+    transitionTimeoutRef.current = setTimeout(() => {
+      const transitionTime = Date.now();
+      console.log("🎯 Transitioning to 2D impact visualization...", {
+        time: transitionTime,
+        elapsed: transitionTime - impactTime,
+      });
       setIsSimulating(false);
       setSimulationPhase("2d-impact");
+      setResetTimer(26);
+      console.log("⏱️ Reset timer started at 30 seconds");
     }, 400);
 
-    setTimeout(() => {
-      console.log("📊 Moving to aftermath analysis...");
+    // Move to aftermath after 3400ms
+    aftermathTimeoutRef.current = setTimeout(() => {
+      const aftermathTime = Date.now();
+      console.log("📊 Moving to aftermath analysis...", {
+        time: aftermathTime,
+        elapsed: aftermathTime - impactTime,
+      });
       setSimulationPhase("2d-aftermath");
       setIsSidebarCollapsed(false);
       setShowNASAPanel(false);
     }, 3400);
+
+    // Auto-reset after 30400ms (30 seconds after the 400ms transition)
+    autoResetTimeoutRef.current = setTimeout(() => {
+      const resetTime = Date.now();
+      console.log("🔄 Auto-reset timeout fired!", {
+        time: resetTime,
+        elapsed: resetTime - impactTime,
+        expectedElapsed: 30400,
+      });
+      handleReset();
+    }, 30400);
   };
 
   const loadNASAAsteroid = (asteroid: NASAAsteroidData) => {
@@ -533,6 +615,19 @@ export default function Home() {
           </div>
         )}
 
+        {/* Reset Timer */}
+        {resetTimer !== null && resetTimer > 0 && (
+          <div
+            className="absolute top-20 right-4 pointer-events-none"
+            style={{ zIndex: 30 }}
+          >
+            <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-white/20">
+              <div className="text-xs text-white/60 mb-1">Auto-reset in</div>
+              <div className="text-2xl font-bold text-white">{resetTimer}s</div>
+            </div>
+          </div>
+        )}
+
         {/* Impact Flash Effect */}
         {hasImpacted && (
           <div
@@ -606,9 +701,7 @@ export default function Home() {
               <div
                 className="absolute bottom-0 left-0 flex items-end h-auto pointer-events-auto"
                 style={{ zIndex: 45 }}
-              >
-                
-              </div>
+              ></div>
             )}
           </div>
         </div>
