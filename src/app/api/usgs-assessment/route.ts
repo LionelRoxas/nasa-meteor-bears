@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 
 const EARTHQUAKE_API = "https://earthquake.usgs.gov/fdsnws/event/1/query";

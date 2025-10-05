@@ -43,7 +43,7 @@ export default function ImpactSimulator({
   // Simulation state
   const asteroidVelocityRef = useRef<THREE.Vector3>(new THREE.Vector3());
   const explosionParticlesRef = useRef<THREE.Mesh[]>([]);
-  const asteroidTrailRef = useRef<THREE.Mesh[]>([]); // Changed from Points[] to Mesh[]
+  const asteroidTrailRef = useRef<THREE.Mesh[]>([]);
   const impactOccurredRef = useRef(false);
 
   // Initialize Three.js scene
@@ -53,17 +53,17 @@ export default function ImpactSimulator({
 
     // Create scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000011); // Dark space background like game
+    scene.background = new THREE.Color(0x000011); // Dark space background
     sceneRef.current = scene;
 
-    // Setup camera
+    // Setup camera - SLIGHTLY FURTHER OUT
     const camera = new THREE.PerspectiveCamera(
       75,
       container.clientWidth / container.clientHeight,
       0.1,
-      1000
+      10000 // Increased far plane for distant stars
     );
-    camera.position.set(0, 10, 30);
+    camera.position.set(0, 8, 22); // Zoomed out a bit more
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
@@ -83,8 +83,8 @@ export default function ImpactSimulator({
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.enableZoom = true;
-    controls.minDistance = 10;
-    controls.maxDistance = 100;
+    controls.minDistance = 8; // Slightly closer minimum
+    controls.maxDistance = 500; // Much further maximum for seeing stars
     controls.enablePan = true;
     controls.enableRotate = true;
     controls.mouseButtons = {
@@ -109,24 +109,74 @@ export default function ImpactSimulator({
     sunLight.castShadow = true;
     scene.add(sunLight);
 
-    // Add stars background
+    // Add realistic starfield - FAR AWAY
     const starsGeometry = new THREE.BufferGeometry();
-    const starsMaterial = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 0.1,
-      transparent: true,
-    });
     const starsVertices = [];
-    for (let i = 0; i < 1000; i++) {
-      const x = (Math.random() - 0.5) * 200;
-      const y = (Math.random() - 0.5) * 200;
-      const z = (Math.random() - 0.5) * 200;
+    const starColors = [];
+    const starSizes = [];
+
+    // Create lots of stars at extreme distances
+    for (let i = 0; i < 3000; i++) {
+      // Use spherical coordinates for even distribution
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(1 - 2 * Math.random());
+
+      // Much farther distances for realistic space
+      let radius;
+      if (i < 5000) {
+        // Far background stars
+        radius = 4000 + Math.random() * 1000; // 4000-5000 units away
+      } else if (i < 8000) {
+        // Mid-distance stars
+        radius = 3000 + Math.random() * 1000; // 3000-4000 units away
+      } else {
+        // "Closer" bright stars (still very far)
+        radius = 2000 + Math.random() * 1000; // 2000-3000 units away
+      }
+
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.sin(phi) * Math.sin(theta);
+      const z = radius * Math.cos(phi);
+
       starsVertices.push(x, y, z);
+
+      // Vary star colors slightly
+      const colorVariation = Math.random();
+      if (colorVariation < 0.7) {
+        starColors.push(1, 1, 1); // White
+      } else if (colorVariation < 0.85) {
+        starColors.push(0.8, 0.9, 1); // Blue-white
+      } else {
+        starColors.push(1, 0.98, 0.8); // Yellow-white
+      }
+
+      // Vary sizes for brightness variation
+      starSizes.push(Math.random() * 1.5 + 0.5);
     }
+
     starsGeometry.setAttribute(
       "position",
       new THREE.Float32BufferAttribute(starsVertices, 3)
     );
+    starsGeometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(starColors, 3)
+    );
+    starsGeometry.setAttribute(
+      "size",
+      new THREE.Float32BufferAttribute(starSizes, 1)
+    );
+
+    const starsMaterial = new THREE.PointsMaterial({
+      size: 1.5,
+      sizeAttenuation: false, // Keep stars same visual size regardless of distance
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.6,
+      depthWrite: false, // Prevent depth issues
+      blending: THREE.AdditiveBlending, // Makes stars glow nicely
+    });
+
     const stars = new THREE.Points(starsGeometry, starsMaterial);
     scene.add(stars);
 
@@ -332,7 +382,7 @@ export default function ImpactSimulator({
           ring.lookAt(camera.position);
         }
 
-        // Create trail effect (FIXED: using Mesh instead of Points)
+        // Create trail effect
         if (Math.random() > 0.3) {
           const trailGeometry = new THREE.SphereGeometry(0.05, 4, 4);
           const trailMaterial = new THREE.MeshBasicMaterial({
@@ -352,18 +402,18 @@ export default function ImpactSimulator({
           }
         }
 
-        // Dynamic camera movement during approach
+        // Dynamic camera movement during approach - adjusted for closer view
         if (distanceToEarthCenter > 25) {
-          camera.position.lerp(new THREE.Vector3(10, 15, 35), 0.02);
+          camera.position.lerp(new THREE.Vector3(5, 10, 25), 0.02);
         } else if (distanceToEarthCenter > 15) {
           const offset = asteroid.position
             .clone()
             .normalize()
-            .multiplyScalar(-20);
-          offset.y += 10;
+            .multiplyScalar(-15);
+          offset.y += 8;
           camera.position.lerp(asteroid.position.clone().add(offset), 0.05);
         } else {
-          camera.position.lerp(new THREE.Vector3(8, 10, 20), 0.05);
+          camera.position.lerp(new THREE.Vector3(4, 6, 15), 0.05);
         }
         camera.lookAt(0, 0, 0);
 
@@ -398,7 +448,7 @@ export default function ImpactSimulator({
         }
       });
 
-      // Fade trail (FIXED: using MeshBasicMaterial instead of PointsMaterial)
+      // Fade trail
       asteroidTrailRef.current.forEach((trail, index) => {
         const material = trail.material as THREE.MeshBasicMaterial;
         material.opacity -= 0.01;
@@ -473,9 +523,9 @@ export default function ImpactSimulator({
       const speed = asteroidParams.velocity * 0.001;
       asteroidVelocityRef.current = direction.multiplyScalar(speed);
 
-      // Reset camera
+      // Reset camera - matching closer initial position
       if (cameraRef.current) {
-        cameraRef.current.position.set(0, 10, 30);
+        cameraRef.current.position.set(0, 8, 22);
         cameraRef.current.lookAt(0, 0, 0);
         controlsRef.current?.update();
       }
