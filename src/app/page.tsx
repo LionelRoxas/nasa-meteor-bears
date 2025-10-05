@@ -6,6 +6,23 @@ import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar";
 import Navbar from "@/components/Navbar";
 import ImpactSimulator from "@/components/ImpactSimulator";
+import {
+  useEnhancedPredictions,
+  type EnhancedPrediction,
+} from "@/hooks/useEnhancedPredictions";
+import TerrainVisualizer from "@/components/TerrainVisualizer";
+import ConsequenceAnalysis from "@/components/ConsequenceAnalysis";
+import USGSDataPanel from "@/components/USGSDataPanel";
+
+// Simulation phase type for 3D→2D transition
+type SimulationPhase =
+  | "idle"
+  | "countdown"
+  | "fetching-prediction"
+  | "3d-simulation"
+  | "transition"
+  | "2d-impact"
+  | "2d-aftermath";
 
 // Define the NASA asteroid data type locally if not exported from hook
 interface NASAAsteroidData {
@@ -27,6 +44,10 @@ interface NASAAsteroidData {
 }
 
 export default function Home() {
+  // Simulation phase state for 3D→2D transition
+  const [simulationPhase, setSimulationPhase] =
+    useState<SimulationPhase>("idle");
+
   const [isSimulating, setIsSimulating] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -57,6 +78,12 @@ export default function Home() {
     undefined
   );
 
+  // Enhanced predictions for 2D visualization
+  const { getEnhancedPrediction } = useEnhancedPredictions();
+  const [enhancedPrediction, setEnhancedPrediction] =
+    useState<EnhancedPrediction | null>(null);
+  const [impactLocation, setImpactLocation] = useState({ lat: 0, lng: 0 });
+
   // Handle countdown and automatic start
   useEffect(() => {
     if (countdown !== null && countdown > 0) {
@@ -67,8 +94,48 @@ export default function Home() {
     } else if (countdown === 0) {
       setIsSimulating(true);
       setCountdown(null);
+      setSimulationPhase("3d-simulation");
     }
   }, [countdown]);
+
+  // Fetch enhanced prediction during countdown (BEFORE simulation starts)
+  useEffect(() => {
+    const fetchPrediction = async () => {
+      if (countdown === 4 && selectedNASAAsteroid) {
+        console.log("🚀 Fetching enhanced prediction during countdown...");
+        setSimulationPhase("fetching-prediction");
+
+        try {
+          const prediction = await getEnhancedPrediction(
+            selectedNASAAsteroid.id
+          );
+
+          if (prediction) {
+            setEnhancedPrediction(prediction);
+            console.log("✅ Enhanced prediction fetched:", prediction);
+
+            // Use real impact location from prediction if available
+            if (prediction.impact_location) {
+              setImpactLocation({
+                lat: prediction.impact_location.latitude,
+                lng: prediction.impact_location.longitude,
+              });
+              console.log(
+                "📍 Impact location set:",
+                prediction.impact_location
+              );
+            }
+          }
+        } catch (error) {
+          console.error("❌ Failed to fetch enhanced prediction:", error);
+        }
+
+        setSimulationPhase("countdown");
+      }
+    };
+
+    fetchPrediction();
+  }, [countdown, selectedNASAAsteroid, getEnhancedPrediction]);
 
   useEffect(() => {
     if (!isSimulating) {
@@ -111,12 +178,14 @@ export default function Home() {
     if (!isSimulating && !countdown) {
       setCountdown(5);
       setHasImpacted(false);
+      setSimulationPhase("countdown");
       setWasNASAPanelOpen(showNASAPanel);
       setIsSidebarCollapsed(true);
       setShowNASAPanel(false);
     } else {
       setIsSimulating(false);
       setCountdown(null);
+      setSimulationPhase("idle");
       setIsSidebarCollapsed(false);
       setShowNASAPanel(wasNASAPanelOpen);
     }
@@ -126,19 +195,34 @@ export default function Home() {
     setIsSimulating(false);
     setCountdown(null);
     setHasImpacted(false);
+    setSimulationPhase("idle");
+    setEnhancedPrediction(null);
     setIsSidebarCollapsed(false);
     setShowNASAPanel(wasNASAPanelOpen);
   };
 
   const handleImpact = () => {
+    console.log("💥 Impact detected! Starting 3D→2D transition...");
     setHasImpacted(true);
+
+    // Start transition with orange flash
+    setSimulationPhase("transition");
+    console.log("🔥 Transition phase active - flash should show!");
+
+    // Transition to 2D after flash completes (400ms)
     setTimeout(() => {
+      console.log("🎯 Transitioning to 2D impact visualization...");
+      setSimulationPhase("2d-impact");
       setIsSimulating(false);
-      setTimeout(() => {
-        setIsSidebarCollapsed(false);
-        setShowNASAPanel(wasNASAPanelOpen);
-      }, 1000);
-    }, 2000);
+    }, 500);
+
+    // Move to aftermath after 3s
+    setTimeout(() => {
+      console.log("📊 Moving to aftermath analysis...");
+      setSimulationPhase("2d-aftermath");
+      setIsSidebarCollapsed(false);
+      setShowNASAPanel(false);
+    }, 3000);
   };
 
   const loadNASAAsteroid = (asteroid: NASAAsteroidData) => {
@@ -184,22 +268,63 @@ export default function Home() {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black">
-      {/* 3D Scene Container - Explicit z-index 0 */}
-      <div
-        className="absolute inset-0"
-        style={{
-          zIndex: 0,
-          isolation: "isolate", // Create new stacking context
-        }}
-      >
-        <ImpactSimulator
-          asteroidParams={asteroidParams}
-          isSimulating={isSimulating}
-          hasImpacted={hasImpacted}
-          onImpact={handleImpact}
-          onDistanceUpdate={setCurrentDistance}
-        />
-      </div>
+      {/* OPTIMIZED: Conditional rendering - only mount active layer */}
+      {simulationPhase === "2d-impact" || simulationPhase === "2d-aftermath" ? (
+        /* 2D Layer - Only mounted during 2D phases */
+        <div
+          className="absolute inset-0 animate-in fade-in duration-700"
+          style={{ zIndex: 0 }}
+        >
+          <div className="w-full h-full flex flex-col items-center justify-center p-8 gap-6">
+            <div className="w-full max-w-6xl">
+              <TerrainVisualizer
+                width={1200}
+                height={600}
+                asteroidData={{
+                  impactLat: impactLocation.lat,
+                  impactLng: impactLocation.lng,
+                  craterRadius: asteroidParams.craterSize,
+                  energy: asteroidParams.energy,
+                }}
+                simulationPhase={
+                  simulationPhase === "2d-impact" ? "impact" : "aftermath"
+                }
+                showImpact={true}
+                enhancedPrediction={enhancedPrediction || undefined}
+              />
+            </div>
+
+            {enhancedPrediction && (
+              <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <ConsequenceAnalysis
+                  enhancedPrediction={enhancedPrediction}
+                  asteroidData={{
+                    diameter_meters: asteroidParams.diameter,
+                    kinetic_energy_mt: asteroidParams.energy,
+                    is_hazardous: asteroidParams.energy > 10,
+                  }}
+                  impactLocation={impactLocation}
+                />
+                <USGSDataPanel prediction={enhancedPrediction} />
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* 3D Layer - Only mounted during non-2D phases */
+        <div
+          className="absolute inset-0"
+          style={{ zIndex: 0, isolation: "isolate" }}
+        >
+          <ImpactSimulator
+            asteroidParams={asteroidParams}
+            isSimulating={isSimulating}
+            hasImpacted={hasImpacted}
+            onImpact={handleImpact}
+            onDistanceUpdate={setCurrentDistance}
+          />
+        </div>
+      )}
 
       {/* UI Layer Container - Higher z-index */}
       <div
@@ -228,6 +353,16 @@ export default function Home() {
             style={{ zIndex: 25 }}
           >
             <div className="w-full h-full bg-gradient-radial from-yellow-500/50 via-orange-500/30 to-transparent"></div>
+          </div>
+        )}
+
+        {/* Transition Flash Effect - Full screen orange flash during 3D→2D transition */}
+        {simulationPhase === "transition" && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ zIndex: 40 }}
+          >
+            <div className="w-full h-full bg-orange-500 animate-[flash_0.4s_ease-out]"></div>
           </div>
         )}
 
