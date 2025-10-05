@@ -7,7 +7,6 @@ import {
   type EnhancedPrediction,
 } from "@/hooks/useEnhancedPredictions";
 import ConsequenceAnalysis from "@/components/ConsequenceAnalysis";
-import ImpactInsights from "@/components/ImpactInsights";
 import USGSDataPanel from "@/components/USGSDataPanel";
 
 // Mock asteroid data for testing
@@ -55,7 +54,6 @@ export default function TerrainTestPage() {
   const [enhancedData, setEnhancedData] = useState<EnhancedPrediction | null>(
     null
   );
-  const [realTerrainData, setRealTerrainData] = useState<any>(null);
 
   const handleStartSimulation = async () => {
     // First, fetch enhanced prediction if not already loaded
@@ -310,7 +308,6 @@ export default function TerrainTestPage() {
                 onImpactLocationChange={(lat, lng) =>
                   setImpactLocation({ lat, lng })
                 }
-                onTerrainDataChange={setRealTerrainData}
                 simulationPhase={simulationPhase}
                 showImpact={showImpact}
                 enhancedPrediction={enhancedData || undefined}
@@ -318,9 +315,7 @@ export default function TerrainTestPage() {
             </div>
 
             {/* USGS Data Panel - Shows real seismic and tsunami data */}
-            {enhancedData && (
-              <USGSDataPanel prediction={enhancedData} />
-            )}
+            {enhancedData && <USGSDataPanel prediction={enhancedData} />}
 
             {/* Consequence Analysis */}
             {enhancedData && (
@@ -334,24 +329,6 @@ export default function TerrainTestPage() {
                 impactLocation={impactLocation}
               />
             )}
-          </div>
-        </div>
-
-        {/* Temporary Notice */}
-        <div className="mt-8 p-4 bg-yellow-900/30 border border-yellow-700 rounded-lg">
-          <div className="flex items-start gap-2">
-            <div className="text-yellow-400 mt-0.5">⚠️</div>
-            <div>
-              <div className="text-yellow-400 font-medium">
-                Temporary Development Space
-              </div>
-              <div className="text-yellow-300 text-sm mt-1">
-                This is a standalone testing environment for the 2D terrain
-                visualizer. Once we&apos;re happy with the implementation,
-                we&apos;ll integrate it into the main application. This file can
-                be safely deleted later.
-              </div>
-            </div>
           </div>
         </div>
       </div>

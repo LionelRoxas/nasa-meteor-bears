@@ -65,12 +65,11 @@ export default function TerrainVisualizer({
     y: height / 2,
   });
   const [animationTime, setAnimationTime] = useState(0);
-  const [currentImpactCoords, setCurrentImpactCoords] = useState({
+  const [, setCurrentImpactCoords] = useState({
     lat: 0,
     lng: 0,
   });
-  const [realTerrainInfo, setRealTerrainInfo] =
-    useState<RealTerrainData | null>(null);
+  const [, setRealTerrainInfo] = useState<RealTerrainData | null>(null);
 
   // Enhanced visualization state
   const [cameraAngle, setCameraAngle] = useState(0); // 0 = 2D top-down, π/2 = 3D side view
@@ -439,7 +438,11 @@ export default function TerrainVisualizer({
     }
 
     console.log("Generated realistic terrain grid based on impact location");
-    console.log(`Terrain grid size: ${terrainGrid.length} rows x ${terrainGrid[0]?.length || 0} cols`);
+    console.log(
+      `Terrain grid size: ${terrainGrid.length} rows x ${
+        terrainGrid[0]?.length || 0
+      } cols`
+    );
     console.log(`Sample terrain points:`, terrainGrid[0]?.slice(0, 3));
     setTerrain(terrainGrid);
   }, [
@@ -492,13 +495,23 @@ export default function TerrainVisualizer({
       }
 
       // Create a unique key for current terrain config
-      const impactLat = enhancedPrediction?.impact_location?.latitude ?? asteroidData?.impactLat ?? 0;
-      const impactLng = enhancedPrediction?.impact_location?.longitude ?? asteroidData?.impactLng ?? 0;
-      const terrainKey = `${impactLat.toFixed(2)}_${impactLng.toFixed(2)}_${width}_${height}`;
+      const impactLat =
+        enhancedPrediction?.impact_location?.latitude ??
+        asteroidData?.impactLat ??
+        0;
+      const impactLng =
+        enhancedPrediction?.impact_location?.longitude ??
+        asteroidData?.impactLng ??
+        0;
+      const terrainKey = `${impactLat.toFixed(2)}_${impactLng.toFixed(
+        2
+      )}_${width}_${height}`;
 
       // Skip regeneration if terrain hasn't changed
       if (lastTerrainKeyRef.current === terrainKey) {
-        console.log("Terrain already generated for this configuration, skipping");
+        console.log(
+          "Terrain already generated for this configuration, skipping"
+        );
         return;
       }
 
@@ -810,7 +823,7 @@ export default function TerrainVisualizer({
       terrainLength: terrain.length,
       hasEnhancedPrediction: !!enhancedPrediction,
       hasAsteroidData: !!asteroidData,
-      impactLocation: enhancedPrediction?.impact_location || asteroidData
+      impactLocation: enhancedPrediction?.impact_location || asteroidData,
     });
 
     if (terrain.length === 0) {
@@ -820,9 +833,6 @@ export default function TerrainVisualizer({
       );
       return;
     }
-
-    console.log("✅ Successfully rendering terrain with", terrain.length, "rows");
-
     // Clear canvas with dynamic background based on simulation phase
     const bgColor =
       simulationPhase === "impact"
@@ -1320,35 +1330,8 @@ export default function TerrainVisualizer({
       } else {
         ctx.fillText("View: 2D (Top-down)", 10, 45);
       }
-
-      // Enhanced prediction info
-      if (enhancedPrediction) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        ctx.fillRect(width - 200, 10, 190, 100);
-
-        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.font = "12px monospace";
-        ctx.fillText("AI Analysis:", width - 190, 30);
-        ctx.fillText(
-          `Risk: ${enhancedPrediction.risk_score}%`,
-          width - 190,
-          50
-        );
-        ctx.fillText(
-          `Threat: ${enhancedPrediction.threat_category}`,
-          width - 190,
-          70
-        );
-        ctx.fillText(
-          `Correlations: ${
-            enhancedPrediction.correlation_context?.top_similar_earthquakes ?? 0
-          }`,
-          width - 190,
-          90
-        );
-      }
     },
-    [width, height, simulationPhase, cameraAngle, enhancedPrediction]
+    [width, height, simulationPhase, cameraAngle]
   );
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1434,44 +1417,6 @@ export default function TerrainVisualizer({
             </div>
           </div>
         </div>
-
-        {/* Impact info overlay - Enhanced with real terrain data */}
-        {(asteroidData || enhancedPrediction) && (
-          <div className="absolute bottom-2 left-2 bg-black/80 p-3 rounded text-xs max-w-xs">
-            <div className="text-red-400 font-bold mb-1">Impact Zone</div>
-            <div className="text-gray-300">
-              Crater:{" "}
-              {(realCraterDiameter || asteroidData?.craterRadius || 0).toFixed(
-                1
-              )}{" "}
-              km
-            </div>
-            <div className="text-gray-300">
-              Energy: {(realMegatons || asteroidData?.energy || 0).toFixed(2)}{" "}
-              MT TNT
-            </div>
-            <div className="text-gray-300">
-              Location: {currentImpactCoords.lat.toFixed(2)}°,{" "}
-              {currentImpactCoords.lng.toFixed(2)}°
-            </div>
-            {realTerrainInfo && (
-              <>
-                <div className="text-gray-300">
-                  Terrain: {realTerrainInfo.landCoverType}
-                </div>
-                <div className="text-gray-300">
-                  Elevation: {realTerrainInfo.elevation}m
-                </div>
-                {realTerrainInfo.nearestCity && (
-                  <div className="text-gray-300">
-                    Near: {realTerrainInfo.nearestCity.name},{" "}
-                    {realTerrainInfo.countryName}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

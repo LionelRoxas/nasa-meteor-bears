@@ -13,117 +13,106 @@ export default function USGSDataPanel({ prediction }: USGSDataPanelProps) {
   if (!prediction?.usgsData) {
     console.log("No USGS data - panel not rendering");
     return (
-      <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4 text-yellow-200 text-sm">
-        <p>⚠️ USGS data not yet loaded. Click "Get Enhanced Prediction" to fetch real seismic data.</p>
+      <div className="bg-white border border-gray-300 rounded-lg p-6 text-gray-600 text-sm">
+        <p>
+          USGS data not yet loaded. Click &quot;Get Enhanced Prediction&quot; to
+          fetch real seismic data.
+        </p>
       </div>
     );
   }
 
   const { usgsData } = prediction;
 
-  // Determine overall risk color
-  const getRiskColor = (riskLevel: string) => {
-    switch (riskLevel) {
-      case "VERY_HIGH":
-      case "EXTREME":
-      case "CRITICAL":
-        return "border-red-600 bg-red-900/20";
-      case "HIGH":
-        return "border-orange-600 bg-orange-900/20";
-      case "MODERATE":
-        return "border-yellow-600 bg-yellow-900/20";
-      case "LOW":
-        return "border-green-600 bg-green-900/20";
-      default:
-        return "border-gray-600 bg-gray-900/20";
-    }
-  };
-
-  const getRiskBadgeColor = (riskLevel: string) => {
-    switch (riskLevel) {
-      case "VERY_HIGH":
-      case "EXTREME":
-        return "bg-red-600 text-white";
-      case "HIGH":
-        return "bg-orange-600 text-white";
-      case "MODERATE":
-        return "bg-yellow-600 text-black";
-      case "LOW":
-        return "bg-green-600 text-white";
-      default:
-        return "bg-gray-600 text-white";
-    }
+  // Clean risk level formatting
+  const formatRiskLevel = (riskLevel: string) => {
+    return riskLevel.replace("_", " ").toLowerCase();
   };
 
   return (
-    <div className="usgs-data-panel bg-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <h3 className="text-lg font-bold text-white">USGS Environmental Assessment</h3>
-        <span className="text-xs text-gray-400">Real-time geological data</span>
+    <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="mb-6">
+        <h3 className="text-xl font-semibold text-black mb-1">
+          USGS Environmental Assessment
+        </h3>
+        <p className="text-sm text-gray-500">
+          Real-time geological data analysis
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Seismic Zone Card */}
-        <div className={`border-l-4 ${getRiskColor(usgsData.seismicZone.riskLevel)} p-4 rounded`}>
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-semibold text-white flex items-center gap-2">
-              <span className="text-xl">🌏</span>
-              Seismic Zone
-            </h4>
-            <span className={`px-2 py-1 rounded text-xs font-bold ${getRiskBadgeColor(usgsData.seismicZone.riskLevel)}`}>
-              {usgsData.seismicZone.riskLevel.replace("_", " ")}
+        <div className="border border-gray-200 rounded-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-medium text-black">Seismic Zone</h4>
+            <span className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">
+              {formatRiskLevel(usgsData.seismicZone.riskLevel)}
             </span>
           </div>
 
-          <div className="space-y-2 text-sm">
-            <div>
-              <span className="text-gray-400">Region:</span>
-              <span className="text-white ml-2 font-semibold">{usgsData.seismicZone.zone}</span>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Region</span>
+              <span className="font-medium text-black">
+                {usgsData.seismicZone.zone}
+              </span>
             </div>
-            <div>
-              <span className="text-gray-400">Annual Events:</span>
-              <span className="text-white ml-2">{usgsData.seismicZone.averageAnnualEvents} earthquakes/year</span>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Annual Events</span>
+              <span className="text-black">
+                {usgsData.seismicZone.averageAnnualEvents} earthquakes/year
+              </span>
             </div>
-            <div>
-              <span className="text-gray-400">Max Historic:</span>
-              <span className="text-white ml-2">M{usgsData.seismicZone.maxHistoricalMagnitude.toFixed(1)}</span>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Max Historic</span>
+              <span className="text-black">
+                M{usgsData.seismicZone.maxHistoricalMagnitude.toFixed(1)}
+              </span>
             </div>
-            <p className="text-gray-300 text-xs mt-2 italic">
-              {usgsData.seismicZone.description}
-            </p>
+            <div className="pt-3 border-t border-gray-100">
+              <p className="text-gray-600 text-xs leading-relaxed">
+                {usgsData.seismicZone.description}
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Tsunami Risk Card */}
-        <div className={`border-l-4 ${getRiskColor(usgsData.tsunamiRisk.riskLevel)} p-4 rounded`}>
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-semibold text-white flex items-center gap-2">
-              <span className="text-xl">🌊</span>
-              Tsunami Risk
-            </h4>
-            <span className={`px-2 py-1 rounded text-xs font-bold ${getRiskBadgeColor(usgsData.tsunamiRisk.riskLevel)}`}>
-              {usgsData.tsunamiRisk.riskLevel}
+        <div className="border border-gray-200 rounded-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-medium text-black">Tsunami Risk</h4>
+            <span className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">
+              {formatRiskLevel(usgsData.tsunamiRisk.riskLevel)}
             </span>
           </div>
 
-          <div className="space-y-2 text-sm">
-            <div>
-              <span className="text-gray-400">Location:</span>
-              <span className="text-white ml-2">{usgsData.tsunamiRisk.isCoastal ? "Coastal Zone" : "Inland"}</span>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Location</span>
+              <span className="text-black">
+                {usgsData.tsunamiRisk.isCoastal ? "Coastal Zone" : "Inland"}
+              </span>
             </div>
-            <div>
-              <span className="text-gray-400">Elevation:</span>
-              <span className="text-white ml-2">{usgsData.tsunamiRisk.elevationAboveSeaLevel.toFixed(0)}m above sea level</span>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Elevation</span>
+              <span className="text-black">
+                {usgsData.tsunamiRisk.elevationAboveSeaLevel.toFixed(0)}m above
+                sea level
+              </span>
             </div>
             {usgsData.tsunamiRisk.isCoastal && (
               <>
-                <div>
-                  <span className="text-gray-400">Coast Distance:</span>
-                  <span className="text-white ml-2">{usgsData.tsunamiRisk.nearestCoastDistance.toFixed(1)}km</span>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Coast Distance</span>
+                  <span className="text-black">
+                    {usgsData.tsunamiRisk.nearestCoastDistance.toFixed(1)}km
+                  </span>
                 </div>
-                <div>
-                  <span className="text-gray-400">Historic Tsunamis:</span>
-                  <span className="text-white ml-2">{usgsData.tsunamiRisk.tsunamiHistory} events</span>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Historic Tsunamis</span>
+                  <span className="text-black">
+                    {usgsData.tsunamiRisk.tsunamiHistory} events
+                  </span>
                 </div>
               </>
             )}
@@ -131,68 +120,65 @@ export default function USGSDataPanel({ prediction }: USGSDataPanelProps) {
         </div>
 
         {/* Impact Predictions Card */}
-        <div className="border-l-4 border-purple-600 bg-purple-900/20 p-4 rounded">
-          <div className="mb-2">
-            <h4 className="font-semibold text-white flex items-center gap-2">
-              <span className="text-xl">📊</span>
-              Expected Impact Effects
-            </h4>
-          </div>
+        <div className="border border-gray-200 rounded-lg p-5">
+          <h4 className="font-medium text-black mb-4">
+            Expected Impact Effects
+          </h4>
 
-          <div className="space-y-2 text-sm">
-            <div>
-              <span className="text-gray-400">Earthquake:</span>
-              <span className="text-white ml-2 font-semibold">
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Earthquake</span>
+              <span className="font-medium text-black">
                 Magnitude {usgsData.expectedEarthquakeMagnitude.toFixed(1)}
               </span>
             </div>
             {usgsData.expectedTsunamiHeight > 0 && (
-              <div>
-                <span className="text-gray-400">Tsunami Height:</span>
-                <span className="text-cyan-400 ml-2 font-semibold">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Tsunami Height</span>
+                <span className="font-medium text-black">
                   {usgsData.expectedTsunamiHeight.toFixed(1)}m waves
                 </span>
               </div>
             )}
-            <div className="pt-2 border-t border-gray-700">
-              <span className="text-gray-400 text-xs">Based on USGS historical data and impact energy calculations</span>
+            <div className="pt-3 border-t border-gray-100">
+              <p className="text-gray-500 text-xs">
+                Based on USGS historical data and impact energy calculations
+              </p>
             </div>
           </div>
         </div>
 
         {/* Secondary Hazards Card */}
-        <div className="border-l-4 border-red-600 bg-red-900/20 p-4 rounded">
-          <div className="mb-2">
-            <h4 className="font-semibold text-white flex items-center gap-2">
-              <span className="text-xl">⚠️</span>
-              Secondary Hazards
-            </h4>
-          </div>
+        <div className="border border-gray-200 rounded-lg p-5">
+          <h4 className="font-medium text-black mb-4">Secondary Hazards</h4>
 
           {usgsData.secondaryHazards.length > 0 ? (
-            <ul className="space-y-1 text-sm">
+            <ul className="space-y-2 text-sm">
               {usgsData.secondaryHazards.map((hazard, index) => (
                 <li key={index} className="flex items-start gap-2">
-                  <span className="text-red-400 mt-0.5">•</span>
-                  <span className="text-gray-300">{hazard}</span>
+                  <span className="text-gray-400 mt-1">•</span>
+                  <span className="text-gray-700">{hazard}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-gray-400 text-sm">No major secondary hazards identified</p>
+            <p className="text-gray-500 text-sm">
+              No major secondary hazards identified
+            </p>
           )}
         </div>
       </div>
 
-      <div className="mt-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded text-xs text-blue-200">
-        <div className="flex items-start gap-2">
-          <span className="text-blue-400">ℹ️</span>
+      <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+        <div className="flex items-start gap-3">
+          <div className="w-2 h-2 bg-gray-400 rounded-full mt-2"></div>
           <div>
-            <p className="font-semibold mb-1">Data Sources</p>
-            <p>
-              Seismic data from USGS Earthquake Hazards Program. Analysis based on 10 years of historical
-              earthquake records within 500km radius. Tsunami risk assessment uses USGS coastal elevation
-              data and historical tsunami-generating earthquakes.
+            <p className="font-medium text-black text-sm mb-1">Data Sources</p>
+            <p className="text-gray-600 text-xs leading-relaxed">
+              Seismic data from USGS Earthquake Hazards Program. Analysis based
+              on 10 years of historical earthquake records within 500km radius.
+              Tsunami risk assessment uses USGS coastal elevation data and
+              historical tsunami-generating earthquakes.
             </p>
           </div>
         </div>

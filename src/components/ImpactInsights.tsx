@@ -58,21 +58,37 @@ export default function ImpactInsights({
     }
 
     console.log("ImpactInsights: Received data:", consequenceData);
-    console.log("ImpactInsights: Available keys:", Object.keys(consequenceData));
+    console.log(
+      "ImpactInsights: Available keys:",
+      Object.keys(consequenceData)
+    );
 
     // Handle both naming conventions (snake_case from API, camelCase from props)
-    const impactPhysics = consequenceData.impact_physics || consequenceData.impactPhysics;
+    const impactPhysics =
+      consequenceData.impact_physics || consequenceData.impactPhysics;
     const trajectory = consequenceData.trajectory;
     const populationAtRisk = consequenceData.populationAtRisk;
-    const threatLevel = (consequenceData.threatLevel || consequenceData.threat_category) as string;
+    const threatLevel = (consequenceData.threatLevel ||
+      consequenceData.threat_category) as string;
 
-    console.log("ImpactInsights: impact_physics =", consequenceData.impact_physics);
-    console.log("ImpactInsights: impactPhysics =", consequenceData.impactPhysics);
+    console.log(
+      "ImpactInsights: impact_physics =",
+      consequenceData.impact_physics
+    );
+    console.log(
+      "ImpactInsights: impactPhysics =",
+      consequenceData.impactPhysics
+    );
     console.log("ImpactInsights: Final impactPhysics =", impactPhysics);
 
     if (!impactPhysics) {
-      console.log("ImpactInsights: No impactPhysics data found - returning empty");
-      console.log("ImpactInsights: Full data structure:", JSON.stringify(consequenceData, null, 2));
+      console.log(
+        "ImpactInsights: No impactPhysics data found - returning empty"
+      );
+      console.log(
+        "ImpactInsights: Full data structure:",
+        JSON.stringify(consequenceData, null, 2)
+      );
       return [];
     }
 
@@ -92,13 +108,20 @@ export default function ImpactInsights({
     }> = [];
 
     // 1. Seismic Impact (always show)
-    const magnitudeComparison = getMagnitudeComparison(impactPhysics.earthquakeMagnitude);
+    const magnitudeComparison = getMagnitudeComparison(
+      impactPhysics.earthquakeMagnitude
+    );
     insightsList.push({
       icon: "📊",
       title: "Seismic Impact",
       value: `Magnitude ${impactPhysics.earthquakeMagnitude.toFixed(1)}`,
       description: `Equivalent to ${magnitudeComparison.event}. ${magnitudeComparison.damage}`,
-      severity: impactPhysics.earthquakeMagnitude > 7 ? "critical" : impactPhysics.earthquakeMagnitude > 5 ? "danger" : "warning",
+      severity:
+        impactPhysics.earthquakeMagnitude > 7
+          ? "critical"
+          : impactPhysics.earthquakeMagnitude > 5
+          ? "danger"
+          : "warning",
     });
 
     // 2. Tsunami Risk (only for water impacts)
@@ -116,30 +139,48 @@ export default function ImpactInsights({
         icon: "🌊",
         title: "Ocean Impact",
         value: "Tsunami possible",
-        description: "Water impact may generate tsunamis affecting coastal regions",
+        description:
+          "Water impact may generate tsunamis affecting coastal regions",
         severity: "danger",
       });
     }
 
     // 3. Blast Radius / Affected Area
-    const blastComparison = getBlastComparison(impactPhysics.megatonsEquivalent);
+    const blastComparison = getBlastComparison(
+      impactPhysics.megatonsEquivalent
+    );
     insightsList.push({
       icon: "💥",
       title: "Blast Power",
       value: `${impactPhysics.megatonsEquivalent.toFixed(1)} MT`,
-      description: `${blastComparison}. Affects ${impactPhysics.affectedRadius.toFixed(0)}km radius`,
-      severity: impactPhysics.megatonsEquivalent > 100 ? "critical" : impactPhysics.megatonsEquivalent > 10 ? "danger" : "warning",
+      description: `${blastComparison}. Affects ${impactPhysics.affectedRadius.toFixed(
+        0
+      )}km radius`,
+      severity:
+        impactPhysics.megatonsEquivalent > 100
+          ? "critical"
+          : impactPhysics.megatonsEquivalent > 10
+          ? "danger"
+          : "warning",
     });
 
     // 4. Population Risk (if significant)
     if (populationAtRisk && populationAtRisk > 0) {
-      const popRisk = getPopulationRisk(populationAtRisk, realTerrainData?.nearestCity?.name);
+      const popRisk = getPopulationRisk(
+        populationAtRisk,
+        realTerrainData?.nearestCity?.name
+      );
       insightsList.push({
         icon: "👥",
         title: "Population at Risk",
         value: formatNumber(populationAtRisk),
         description: popRisk,
-        severity: populationAtRisk > 1000000 ? "critical" : populationAtRisk > 100000 ? "danger" : "warning",
+        severity:
+          populationAtRisk > 1000000
+            ? "critical"
+            : populationAtRisk > 100000
+            ? "danger"
+            : "warning",
       });
     }
 
@@ -166,28 +207,36 @@ export default function ImpactInsights({
       <div className="impact-insights bg-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
         <div className="text-center text-gray-400 py-8">
           <p className="text-lg mb-2">⚠️ No impact data available</p>
-          <p className="text-sm">Click "Get Enhanced Prediction" to analyze impact consequences</p>
+          <p className="text-sm">
+            Click "Get Enhanced Prediction" to analyze impact consequences
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="impact-insights bg-gray-900/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-white">Impact Analysis</h3>
-        <ThreatBadge level={consequenceData.threatLevel || consequenceData.threat_category || "MODERATE"} />
+    <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-xl font-semibold text-black">Impact Analysis</h3>
+        <ThreatBadge
+          level={
+            consequenceData.threatLevel ||
+            consequenceData.threat_category ||
+            "MODERATE"
+          }
+        />
       </div>
 
       {/* Quick summary */}
       {consequenceData.quickAnalysis && (
-        <div className="mb-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded text-sm text-blue-200">
+        <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
           {consequenceData.quickAnalysis}
         </div>
       )}
 
       {/* Key insights grid */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         {insights.map((insight, index) => (
           <InsightCard key={index} {...insight} />
         ))}
@@ -210,30 +259,16 @@ function InsightCard({
   description: string;
   severity: "info" | "warning" | "danger" | "critical";
 }) {
-  const colors = {
-    info: "border-blue-600 bg-blue-900/20",
-    warning: "border-yellow-600 bg-yellow-900/20",
-    danger: "border-orange-600 bg-orange-900/20",
-    critical: "border-red-600 bg-red-900/20",
-  };
-
-  const textColors = {
-    info: "text-blue-300",
-    warning: "text-yellow-300",
-    danger: "text-orange-300",
-    critical: "text-red-300",
-  };
-
   return (
-    <div className={`border-l-4 ${colors[severity]} p-3 rounded`}>
+    <div className="border border-gray-200 rounded-lg p-4">
       <div className="flex items-start gap-3">
-        <span className="text-2xl">{icon}</span>
+        <span className="text-xl">{icon}</span>
         <div className="flex-1">
-          <div className="flex items-center justify-between mb-1">
-            <h4 className="font-semibold text-white text-sm">{title}</h4>
-            <span className={`font-bold text-sm ${textColors[severity]}`}>{value}</span>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-medium text-black text-sm">{title}</h4>
+            <span className="font-semibold text-black text-sm">{value}</span>
           </div>
-          <p className="text-xs text-gray-400">{description}</p>
+          <p className="text-xs text-gray-600 leading-relaxed">{description}</p>
         </div>
       </div>
     </div>
@@ -242,22 +277,18 @@ function InsightCard({
 
 // Threat level badge
 function ThreatBadge({ level }: { level: string }) {
-  const colors = {
-    LOW: "bg-green-900/50 text-green-300 border-green-600",
-    MODERATE: "bg-yellow-900/50 text-yellow-300 border-yellow-600",
-    HIGH: "bg-orange-900/50 text-orange-300 border-orange-600",
-    CATASTROPHIC: "bg-red-900/50 text-red-300 border-red-600",
-  };
-
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${colors[level as keyof typeof colors] || colors.MODERATE}`}>
-      {level}
+    <span className="px-3 py-1 bg-gray-100 text-gray-700 text-sm font-medium rounded-full">
+      {level.toLowerCase()}
     </span>
   );
 }
 
 // Helper functions for comparisons
-function getMagnitudeComparison(magnitude: number): { event: string; damage: string } {
+function getMagnitudeComparison(magnitude: number): {
+  event: string;
+  damage: string;
+} {
   if (magnitude < 4) {
     return {
       event: "a minor earthquake",
@@ -307,7 +338,8 @@ function getTsunamiRisk(height: number): { description: string } {
     };
   } else if (height < 30) {
     return {
-      description: "Major tsunami. Multiple countries threatened. Similar to 2004 Indian Ocean tsunami",
+      description:
+        "Major tsunami. Multiple countries threatened. Similar to 2004 Indian Ocean tsunami",
     };
   } else {
     return {
