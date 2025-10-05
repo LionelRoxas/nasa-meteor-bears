@@ -2,6 +2,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import {
+  useEnhancedPredictions,
+  type EnhancedPrediction,
+} from "@/hooks/useEnhancedPredictions";
 
 interface NASAAsteroidData {
   id: string;
@@ -18,7 +22,14 @@ interface NASAAsteroidData {
   miss_distance_lunar?: number;
   orbiting_body?: string;
   orbit_class?: string;
-  raw_data?: any;
+  raw_data?: {
+    estimated_diameter?: {
+      meters?: {
+        estimated_diameter_min: number;
+        estimated_diameter_max: number;
+      };
+    };
+  };
 }
 
 interface Props {
@@ -33,6 +44,16 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Enhanced predictions
+  const { getEnhancedPrediction, loading: predictionLoading } =
+    useEnhancedPredictions();
+  const [enhancedPredictions, setEnhancedPredictions] = useState<
+    Record<string, EnhancedPrediction>
+  >({});
+  const [showPredictionFor, setShowPredictionFor] = useState<string | null>(
+    null
+  );
+
   // Feed mode state
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -44,7 +65,6 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
 
   // Lookup mode state
   const [asteroidId, setAsteroidId] = useState("");
-  const [lookupResult, setLookupResult] = useState<any>(null);
 
   // Expanded card state
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
@@ -161,7 +181,6 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
       const data = await response.json();
 
       if (data.success) {
-        setLookupResult(data.asteroid);
         // Convert to standard format for display
         const formattedAsteroid: NASAAsteroidData = {
           id: data.asteroid.id,
@@ -238,6 +257,64 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
     if (num >= 1000000) return `${(num / 1000000).toFixed(decimals)}M`;
     if (num >= 1000) return `${(num / 1000).toFixed(decimals)}k`;
     return num.toFixed(decimals);
+  };
+
+  // Generate enhanced prediction for an asteroid
+  const generateEnhancedPrediction = async (asteroid: NASAAsteroidData) => {
+    try {
+      setShowPredictionFor(asteroid.id);
+      const prediction = await getEnhancedPrediction(asteroid.id);
+
+      if (prediction) {
+        setEnhancedPredictions((prev) => ({
+          ...prev,
+          [asteroid.id]: prediction,
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to generate enhanced prediction:", err);
+    }
+  };
+
+  // Get threat color based on enhanced prediction
+  const getEnhancedThreatColor = (prediction: EnhancedPrediction) => {
+    switch (prediction.threat_category) {
+      case "CRITICAL":
+        return "border-red-500 bg-red-950/30";
+      case "HIGH":
+        return "border-orange-500 bg-orange-950/30";
+      case "MEDIUM":
+        return "border-yellow-500 bg-yellow-950/30";
+      default:
+        return "border-green-500 bg-green-950/30";
+    }
+  };
+
+  // Generate user-friendly 1-sentence analysis
+  const generateQuickAnalysis = (
+    asteroid: NASAAsteroidData,
+    prediction: EnhancedPrediction
+  ): string => {
+    const { threat_category, risk_score, correlation_context } = prediction;
+    const { top_similar_earthquakes } = correlation_context;
+    const size =
+      asteroid.diameter > 1000
+        ? "massive"
+        : asteroid.diameter > 500
+        ? "large"
+        : asteroid.diameter > 100
+        ? "medium"
+        : "small";
+
+    if (threat_category === "CRITICAL") {
+      return `This ${size} asteroid poses extreme danger with ${risk_score}% risk based on ${top_similar_earthquakes} similar earthquake patterns - immediate monitoring required.`;
+    } else if (threat_category === "HIGH") {
+      return `Analysis of ${top_similar_earthquakes} comparable earthquakes indicates ${risk_score}% risk of significant regional impact from this ${size} asteroid.`;
+    } else if (threat_category === "MEDIUM") {
+      return `Based on ${top_similar_earthquakes} earthquake correlations, this ${size} asteroid shows ${risk_score}% risk of localized damage if impact occurs.`;
+    } else {
+      return `Historical data from ${top_similar_earthquakes} similar events suggests this ${size} asteroid has minimal impact risk (${risk_score}%) with limited consequences.`;
+    }
   };
 
   return (
@@ -651,6 +728,103 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                   </div>
                 )}
 
+                {/* Enhanced AI Analysis Button */}
+                <div className="pt-2 border-t border-slate-800 mt-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      generateEnhancedPrediction(asteroid);
+                    }}
+                    disabled={
+                      predictionLoading && showPredictionFor === asteroid.id
+                    }
+                    className="w-full px-3 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-slate-600 disabled:to-slate-700 text-white rounded text-[10px] font-medium uppercase tracking-wider transition-all"
+                  >
+                    {predictionLoading && showPredictionFor === asteroid.id
+                      ? "Analyzing..."
+                      : enhancedPredictions[asteroid.id]
+                      ? "Update AI Analysis"
+                      : "AI Impact Analysis"}
+                  </button>
+                </div>
+
+                {/* Enhanced Prediction Display */}
+                {enhancedPredictions[asteroid.id] && (
+                  <div
+                    className={`mt-2 p-2 rounded border ${getEnhancedThreatColor(
+                      enhancedPredictions[asteroid.id]
+                    )}`}
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+                        AI Risk Assessment
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold ${
+                          enhancedPredictions[asteroid.id].threat_category ===
+                          "CRITICAL"
+                            ? "text-red-400"
+                            : enhancedPredictions[asteroid.id]
+                                .threat_category === "HIGH"
+                            ? "text-orange-400"
+                            : enhancedPredictions[asteroid.id]
+                                .threat_category === "MEDIUM"
+                            ? "text-yellow-400"
+                            : "text-green-400"
+                        }`}
+                      >
+                        {enhancedPredictions[asteroid.id].threat_category}
+                      </span>
+                    </div>
+
+                    {/* Quick Analysis Summary */}
+                    <div className="mb-2 p-1.5 bg-slate-800/50 rounded">
+                      <div className="text-[9px] text-slate-300 italic leading-relaxed">
+                        {generateQuickAnalysis(
+                          asteroid,
+                          enhancedPredictions[asteroid.id]
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase">
+                          Risk
+                        </div>
+                        <div className="text-[10px] font-medium text-white">
+                          {enhancedPredictions[asteroid.id].risk_score}%
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase">
+                          Confidence
+                        </div>
+                        <div className="text-[10px] font-medium text-white">
+                          {(
+                            enhancedPredictions[asteroid.id].confidence * 100
+                          ).toFixed(0)}
+                          %
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase">
+                          Correlations
+                        </div>
+                        <div className="text-[10px] font-medium text-white">
+                          {
+                            enhancedPredictions[asteroid.id].correlation_context
+                              .top_similar_earthquakes
+                          }
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-[9px] text-slate-300 leading-relaxed">
+                      {enhancedPredictions[asteroid.id].recommendation}
+                    </div>
+                  </div>
+                )}
+
                 {/* Expanded View */}
                 {expandedCard === asteroid.id && asteroid.raw_data && (
                   <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
@@ -664,7 +838,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                             0
                           )}
                           -
-                          {asteroid.raw_data.estimated_diameter.meters.estimated_diameter_max.toFixed(
+                          {asteroid.raw_data.estimated_diameter.meters?.estimated_diameter_max.toFixed(
                             0
                           )}
                           m

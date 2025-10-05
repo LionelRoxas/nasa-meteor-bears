@@ -18,7 +18,7 @@ export interface NASAAsteroidData {
   miss_distance_lunar?: number;
   orbiting_body?: string;
   orbit_class?: string;
-  raw_data?: any;
+  raw_data?: Record<string, unknown>;
 }
 
 export interface CometData {
@@ -37,8 +37,8 @@ export interface CometData {
   perihelion_au: number;
   aphelion_au: number;
   moid_au: number;
-  orbital_elements: any;
-  raw_data: any;
+  orbital_elements: Record<string, unknown>;
+  raw_data: Record<string, unknown>;
 }
 
 export interface SimulationDataset {
