@@ -80,6 +80,69 @@ export default function TerrainVisualizer({
   const [, setRealEnergy] = useState<number>(0); // Joules
   const [realMegatons, setRealMegatons] = useState<number>(0); // MT TNT
 
+  // Get realistic characteristics for a geographic region
+  const getRegionCharacteristics = useCallback((lat: number, lng: number) => {
+    const absLat = Math.abs(lat);
+
+    // Ocean regions
+    if (isOceanRegion(lat, lng)) {
+      return {
+        baseElevation: -0.8,
+        terrainType: "ocean",
+        roughness: 0.1,
+        waterPresence: 1.0,
+        populationDensity: 0.0,
+        climaticZone: "marine",
+      };
+    }
+
+    // Major mountain ranges
+    if (isMountainRegion(lat, lng)) {
+      return {
+        baseElevation: 0.6,
+        terrainType: "mountain",
+        roughness: 0.8,
+        waterPresence: 0.2,
+        populationDensity: 0.1,
+        climaticZone: "alpine",
+      };
+    }
+
+    // Desert regions
+    if (isDesertRegion(lat, lng)) {
+      return {
+        baseElevation: 0.1,
+        terrainType: "desert",
+        roughness: 0.3,
+        waterPresence: 0.05,
+        populationDensity: 0.05,
+        climaticZone: "arid",
+      };
+    }
+
+    // Polar regions
+    if (absLat > 65) {
+      return {
+        baseElevation: 0.0,
+        terrainType: "ice",
+        roughness: 0.2,
+        waterPresence: 0.1,
+        populationDensity: 0.01,
+        climaticZone: "polar",
+      };
+    }
+
+    // Temperate plains (default)
+    return {
+      baseElevation: 0.2,
+      terrainType: "land",
+      roughness: 0.4,
+      waterPresence: 0.3,
+      populationDensity: getPopulationDensityForRegion(lat, lng),
+      climaticZone: "temperate",
+    };
+  }, []);
+
   // Get real-world terrain data for a specific location
   const getRealisticTerrain = useCallback(async (lat: number, lng: number) => {
     try {
@@ -107,9 +170,8 @@ export default function TerrainVisualizer({
         populationDensity: regionData.populationDensity,
         climaticZone: regionData.climaticZone,
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    []
+    [getRegionCharacteristics]
   );
 
   // Helper functions to identify real geographic regions
@@ -225,69 +287,6 @@ export default function TerrainVisualizer({
   ): boolean => {
     if (biome === "ocean" || biome === "ice" || elevation > 0.6) return false;
     return Math.random() < terrainData.populationDensity;
-  };
-
-  // Get realistic characteristics for a geographic region
-  const getRegionCharacteristics = (lat: number, lng: number) => {
-    const absLat = Math.abs(lat);
-
-    // Ocean regions
-    if (isOceanRegion(lat, lng)) {
-      return {
-        baseElevation: -0.8,
-        terrainType: "ocean",
-        roughness: 0.1,
-        waterPresence: 1.0,
-        populationDensity: 0.0,
-        climaticZone: "marine",
-      };
-    }
-
-    // Major mountain ranges
-    if (isMountainRegion(lat, lng)) {
-      return {
-        baseElevation: 0.6,
-        terrainType: "mountain",
-        roughness: 0.8,
-        waterPresence: 0.2,
-        populationDensity: 0.1,
-        climaticZone: "alpine",
-      };
-    }
-
-    // Desert regions
-    if (isDesertRegion(lat, lng)) {
-      return {
-        baseElevation: 0.1,
-        terrainType: "desert",
-        roughness: 0.3,
-        waterPresence: 0.05,
-        populationDensity: 0.05,
-        climaticZone: "arid",
-      };
-    }
-
-    // Polar regions
-    if (absLat > 65) {
-      return {
-        baseElevation: 0.0,
-        terrainType: "ice",
-        roughness: 0.2,
-        waterPresence: 0.1,
-        populationDensity: 0.01,
-        climaticZone: "polar",
-      };
-    }
-
-    // Temperate plains (default)
-    return {
-      baseElevation: 0.2,
-      terrainType: "land",
-      roughness: 0.4,
-      waterPresence: 0.3,
-      populationDensity: getPopulationDensityForRegion(lat, lng),
-      climaticZone: "temperate",
-    };
   };
 
   const generateTerrain = useCallback(async () => {
