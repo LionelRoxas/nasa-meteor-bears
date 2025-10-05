@@ -352,7 +352,7 @@ export function useNASAData() {
     ).length || 0,
     // Get this week count (next 7 days)
     weekCount: simulationData?.today.filter(asteroid => {
-      const approachDate = new Date(asteroid.approach_date);
+      const approachDate = new Date(asteroid.approach_date || '2025-10-04');
       const today = new Date('2025-10-04');
       const weekFromNow = new Date(today);
       weekFromNow.setDate(today.getDate() + 7);

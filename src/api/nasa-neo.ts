@@ -1,4 +1,4 @@
-import { logger } from '@/logger';
+import { logger } from "@/logger";
 
 // NASA NEO API Types
 export interface NearEarthObject {
@@ -81,37 +81,46 @@ export interface NEOLookupResponse extends NearEarthObject {
 }
 
 class NASANeoAPI {
-  private baseUrl = 'https://api.nasa.gov/neo/rest/v1';
+  private baseUrl = "https://api.nasa.gov/neo/rest/v1";
   private apiKey: string;
-  private cache: Map<string, { data: any; timestamp: number }> = new Map();
+  private cache: Map<
+    string,
+    { data: Record<string, unknown>; timestamp: number }
+  > = new Map();
   private cacheTimeout = 1000 * 60 * 15; // 15 minutes cache
 
   constructor() {
-    this.apiKey = process.env.NASA_API_KEY || process.env.NEXT_PUBLIC_NASA_API_KEY || '';
+    this.apiKey =
+      process.env.NASA_API_KEY || process.env.NEXT_PUBLIC_NASA_API_KEY || "";
     if (!this.apiKey) {
-      logger.warn('NASA API key not found in environment variables');
+      logger.warn("NASA API key not found in environment variables");
     }
   }
 
   /**
    * Get Near Earth Objects for a date range
    */
-  async getFeed(startDate: string, endDate?: string): Promise<NEOFeedResponse | null> {
+  async getFeed(
+    startDate: string,
+    endDate?: string
+  ): Promise<NEOFeedResponse | null> {
     try {
       const cacheKey = `feed-${startDate}-${endDate || startDate}`;
       const cached = this.getCached(cacheKey);
-      if (cached) return cached;
+      if (cached) return cached as unknown as NEOFeedResponse;
 
       const url = new URL(`${this.baseUrl}/feed`);
-      url.searchParams.append('start_date', startDate);
+      url.searchParams.append("start_date", startDate);
       if (endDate) {
-        url.searchParams.append('end_date', endDate);
+        url.searchParams.append("end_date", endDate);
       }
-      url.searchParams.append('api_key', this.apiKey);
+      url.searchParams.append("api_key", this.apiKey);
 
       const response = await fetch(url.toString());
       if (!response.ok) {
-        logger.error(`NASA API error: ${response.status} ${response.statusText}`);
+        logger.error(
+          `NASA API error: ${response.status} ${response.statusText}`
+        );
         return null;
       }
 
@@ -119,7 +128,7 @@ class NASANeoAPI {
       this.setCache(cacheKey, data);
       return data as NEOFeedResponse;
     } catch (error) {
-      logger.error('Failed to fetch NEO feed', { error });
+      logger.error("Failed to fetch NEO feed", { error });
       return null;
     }
   }
@@ -131,14 +140,16 @@ class NASANeoAPI {
     try {
       const cacheKey = `asteroid-${asteroidId}`;
       const cached = this.getCached(cacheKey);
-      if (cached) return cached;
+      if (cached) return cached as unknown as NEOLookupResponse;
 
       const url = new URL(`${this.baseUrl}/neo/${asteroidId}`);
-      url.searchParams.append('api_key', this.apiKey);
+      url.searchParams.append("api_key", this.apiKey);
 
       const response = await fetch(url.toString());
       if (!response.ok) {
-        logger.error(`NASA API error: ${response.status} ${response.statusText}`);
+        logger.error(
+          `NASA API error: ${response.status} ${response.statusText}`
+        );
         return null;
       }
 
@@ -146,7 +157,7 @@ class NASANeoAPI {
       this.setCache(cacheKey, data);
       return data as NEOLookupResponse;
     } catch (error) {
-      logger.error('Failed to fetch asteroid data', { error, asteroidId });
+      logger.error("Failed to fetch asteroid data", { error, asteroidId });
       return null;
     }
   }
@@ -168,16 +179,22 @@ class NASANeoAPI {
       const hazardous: NearEarthObject[] = [];
       for (const date in feedData.near_earth_objects) {
         const asteroids = feedData.near_earth_objects[date];
-        hazardous.push(...asteroids.filter(a => a.is_potentially_hazardous_asteroid));
+        hazardous.push(
+          ...asteroids.filter((a) => a.is_potentially_hazardous_asteroid)
+        );
       }
 
       return hazardous.sort((a, b) => {
-        const aDistance = parseFloat(a.close_approach_data[0]?.miss_distance.kilometers || '0');
-        const bDistance = parseFloat(b.close_approach_data[0]?.miss_distance.kilometers || '0');
+        const aDistance = parseFloat(
+          a.close_approach_data[0]?.miss_distance.kilometers || "0"
+        );
+        const bDistance = parseFloat(
+          b.close_approach_data[0]?.miss_distance.kilometers || "0"
+        );
         return aDistance - bDistance;
       });
     } catch (error) {
-      logger.error('Failed to fetch hazardous asteroids', { error });
+      logger.error("Failed to fetch hazardous asteroids", { error });
       return [];
     }
   }
@@ -193,7 +210,7 @@ class NASANeoAPI {
 
       return feedData.near_earth_objects[today] || [];
     } catch (error) {
-      logger.error('Failed to fetch today\'s close approaches', { error });
+      logger.error("Failed to fetch today's close approaches", { error });
       return [];
     }
   }
@@ -201,32 +218,38 @@ class NASANeoAPI {
   /**
    * Browse all NEOs with pagination
    */
-  async browse(page: number = 0, size: number = 20): Promise<{ data: NearEarthObject[]; total: number } | null> {
+  async browse(
+    page: number = 0,
+    size: number = 20
+  ): Promise<{ data: NearEarthObject[]; total: number } | null> {
     try {
       const cacheKey = `browse-${page}-${size}`;
       const cached = this.getCached(cacheKey);
-      if (cached) return cached;
+      if (cached)
+        return cached as unknown as { data: NearEarthObject[]; total: number };
 
       const url = new URL(`${this.baseUrl}/neo/browse`);
-      url.searchParams.append('page', page.toString());
-      url.searchParams.append('size', size.toString());
-      url.searchParams.append('api_key', this.apiKey);
+      url.searchParams.append("page", page.toString());
+      url.searchParams.append("size", size.toString());
+      url.searchParams.append("api_key", this.apiKey);
 
       const response = await fetch(url.toString());
       if (!response.ok) {
-        logger.error(`NASA API error: ${response.status} ${response.statusText}`);
+        logger.error(
+          `NASA API error: ${response.status} ${response.statusText}`
+        );
         return null;
       }
 
       const data = await response.json();
       const result = {
         data: data.near_earth_objects,
-        total: data.page.total_elements
+        total: data.page.total_elements,
       };
       this.setCache(cacheKey, result);
       return result;
     } catch (error) {
-      logger.error('Failed to browse NEOs', { error });
+      logger.error("Failed to browse NEOs", { error });
       return null;
     }
   }
@@ -236,29 +259,33 @@ class NASANeoAPI {
    */
   formatForSimulation(neo: NearEarthObject) {
     const approach = neo.close_approach_data[0];
-    const diameter = (neo.estimated_diameter.meters.estimated_diameter_min +
-                      neo.estimated_diameter.meters.estimated_diameter_max) / 2;
+    const diameter =
+      (neo.estimated_diameter.meters.estimated_diameter_min +
+        neo.estimated_diameter.meters.estimated_diameter_max) /
+      2;
 
     return {
       id: neo.id,
       name: neo.name,
       diameter: Math.round(diameter),
-      velocity: parseFloat(approach?.relative_velocity.kilometers_per_second || '20'),
-      distance: parseFloat(approach?.miss_distance.kilometers || '100000'),
+      velocity: parseFloat(
+        approach?.relative_velocity.kilometers_per_second || "20"
+      ),
+      distance: parseFloat(approach?.miss_distance.kilometers || "100000"),
       is_hazardous: neo.is_potentially_hazardous_asteroid,
       approach_date: approach?.close_approach_date,
       magnitude: neo.absolute_magnitude_h,
       nasa_url: neo.nasa_jpl_url,
-      orbital_data: neo.orbital_data
+      orbital_data: neo.orbital_data,
     };
   }
 
   // Helper methods
   private formatDate(date: Date): string {
-    return date.toISOString().split('T')[0];
+    return date.toISOString().split("T")[0];
   }
 
-  private getCached(key: string): any {
+  private getCached(key: string): Record<string, unknown> | null {
     const cached = this.cache.get(key);
     if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
       return cached.data;
@@ -266,7 +293,7 @@ class NASANeoAPI {
     return null;
   }
 
-  private setCache(key: string, data: any): void {
+  private setCache(key: string, data: Record<string, unknown>): void {
     this.cache.set(key, { data, timestamp: Date.now() });
   }
 
