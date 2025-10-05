@@ -90,6 +90,9 @@ export default function TerrainVisualizer({
   const [, setRealEnergy] = useState<number>(0); // Joules
   const [realMegatons, setRealMegatons] = useState<number>(0); // MT TNT
 
+  // Track last generated terrain to prevent unnecessary regeneration
+  const lastTerrainKeyRef = useRef<string>("");
+
   // Get realistic characteristics for a geographic region
   const getRegionCharacteristics = useCallback((lat: number, lng: number) => {
     const absLat = Math.abs(lat);
@@ -214,8 +217,12 @@ export default function TerrainVisualizer({
     // Atlantic Ocean
     if (lng > -80 && lng < -10 && (lat > 60 || lat < -60)) return true;
     if (lng > -60 && lng < 20 && lat > 50) return true;
-    // Indian Ocean
-    if (lng > 20 && lng < 120 && lat < -10) return true;
+    // Indian Ocean (including Arabian Sea and Bay of Bengal)
+    if (lng > 40 && lng < 100 && lat < 30 && lat > -50) return true;
+    // Mediterranean Sea
+    if (lng > -5 && lng < 37 && lat > 30 && lat < 46) return true;
+    // Gulf of Mexico and Caribbean
+    if (lng > -100 && lng < -60 && lat > 10 && lat < 32) return true;
     return false;
   };
 
@@ -432,6 +439,8 @@ export default function TerrainVisualizer({
     }
 
     console.log("Generated realistic terrain grid based on impact location");
+    console.log(`Terrain grid size: ${terrainGrid.length} rows x ${terrainGrid[0]?.length || 0} cols`);
+    console.log(`Sample terrain points:`, terrainGrid[0]?.slice(0, 3));
     setTerrain(terrainGrid);
   }, [
     width,
@@ -472,17 +481,6 @@ export default function TerrainVisualizer({
     }
   }, [enhancedPrediction, asteroidData]);
 
-  // Regenerate terrain when impact location changes from prediction
-  useEffect(() => {
-    if (enhancedPrediction?.impact_location) {
-      console.log("🎯 New trajectory data received! Regenerating terrain at:", {
-        lat: enhancedPrediction.impact_location.latitude,
-        lng: enhancedPrediction.impact_location.longitude,
-      });
-      generateTerrain();
-    }
-  }, [enhancedPrediction?.impact_location, generateTerrain]);
-
   // Initialize canvas and terrain
   useEffect(() => {
     // Add a small delay to ensure canvas is fully mounted
@@ -490,6 +488,17 @@ export default function TerrainVisualizer({
       const canvas = canvasRef.current;
       if (!canvas) {
         console.log("Canvas ref not available");
+        return;
+      }
+
+      // Create a unique key for current terrain config
+      const impactLat = enhancedPrediction?.impact_location?.latitude ?? asteroidData?.impactLat ?? 0;
+      const impactLng = enhancedPrediction?.impact_location?.longitude ?? asteroidData?.impactLng ?? 0;
+      const terrainKey = `${impactLat.toFixed(2)}_${impactLng.toFixed(2)}_${width}_${height}`;
+
+      // Skip regeneration if terrain hasn't changed
+      if (lastTerrainKeyRef.current === terrainKey) {
+        console.log("Terrain already generated for this configuration, skipping");
         return;
       }
 
@@ -512,10 +521,13 @@ export default function TerrainVisualizer({
 
       // Generate terrain (now async)
       await generateTerrain();
+
+      // Mark this terrain as generated
+      lastTerrainKeyRef.current = terrainKey;
     }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [generateTerrain, width, height]);
+  }, [generateTerrain, width, height, enhancedPrediction, asteroidData]);
 
   // Handle simulation phase changes
   useEffect(() => {
@@ -794,15 +806,22 @@ export default function TerrainVisualizer({
       return;
     }
 
+    console.log("🎨 Draw function called. Terrain state:", {
+      terrainLength: terrain.length,
+      hasEnhancedPrediction: !!enhancedPrediction,
+      hasAsteroidData: !!asteroidData,
+      impactLocation: enhancedPrediction?.impact_location || asteroidData
+    });
+
     if (terrain.length === 0) {
-      console.log(
-        "No terrain data available, terrain array length:",
+      console.warn(
+        "⚠️ No terrain data available, terrain array length:",
         terrain.length
       );
       return;
     }
 
-    console.log("Successfully rendering terrain with", terrain.length, "rows");
+    console.log("✅ Successfully rendering terrain with", terrain.length, "rows");
 
     // Clear canvas with dynamic background based on simulation phase
     const bgColor =

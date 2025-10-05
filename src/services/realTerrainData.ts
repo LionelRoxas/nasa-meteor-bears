@@ -256,11 +256,17 @@ export class RealTerrainDataService {
     // Pacific Ocean
     if ((lng > 120 || lng < -80) && Math.abs(lat) < 60) return true;
 
-    // Atlantic Ocean (simplified)
+    // Atlantic Ocean
     if (lng > -60 && lng < -10 && (lat > 40 || lat < -40)) return true;
 
-    // Indian Ocean
-    if (lng > 40 && lng < 100 && lat < -10 && lat > -50) return true;
+    // Indian Ocean (including Arabian Sea and Bay of Bengal)
+    if (lng > 40 && lng < 100 && lat < 30 && lat > -50) return true;
+
+    // Mediterranean Sea
+    if (lng > -5 && lng < 37 && lat > 30 && lat < 46) return true;
+
+    // Gulf of Mexico and Caribbean
+    if (lng > -100 && lng < -60 && lat > 10 && lat < 32) return true;
 
     return false;
   }

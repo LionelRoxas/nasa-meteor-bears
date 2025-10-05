@@ -4,9 +4,21 @@ import {
   AsteroidTrajectory,
 } from "../utils/asteroid-trajectory";
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+// Lazy initialize Groq client to avoid client-side environment variable errors
+let groq: Groq | null = null;
+
+function getGroqClient(): Groq | null {
+  if (groq) return groq;
+
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    console.warn("GROQ_API_KEY not available - LLM analysis will be skipped");
+    return null;
+  }
+
+  groq = new Groq({ apiKey });
+  return groq;
+}
 
 // Import types from Groq SDK
 import { ChatCompletionMessageParam } from "groq-sdk/resources/chat/completions";
@@ -236,7 +248,10 @@ class ConsequencePredictor {
         energy: number;
       }
 
-      const asteroids = asteroidData
+      // Ensure asteroidData is an array
+      const dataArray = Array.isArray(asteroidData) ? asteroidData : [];
+
+      const asteroids = dataArray
         .filter(
           (asteroid: AsteroidDataItem) =>
             asteroid.diameter_meters && asteroid.velocity_km_s
@@ -775,25 +790,33 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         },
       ];
 
-      const response = await groq.chat.completions.create({
-        model: "openai/gpt-oss-120b",
-        messages: convertToGroqMessages(messages),
-        temperature: 0.1, // Very low temperature for scientific consistency
-        max_tokens: 2000,
-      });
-
-      const content = response.choices[0].message.content || "{}";
-      console.log("LLM response received, parsing JSON...");
-
+      const groqClient = getGroqClient();
       let fullResponse: Record<string, unknown> = {};
 
-      try {
-        fullResponse = JSON.parse(content);
-        console.log("Successfully parsed JSON response");
-      } catch (parseError) {
-        console.error("Failed to parse LLM response as JSON:", parseError);
+      if (groqClient) {
+        const response = await groqClient.chat.completions.create({
+          model: "openai/gpt-oss-120b",
+          messages: convertToGroqMessages(messages),
+          temperature: 0.1, // Very low temperature for scientific consistency
+          max_tokens: 2000,
+        });
 
-        // Scientifically-accurate fallback response with terrain visualization
+        const content = response.choices[0].message.content || "{}";
+        console.log("LLM response received, parsing JSON...");
+
+        try {
+          fullResponse = JSON.parse(content);
+          console.log("Successfully parsed JSON response");
+        } catch (parseError) {
+          console.error("Failed to parse LLM response as JSON:", parseError);
+          // Will use fallback below
+        }
+      } else {
+        console.log("Groq client not available, using physics-only fallback");
+      }
+
+      // If LLM didn't provide a response or wasn't available, use scientifically-accurate fallback
+      if (Object.keys(fullResponse).length === 0) {
         fullResponse = {
           threatAssessment: {
             level: threatLevel,
@@ -897,6 +920,13 @@ Return ONLY the JSON object for 2D terrain visualization.`;
       console.log("Fetching USGS seismic and tsunami data...");
       let usgsAssessment;
 
+      console.log("🌍 Fetching USGS assessment for coordinates:", {
+        lat: trajectory.impact_location.latitude,
+        lng: trajectory.impact_location.longitude,
+        energy,
+        craterDiameter
+      });
+
       try {
         const usgsResponse = await fetch("/api/usgs-assessment", {
           method: "POST",
@@ -911,15 +941,18 @@ Return ONLY the JSON object for 2D terrain visualization.`;
           }),
         });
 
+        console.log("📡 USGS API response status:", usgsResponse.status);
+
         if (usgsResponse.ok) {
           usgsAssessment = await usgsResponse.json();
-          console.log("USGS Assessment received:", usgsAssessment);
+          console.log("✅ USGS Assessment received successfully:", usgsAssessment);
         } else {
-          console.warn("USGS API failed, using fallback");
+          const errorText = await usgsResponse.text();
+          console.warn("⚠️ USGS API failed with status", usgsResponse.status, errorText);
           usgsAssessment = null;
         }
       } catch (error) {
-        console.error("USGS fetch error:", error);
+        console.error("❌ USGS fetch error:", error);
         usgsAssessment = null;
       }
 
@@ -931,7 +964,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         enhancedRiskAssessment
       );
 
-      return {
+      const result = {
         impactPhysics: {
           energy,
           craterDiameter,
@@ -947,7 +980,19 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         trajectory,
         fullResponse,
         quickAnalysis,
+        usgsData: usgsAssessment, // CRITICAL: Include USGS assessment data
       };
+
+      console.log("📦 Consequence prediction result includes usgsData:", !!result.usgsData);
+      if (result.usgsData) {
+        console.log("🎯 USGS data in result:", {
+          hasSeismicZone: !!result.usgsData.seismicZone,
+          hasTsunamiRisk: !!result.usgsData.tsunamiRisk,
+          zone: result.usgsData.seismicZone?.zone
+        });
+      }
+
+      return result;
     } catch (error) {
       console.error("Error calling Groq API:", error);
 

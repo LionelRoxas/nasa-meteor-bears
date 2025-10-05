@@ -184,8 +184,10 @@ export function useEnhancedPredictions() {
 
   // Get consequence prediction with trajectory data
   const getConsequencePrediction = async (asteroidId: string, correlationData: AsteroidCorrelationData): Promise<Record<string, unknown> | null> => {
+    console.log("🚀 Starting getConsequencePrediction for asteroid:", asteroidId);
     try {
       // Import the consequence predictor dynamically to avoid server-side issues
+      console.log("📥 Importing ConsequencePredictor...");
       const ConsequencePredictor = (await import('@/app/utils/consequence-predictor')).default;
       const predictor = new ConsequencePredictor();
 
@@ -199,11 +201,13 @@ export function useEnhancedPredictions() {
         is_hazardous: correlationData.nasaData.is_hazardous
       };
 
+      console.log("🎯 Calling predictConsequences with asteroid data:", asteroidData);
       // Get consequence prediction which includes trajectory
       const consequencePrediction = await predictor.predictConsequences(asteroidData);
+      console.log("✨ Consequence prediction returned:", !!consequencePrediction);
       return consequencePrediction;
     } catch (error) {
-      console.warn('Failed to get consequence prediction:', error);
+      console.error('❌ Failed to get consequence prediction:', error);
       return null;
     }
   };
@@ -259,21 +263,31 @@ export function useEnhancedPredictions() {
 
   // Main function to get complete enhanced prediction
   const getEnhancedPrediction = async (asteroidId: string): Promise<EnhancedPrediction | null> => {
+    console.log("🌟 ========== GET ENHANCED PREDICTION STARTED ==========");
+    console.log("🆔 Asteroid ID:", asteroidId);
     try {
       // Step 1: Get correlation data
+      console.log("📊 Step 1: Getting correlation data...");
       const correlationData = await getCorrelationData(asteroidId);
       if (!correlationData) {
+        console.error("❌ No correlation data returned, aborting");
         return null;
       }
+      console.log("✅ Step 1 complete: Correlation data received");
 
       // Step 2: Get consequence prediction with trajectory data
+      console.log("🎯 Step 2: Getting consequence prediction...");
       const consequencePrediction = await getConsequencePrediction(asteroidId, correlationData);
+      console.log("✅ Step 2 complete: Consequence prediction:", !!consequencePrediction);
 
       // Step 3: Generate enhanced prediction with LLM
       const enhancedPrediction = await generateEnhancedPrediction(asteroidId, correlationData);
 
       // Step 4: Combine with trajectory, physics, and USGS data
       if (enhancedPrediction && consequencePrediction) {
+        console.log("🔗 Combining consequence prediction with enhanced prediction");
+        console.log("📊 Consequence prediction has usgsData:", !!consequencePrediction.usgsData);
+
         enhancedPrediction.trajectory = consequencePrediction.trajectory;
         enhancedPrediction.impact_location = {
           latitude: consequencePrediction.trajectory.impact_location.latitude,
@@ -296,12 +310,17 @@ export function useEnhancedPredictions() {
         // Add USGS data if available
         if (consequencePrediction.usgsData) {
           enhancedPrediction.usgsData = consequencePrediction.usgsData;
+          console.log("✅ USGS data successfully integrated into enhancedPrediction");
           logger.info('USGS data integrated into prediction', {
             seismicZone: consequencePrediction.usgsData.seismicZone.zone,
             tsunamiRisk: consequencePrediction.usgsData.tsunamiRisk.riskLevel
           });
+        } else {
+          console.warn("⚠️ No USGS data in consequence prediction to integrate");
         }
       }
+
+      console.log("🎁 Final enhanced prediction has usgsData:", !!enhancedPrediction?.usgsData);
 
       return enhancedPrediction;
     } catch (err) {

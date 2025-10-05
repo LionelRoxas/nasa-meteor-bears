@@ -57,25 +57,29 @@ export default function TerrainTestPage() {
   );
   const [realTerrainData, setRealTerrainData] = useState<any>(null);
 
-  const handleGetEnhancedData = async () => {
-    const prediction = await getEnhancedPrediction(selectedAsteroid.id);
-    setEnhancedData(prediction);
+  const handleStartSimulation = async () => {
+    // First, fetch enhanced prediction if not already loaded
+    if (!enhancedData) {
+      const prediction = await getEnhancedPrediction(selectedAsteroid.id);
+      setEnhancedData(prediction);
 
-    // Update impact location to real coordinates if available
-    if (prediction?.impact_location) {
-      setImpactLocation({
-        lat: prediction.impact_location.latitude,
-        lng: prediction.impact_location.longitude,
-      });
-      console.log(
-        "Updated to real impact coordinates:",
-        prediction.impact_location.latitude,
-        prediction.impact_location.longitude
-      );
+      if (prediction?.impact_location) {
+        setImpactLocation({
+          lat: prediction.impact_location.latitude,
+          lng: prediction.impact_location.longitude,
+        });
+        console.log(
+          "Updated to real impact coordinates:",
+          prediction.impact_location.latitude,
+          prediction.impact_location.longitude
+        );
+      }
+
+      // Wait a moment for terrain to render with real data
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
-  };
 
-  const handleStartSimulation = () => {
+    // Then start the simulation
     setIsSimulating(true);
     setSimulationPhase("approach");
 
@@ -143,23 +147,13 @@ export default function TerrainTestPage() {
                 </div>
               </div>
 
-              {/* Enhanced Prediction Data */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3 text-purple-400">
-                  AI Analysis
-                </h3>
-                <button
-                  onClick={handleGetEnhancedData}
-                  disabled={predictionLoading}
-                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded text-white transition-colors"
-                >
-                  {predictionLoading
-                    ? "Analyzing..."
-                    : "Get Enhanced Prediction"}
-                </button>
-
-                {enhancedData && (
-                  <div className="mt-3 p-3 bg-gray-700 rounded">
+              {/* Enhanced Prediction Data - Display Only */}
+              {enhancedData && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-purple-400">
+                    AI Analysis
+                  </h3>
+                  <div className="p-3 bg-gray-700 rounded">
                     <div className="text-sm space-y-1">
                       <div>
                         Risk Score:{" "}
@@ -187,8 +181,8 @@ export default function TerrainTestPage() {
                       </div>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Simulation Controls */}
               <div>
@@ -212,10 +206,14 @@ export default function TerrainTestPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={handleStartSimulation}
-                      disabled={isSimulating}
+                      disabled={isSimulating || predictionLoading}
                       className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded text-white transition-colors"
                     >
-                      {isSimulating ? "Simulating..." : "Start Impact"}
+                      {predictionLoading
+                        ? "Loading Data..."
+                        : isSimulating
+                        ? "Simulating..."
+                        : "Start Impact"}
                     </button>
                     <button
                       onClick={handleReset}
