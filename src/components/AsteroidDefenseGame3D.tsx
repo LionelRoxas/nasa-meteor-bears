@@ -637,8 +637,20 @@ export const AsteroidDefenseGame3D = () => {
   }, [asteroidData, createAsteroid, wave]);
 
   const handleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    console.log('🎯 CLICK EVENT TRIGGERED');
+    
     if (!cameraRef.current || !raycasterRef.current || !mouseRef.current) {
-      console.log('Missing camera, raycaster, or mouse ref');
+      console.log('❌ Missing camera, raycaster, or mouse ref');
+      return;
+    }
+
+    if (gamePaused) {
+      console.log('⏸️ Game is PAUSED - click should not work for asteroids');
+      return;
+    }
+
+    if (!gameStarted) {
+      console.log('⏸️ Game NOT STARTED - click should not work');
       return;
     }
 
@@ -649,9 +661,9 @@ export const AsteroidDefenseGame3D = () => {
     mouseRef.current.x = mouseX;
     mouseRef.current.y = mouseY;
 
-    console.log('Click detected at:', mouseX, mouseY);
-    console.log('Rect:', rect);
-    console.log('Event client:', event.clientX, event.clientY);
+    console.log('🎯 Click detected at:', mouseX, mouseY);
+    console.log('📦 Rect:', rect);
+    console.log('🖱️ Event client:', event.clientX, event.clientY);
 
     raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
     
@@ -666,17 +678,17 @@ export const AsteroidDefenseGame3D = () => {
       }
     });
     
-    console.log('Active asteroids:', activeAsteroids.length);
-    console.log('Checking intersection with', asteroidMeshes.length, 'meshes (including collision meshes)');
+    console.log('🌌 Active asteroids:', activeAsteroids.length);
+    console.log('🎯 Checking intersection with', asteroidMeshes.length, 'meshes (including collision meshes)');
     
     if (asteroidMeshes.length === 0) {
-      console.log('No asteroids to check intersection with!');
+      console.log('❌ No asteroids to check intersection with!');
       return;
     }
     
     const intersects = raycasterRef.current.intersectObjects(asteroidMeshes, true);
 
-    console.log('Intersections found:', intersects.length);
+    console.log('💥 Intersections found:', intersects.length);
 
     if (intersects.length > 0) {
       const clickedMesh = intersects[0].object as THREE.Mesh;
@@ -737,7 +749,7 @@ export const AsteroidDefenseGame3D = () => {
         console.log(`Asteroid ${index}: position (${asteroid.mesh.position.x.toFixed(2)}, ${asteroid.mesh.position.y.toFixed(2)}, ${asteroid.mesh.position.z.toFixed(2)})`);
       });
     }
-  }, []);
+  }, [gamePaused, gameStarted]);
 
   const gameLoop = useCallback(() => {
     if (!rendererRef.current || !sceneRef.current || !cameraRef.current || gamePaused) return;

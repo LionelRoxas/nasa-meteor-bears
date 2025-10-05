@@ -29,10 +29,10 @@ export class EnhancedEarth {
     // Force geometry to use smooth normals
     geometry.computeVertexNormals();
     
-    // Main Earth surface - using MeshLambertMaterial for consistent flat shading
+    // Main Earth surface - enhanced for more prominent land features
     const earthMaterial = new THREE.MeshLambertMaterial({
-      // Fallback: Blue and green Earth-like appearance
-      color: 0x4488bb,
+      // Enhanced Earth colors for more prominent land
+      color: 0x234587, // More vibrant blue-green for land/ocean contrast
       // Force smooth shading to eliminate any edge artifacts
       flatShading: false,
       side: THREE.FrontSide, // Only render front faces
@@ -65,17 +65,69 @@ export class EnhancedEarth {
     
     this.earthGroup.add(this.earthMesh);
     
-    // City lights layer temporarily disabled to eliminate stripe artifacts
-    const lightsMaterial = new THREE.MeshBasicMaterial({
+    // City lights layer - restored with enhanced visibility
+      // --- City lights layer ---
+      // Use a larger offset radius for the lights mesh to avoid z-fighting with the surface
+      const lightsGeometry = new THREE.SphereGeometry(1.01, widthSegments, heightSegments);
+      const lightsMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff88,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false, // do not write to depth so additive blend appears correctly
+        side: THREE.FrontSide,
+      });
+
+      try {
+        const lightsTexture = loader.load('/textures/earthlights.jpg', undefined, undefined, () => {
+          console.log('Earth lights texture not found, using fallback');
+        });
+    lightsTexture.minFilter = THREE.LinearFilter;
+    lightsTexture.magFilter = THREE.LinearFilter;
+    lightsTexture.generateMipmaps = false;
+    lightsTexture.wrapS = THREE.ClampToEdgeWrapping;
+    lightsTexture.wrapT = THREE.ClampToEdgeWrapping;
+    lightsMaterial.map = lightsTexture;
+      } catch {
+        console.log('Using fallback lights appearance');
+      }
+
+    this.lightsMesh = new THREE.Mesh(lightsGeometry, lightsMaterial);
+    // Ensure lights render after the main surface
+    this.lightsMesh.renderOrder = 1;
+    this.earthGroup.add(this.lightsMesh);
+    
+    // --- Cloud layer ---
+    // Clouds should sit above both surface and lights to avoid banding; use alphaMap for soft edges
+    const cloudsGeometry = new THREE.SphereGeometry(1.02, widthSegments, heightSegments);
+    const cloudsMaterialFinal = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
       transparent: true,
-      opacity: 0, // Completely transparent to test if this is causing stripes
+      opacity: 0.5, // semi-transparent clouds
+      depthWrite: false, // allow proper blending with underlying layers
+      side: THREE.DoubleSide,
+      alphaTest: 0.12, // discard very low alpha to avoid banding from semi-transparent fragments
     });
-    
-    this.lightsMesh = new THREE.Mesh(new THREE.BufferGeometry(), lightsMaterial);
-    // Not adding to earthGroup to test if this is causing the stripes
-    
-    // Clouds layer removed - no more polygon layer
-    this.cloudsMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
+
+    try {
+      const cloudsTexture = loader.load('/textures/earthclouds.jpg', undefined, undefined, () => {
+        console.log('Earth clouds texture not found, using fallback');
+      });
+  cloudsTexture.minFilter = THREE.LinearFilter;
+  cloudsTexture.magFilter = THREE.LinearFilter;
+  cloudsTexture.generateMipmaps = false;
+  cloudsTexture.wrapS = THREE.ClampToEdgeWrapping;
+  cloudsTexture.wrapT = THREE.ClampToEdgeWrapping;
+  // Use the texture both as the color map and as an alpha map (luminance controls transparency)
+  cloudsMaterialFinal.map = cloudsTexture;
+  cloudsMaterialFinal.alphaMap = cloudsTexture;
+    } catch {
+      console.log('Using fallback clouds appearance');
+    }
+
+    this.cloudsMesh = new THREE.Mesh(cloudsGeometry, cloudsMaterialFinal);
+    this.cloudsMesh.renderOrder = 2; // render clouds last
+    this.earthGroup.add(this.cloudsMesh);
     
     // No atmospheric glow - removed to eliminate blue border
     // Creating empty mesh to maintain interface compatibility
@@ -88,12 +140,12 @@ export class EnhancedEarth {
   }
   
   public animate() {
-    // Much slower rotation speeds for each layer
-    this.earthMesh.rotation.y += 0.0005; // Reduced from 0.002 to 0.0005
-    this.lightsMesh.rotation.y += 0.0005; // Reduced from 0.002 to 0.0005
-    // No clouds mesh rotation - clouds layer removed
+    // Smooth rotation speeds for each layer
+    this.earthMesh.rotation.y += 0.0005; // Earth surface rotation
+    this.lightsMesh.rotation.y += 0.0005; // City lights rotation (same as Earth)
+    this.cloudsMesh.rotation.y += 0.0007; // Clouds rotate slightly faster for realism
     // No glow mesh rotation - atmospheric glow removed
-    this.stars.rotation.y -= 0.0001; // Reduced from 0.0002 to 0.0001
+    this.stars.rotation.y -= 0.0001; // Starfield counter-rotation
   }
   
   public setPosition(x: number, y: number, z: number) {
