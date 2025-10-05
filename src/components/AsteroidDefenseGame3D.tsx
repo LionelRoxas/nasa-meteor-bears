@@ -1200,13 +1200,13 @@ export const AsteroidDefenseGame3D = () => {
 
     const generation = parentAsteroid.splitGeneration + 1;
     
-    // Don't split beyond generation 2
+    // Don't split beyond generation 2 (level 3 is final)
     if (generation > 2) return;
 
-    // Determine number of splits
-    const splitCount = generation === 1 ? 2 : 4; // 1 split into 2, then each splits into 4
+    // Binary tree: each impactor always splits into 2
+    const splitCount = 2;
     
-    console.log(`💥 Splitting Impactor-2025 generation ${parentAsteroid.splitGeneration} into ${splitCount} fragments`);
+    console.log(`💥 Splitting Impactor-2025 generation ${parentAsteroid.splitGeneration} into ${splitCount} fragments (binary tree)`);
 
     for (let i = 0; i < splitCount; i++) {
       const fragment = createImpactor2025(generation);
@@ -1330,11 +1330,11 @@ export const AsteroidDefenseGame3D = () => {
               // Increment impactor parts destroyed counter
               setImpactorPartsDestroyed(prev => {
                 const newCount = prev + 1;
-                console.log(`🔴 Impactor part destroyed! Count: ${newCount}/6`);
+                console.log(`🔴 Impactor part destroyed! Count: ${newCount}/7`);
                 
-                // Check for immediate victory if all 6 parts destroyed
-                if (newCount >= 6) {
-                  console.log('🎉 ALL IMPACTOR PARTS DESTROYED - TRIGGERING VICTORY!');
+                // Check for immediate victory if all 7 parts destroyed (binary tree: 1+2+4=7)
+                if (newCount >= 7) {
+                  console.log('🎉 ALL 7 IMPACTOR PARTS DESTROYED - TRIGGERING VICTORY!');
                   const victoryTimer = setTimeout(() => setGameVictory(true), 1000); // Delay for explosion effect
                   activeTimersRef.current.push(victoryTimer);
                 }
@@ -2023,8 +2023,8 @@ export const AsteroidDefenseGame3D = () => {
 
   // Victory detection for boss fight
   useEffect(() => {
-    if (wave === 6 && bossSpawned && impactorPartsDestroyed >= 6 && !gameVictory) {
-      console.log('🎉 BOSS VICTORY DETECTED! All 6 impactor parts destroyed!');
+    if (wave === 6 && bossSpawned && impactorPartsDestroyed >= 7 && !gameVictory) {
+      console.log('🎉 BOSS VICTORY DETECTED! All 7 impactor parts destroyed!');
       setGameVictory(true);
     }
   }, [wave, bossSpawned, impactorPartsDestroyed, gameVictory]);
@@ -2230,7 +2230,7 @@ export const AsteroidDefenseGame3D = () => {
               <p className="text-2xl mb-4 text-yellow-300">Impactor-2025 Destroyed!</p>
               <p className="text-xl mb-2">You successfully defeated the massive asteroid</p>
               <p className="text-xl mb-2">and all its deadly fragments!</p>
-              <p className="text-lg mb-2 text-red-400">💥 Impactor Parts Destroyed: {impactorPartsDestroyed}/6</p>
+              <p className="text-lg mb-2 text-red-400">💥 Impactor Parts Destroyed: {impactorPartsDestroyed}/7</p>
               <p className="text-lg mb-2 text-blue-300">Final Score: {score}</p>
               <p className="text-lg mb-2 text-blue-300">Waves Completed: {wave}</p>
               <p className="text-lg mb-6 text-blue-300">Asteroids Destroyed: {asteroidsDestroyed}</p>
@@ -2262,7 +2262,8 @@ export const AsteroidDefenseGame3D = () => {
               <p className="text-lg mb-4 text-orange-300">This is our final battle...</p>
               <p className="text-md mb-6 text-gray-300">
                 ⚠️ Warning: This asteroid requires multiple hits to destroy<br/>
-                🔴 It will split into smaller but deadly fragments<br/>
+                🔴 It will split into 2 fragments, each fragment splits into 2 more<br/>
+                💀 Total: 7 deadly pieces to eliminate (1→2→4)<br/>
                 🌍 The fate of Earth depends on you!
               </p>
               <button
