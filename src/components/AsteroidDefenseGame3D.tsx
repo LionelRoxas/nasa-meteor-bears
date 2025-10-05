@@ -51,6 +51,11 @@ interface GameAsteroid {
   destroyed: boolean;
   warningRing?: THREE.Mesh;
   impacting?: boolean; // Flag to indicate asteroid is in impact phase
+  // Boss asteroid properties
+  isImpactor2025?: boolean;
+  hitCount?: number;
+  maxHits?: number;
+  splitGeneration?: number; // 0 = main boss, 1 = first split, 2 = second split
   trailSystem?: {
     particles: THREE.Points;
     positions: Float32Array;
@@ -232,6 +237,9 @@ export const AsteroidDefenseGame3D = () => {
   const [wave, setWave] = useState(1);
   const [gameStarted, setGameStarted] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [gameVictory, setGameVictory] = useState(false);
+  const [showBossCutscene, setShowBossCutscene] = useState(false);
+  const [bossSpawned, setBossSpawned] = useState(false);
   const [asteroidsDestroyed, setAsteroidsDestroyed] = useState(0);
   const [earthHealth, setEarthHealth] = useState(100);
   const [asteroidData, setAsteroidData] = useState<AsteroidData[]>([]);
@@ -847,6 +855,198 @@ export const AsteroidDefenseGame3D = () => {
     return asteroid;
   }, []);
 
+  // Create the impactor-2025 boss asteroid with special properties
+  const createImpactor2025 = useCallback((generation: number = 0): GameAsteroid | null => {
+    if (!sceneRef.current) return null;
+
+    // Create fake asteroid data for impactor-2025
+    const impactorData: AsteroidData = {
+      id: `impactor-2025-gen${generation}-${Date.now()}`,
+      name: generation === 0 ? 'Impactor-2025' : `Impactor-2025-Fragment-${generation}`,
+      estimated_diameter: {
+        kilometers: {
+          estimated_diameter_min: generation === 0 ? 2.5 : generation === 1 ? 1.25 : 0.625,
+          estimated_diameter_max: generation === 0 ? 5.0 : generation === 1 ? 2.5 : 1.25
+        }
+      },
+      is_potentially_hazardous_asteroid: true,
+      close_approach_data: [{
+        relative_velocity: {
+          kilometers_per_second: "15.5",
+          kilometers_per_hour: "55800",
+          miles_per_hour: "34670"
+        },
+        miss_distance: {
+          kilometers: "7500000",
+          miles: "4660000"
+        },
+        close_approach_date: "2025-12-21"
+      }],
+      absolute_magnitude_h: 18.5
+    };
+
+    // Calculate size based on generation (50% reduction per split) - made main boss bigger
+    const baseRadius = generation === 0 ? 3.0 : generation === 1 ? 1.5 : 0.75;
+    
+    const geometry = new THREE.IcosahedronGeometry(baseRadius, 2);
+    
+    // More dramatic irregular shape for boss
+    const geometryPositions = geometry.attributes.position.array;
+    for (let i = 0; i < geometryPositions.length; i += 3) {
+      const vertex = new THREE.Vector3(geometryPositions[i], geometryPositions[i + 1], geometryPositions[i + 2]);
+      vertex.multiplyScalar(0.7 + Math.random() * 0.6); // More irregular
+      geometryPositions[i] = vertex.x;
+      geometryPositions[i + 1] = vertex.y;
+      geometryPositions[i + 2] = vertex.z;
+    }
+    geometry.attributes.position.needsUpdate = true;
+    geometry.computeVertexNormals();
+
+    // Special dark red material for impactor
+    const material = new THREE.MeshPhongMaterial({
+      color: generation === 0 ? 0x8B0000 : generation === 1 ? 0xFF4500 : 0xFF6347, // Dark red to orange
+      shininess: 100,
+      emissive: generation === 0 ? 0x440000 : generation === 1 ? 0x331100 : 0x220800,
+      emissiveIntensity: 0.4
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Larger collision sphere for easier targeting
+    const collisionGeometry = new THREE.SphereGeometry(baseRadius * 1.8, 8, 8);
+    const collisionMaterial = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      visible: false
+    });
+    const collisionMesh = new THREE.Mesh(collisionGeometry, collisionMaterial);
+    mesh.add(collisionMesh);
+    (mesh as unknown as AsteroidMesh).collisionMesh = collisionMesh;
+    
+    // Spawn farther out and move slower for boss
+    const angle = Math.random() * Math.PI * 2;
+    const distance = generation === 0 ? 60 : generation === 1 ? 45 : 35; // Farther for main boss
+    
+    mesh.position.set(
+      Math.cos(angle) * distance,
+      (Math.random() - 0.5) * 8,
+      Math.sin(angle) * distance
+    );
+
+    // Slower movement for boss (especially main boss)
+    const speedMultiplier = generation === 0 ? 0.0003 : generation === 1 ? 0.0004 : 0.0005;
+    const velocity = new THREE.Vector3(
+      -mesh.position.x * speedMultiplier + (Math.random() - 0.5) * 0.0001,
+      -mesh.position.y * speedMultiplier + (Math.random() - 0.5) * 0.0001,
+      -mesh.position.z * speedMultiplier + (Math.random() - 0.5) * 0.0001
+    );
+
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    sceneRef.current.add(mesh);
+
+    // Determine hit requirements based on generation
+    let maxHits: number;
+    switch (generation) {
+      case 0: maxHits = 3; break;  // Main boss: 3 hits
+      case 1: maxHits = 2; break;  // First split: 2 hits each
+      case 2: maxHits = 1; break;  // Final split: 1 hit each
+      default: maxHits = 1; break;
+    }
+
+    const asteroid: GameAsteroid = {
+      id: impactorData.id,
+      mesh,
+      velocity,
+      isHazardous: true,
+      data: impactorData,
+      destroyed: false,
+      isImpactor2025: true,
+      hitCount: 0,
+      maxHits,
+      splitGeneration: generation
+    };
+
+    // Enhanced trail system for boss
+    const particleCount = generation === 0 ? 300 : generation === 1 ? 200 : 100;
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const sizes = new Float32Array(particleCount);
+    const velocities = new Float32Array(particleCount * 3);
+    const ages = new Float32Array(particleCount);
+
+    for (let i = 0; i < particleCount; i++) {
+      positions[i * 3] = mesh.position.x;
+      positions[i * 3 + 1] = mesh.position.y;
+      positions[i * 3 + 2] = mesh.position.z;
+
+      // More intense fire colors for boss
+      const fireIntensity = Math.random();
+      if (fireIntensity < 0.8) {
+        colors[i * 3] = 1.0;
+        colors[i * 3 + 1] = 0.2 + Math.random() * 0.6;
+        colors[i * 3 + 2] = 0.0;
+      } else {
+        colors[i * 3] = 1.0;
+        colors[i * 3 + 1] = 1.0;
+        colors[i * 3 + 2] = 0.8 + Math.random() * 0.2; // White-hot flames
+      }
+
+      sizes[i] = 0.5 + Math.random() * 3.0;
+      velocities[i * 3] = (Math.random() - 0.5) * 0.03;
+      velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.03;
+      velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.03;
+      ages[i] = Math.random();
+    }
+
+    const particleGeometry = new THREE.BufferGeometry();
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const particleMaterial = new THREE.PointsMaterial({
+      size: 2.0,
+      sizeAttenuation: true,
+      vertexColors: true,
+      transparent: true,
+      opacity: 1.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true
+    });
+
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    sceneRef.current.add(particles);
+
+    // Enhanced aura for boss
+    const auraGeometry = new THREE.SphereGeometry(baseRadius * 3.5, 16, 16);
+    const auraMaterial = new THREE.MeshBasicMaterial({
+      color: generation === 0 ? 0xff0000 : generation === 1 ? 0xff6600 : 0xffaa00,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true
+    });
+    const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+    aura.position.copy(mesh.position);
+    mesh.add(aura);
+
+    asteroid.trailSystem = {
+      particles,
+      positions,
+      colors,
+      sizes,
+      velocities,
+      ages,
+      particleCount,
+      currentIndex: 0,
+      aura
+    };
+
+    return asteroid;
+  }, []);
+
   const createImpactExplosion = useCallback((position: THREE.Vector3, isHazardous: boolean = true) => {
     if (!sceneRef.current) return;
 
@@ -992,6 +1192,43 @@ export const AsteroidDefenseGame3D = () => {
     animateExplosion();
   }, []);
 
+  // Function to split impactor-2025 asteroids
+  const splitImpactor2025 = useCallback((parentAsteroid: GameAsteroid) => {
+    if (!parentAsteroid.isImpactor2025 || parentAsteroid.splitGeneration === undefined) return;
+
+    const generation = parentAsteroid.splitGeneration + 1;
+    
+    // Don't split beyond generation 2
+    if (generation > 2) return;
+
+    // Determine number of splits
+    const splitCount = generation === 1 ? 2 : 4; // 1 split into 2, then each splits into 4
+    
+    console.log(`💥 Splitting Impactor-2025 generation ${parentAsteroid.splitGeneration} into ${splitCount} fragments`);
+
+    for (let i = 0; i < splitCount; i++) {
+      const fragment = createImpactor2025(generation);
+      if (fragment) {
+        // Position fragments around the parent's position
+        const angle = (i / splitCount) * Math.PI * 2;
+        const offset = generation === 1 ? 3 : 1.5; // Larger spread for first split
+        
+        fragment.mesh.position.copy(parentAsteroid.mesh.position);
+        fragment.mesh.position.x += Math.cos(angle) * offset;
+        fragment.mesh.position.z += Math.sin(angle) * offset;
+        
+        // Give fragments slightly different velocities
+        const velocityMultiplier = 1.2; // Slightly faster than parent
+        fragment.velocity.multiplyScalar(velocityMultiplier);
+        fragment.velocity.x += Math.cos(angle) * 0.0002;
+        fragment.velocity.z += Math.sin(angle) * 0.0002;
+        
+        asteroidsRef.current.push(fragment);
+        console.log(`✅ Created fragment ${i + 1}/${splitCount} at generation ${generation}`);
+      }
+    }
+  }, [createImpactor2025]);
+
   const createLaser = useCallback((startPos: THREE.Vector3, targetAsteroid: GameAsteroid) => {
     if (!sceneRef.current) return null;
 
@@ -1049,77 +1286,175 @@ export const AsteroidDefenseGame3D = () => {
       if (laser.progress >= 1.0) {
         // Laser hit the asteroid
         if (!laser.targetAsteroid.destroyed) {
-          // Destroy the asteroid
-          laser.targetAsteroid.destroyed = true;
           
-          // Set impacting flag for hazardous asteroids to freeze their trail
-          if (laser.targetAsteroid.isHazardous) {
-            laser.targetAsteroid.impacting = true;
-          }
-          
-          // Update score immediately
-          const points = laser.targetAsteroid.isHazardous ? 150 : 75;
-          setScore(prev => prev + points);
-          setAsteroidsDestroyed(prev => prev + 1);
-          
-          // Create explosion effect at asteroid position
-          const explosionGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-          const explosionMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xff6600,
-            transparent: true,
-            opacity: 0.8
-          });
-          const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
-          explosion.position.copy(laser.targetAsteroid.mesh.position);
-          if (sceneRef.current) {
-            sceneRef.current.add(explosion);
-          }
-
-          // Animate explosion
-          let explosionScale = 1;
-          const explosionDuration = laser.targetAsteroid.isHazardous ? 1500 : 500; // Faster: reduced from 3000/1000ms
-          const startTime = Date.now();
-          
-          const animateExplosion = () => {
-            const elapsed = Date.now() - startTime;
-            const progress = elapsed / explosionDuration;
+          // Special handling for impactor-2025 boss asteroids
+          if (laser.targetAsteroid.isImpactor2025) {
+            laser.targetAsteroid.hitCount = (laser.targetAsteroid.hitCount || 0) + 1;
+            console.log(`🎯 Impactor-2025 hit ${laser.targetAsteroid.hitCount}/${laser.targetAsteroid.maxHits} times`);
             
-            explosionScale += 0.1;
-            explosion.scale.setScalar(explosionScale);
-            explosion.material.opacity = Math.max(0, 0.8 * (1 - progress));
-            
-            if (progress < 1) {
-              requestAnimationFrame(animateExplosion);
-            } else {
+            // Check if asteroid should be destroyed or split
+            if (laser.targetAsteroid.hitCount >= laser.targetAsteroid.maxHits!) {
+              // Destroy the asteroid
+              laser.targetAsteroid.destroyed = true;
+              
+              // Set impacting flag to freeze trail
+              laser.targetAsteroid.impacting = true;
+              
+              // Update score with boss points
+              const bossPoints = laser.targetAsteroid.splitGeneration === 0 ? 1000 : 
+                               laser.targetAsteroid.splitGeneration === 1 ? 500 : 250;
+              setScore(prev => prev + bossPoints);
+              setAsteroidsDestroyed(prev => prev + 1);
+              
+              // Create enhanced explosion effect
+              const explosionSize = laser.targetAsteroid.splitGeneration === 0 ? 1.5 : 
+                                   laser.targetAsteroid.splitGeneration === 1 ? 1.0 : 0.5;
+              const explosionGeometry = new THREE.SphereGeometry(explosionSize, 16, 16);
+              const explosionMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff0000,
+                transparent: true,
+                opacity: 0.9
+              });
+              const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+              explosion.position.copy(laser.targetAsteroid.mesh.position);
               if (sceneRef.current) {
-                sceneRef.current.remove(explosion);
+                sceneRef.current.add(explosion);
+              }
+
+              // Split the asteroid if not final generation
+              if (laser.targetAsteroid.splitGeneration !== undefined && laser.targetAsteroid.splitGeneration < 2) {
+                setTimeout(() => {
+                  splitImpactor2025(laser.targetAsteroid);
+                }, 1000); // Delay splitting for dramatic effect
+              }
+
+              // Animate explosion
+              let explosionScale = 1;
+              const explosionDuration = 2000; // Longer explosion for boss
+              const startTime = Date.now();
+              
+              const animateExplosion = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = elapsed / explosionDuration;
+                
+                explosionScale += 0.05;
+                explosion.scale.setScalar(explosionScale);
+                explosion.material.opacity = Math.max(0, 0.9 * (1 - progress));
+                
+                if (progress < 1) {
+                  requestAnimationFrame(animateExplosion);
+                } else {
+                  if (sceneRef.current) {
+                    sceneRef.current.remove(explosion);
+                  }
+                }
+              };
+              animateExplosion();
+              
+              // Only pause for the main boss (generation 0) and first split (generation 1)
+              if (laser.targetAsteroid.splitGeneration !== undefined && laser.targetAsteroid.splitGeneration <= 1) {
+                setTimeout(() => {
+                  setSelectedAsteroid(laser.targetAsteroid.data);
+                  setGamePaused(true);
+                }, explosionDuration + 200);
+              }
+            } else {
+              // Hit but not destroyed - create smaller hit effect
+              const hitGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+              const hitMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffff00,
+                transparent: true,
+                opacity: 0.8
+              });
+              const hitEffect = new THREE.Mesh(hitGeometry, hitMaterial);
+              hitEffect.position.copy(laser.targetAsteroid.mesh.position);
+              if (sceneRef.current) {
+                sceneRef.current.add(hitEffect);
+                
+                // Quick hit flash
+                setTimeout(() => {
+                  if (sceneRef.current) {
+                    sceneRef.current.remove(hitEffect);
+                  }
+                }, 200);
               }
               
-              // Clean up trail for hazardous asteroids when explosion ends
-              if (laser.targetAsteroid.isHazardous && laser.targetAsteroid.trailSystem && sceneRef.current) {
-                sceneRef.current.remove(laser.targetAsteroid.trailSystem.particles);
-                laser.targetAsteroid.trailSystem.particles.geometry.dispose();
-                if (laser.targetAsteroid.trailSystem.particles.material instanceof THREE.Material) {
-                  laser.targetAsteroid.trailSystem.particles.material.dispose();
+              // Small score for hitting boss
+              setScore(prev => prev + 50);
+            }
+          } else {
+            // Regular asteroid handling
+            laser.targetAsteroid.destroyed = true;
+            
+            // Set impacting flag for hazardous asteroids to freeze their trail
+            if (laser.targetAsteroid.isHazardous) {
+              laser.targetAsteroid.impacting = true;
+            }
+            
+            // Update score immediately
+            const points = laser.targetAsteroid.isHazardous ? 150 : 75;
+            setScore(prev => prev + points);
+            setAsteroidsDestroyed(prev => prev + 1);
+            
+            // Create explosion effect at asteroid position
+            const explosionGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const explosionMaterial = new THREE.MeshBasicMaterial({ 
+              color: 0xff6600,
+              transparent: true,
+              opacity: 0.8
+            });
+            const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+            explosion.position.copy(laser.targetAsteroid.mesh.position);
+            if (sceneRef.current) {
+              sceneRef.current.add(explosion);
+            }
+
+            // Animate explosion
+            let explosionScale = 1;
+            const explosionDuration = laser.targetAsteroid.isHazardous ? 1500 : 500;
+            const startTime = Date.now();
+            
+            const animateExplosion = () => {
+              const elapsed = Date.now() - startTime;
+              const progress = elapsed / explosionDuration;
+              
+              explosionScale += 0.1;
+              explosion.scale.setScalar(explosionScale);
+              explosion.material.opacity = Math.max(0, 0.8 * (1 - progress));
+              
+              if (progress < 1) {
+                requestAnimationFrame(animateExplosion);
+              } else {
+                if (sceneRef.current) {
+                  sceneRef.current.remove(explosion);
                 }
-                // Clean up trail line
-                if (laser.targetAsteroid.trailSystem.trailLine) {
-                  sceneRef.current.remove(laser.targetAsteroid.trailSystem.trailLine);
-                  laser.targetAsteroid.trailSystem.trailLine.geometry.dispose();
-                  if (laser.targetAsteroid.trailSystem.trailLine.material instanceof THREE.Material) {
-                    laser.targetAsteroid.trailSystem.trailLine.material.dispose();
+                
+                // Clean up trail for hazardous asteroids when explosion ends
+                if (laser.targetAsteroid.isHazardous && laser.targetAsteroid.trailSystem && sceneRef.current) {
+                  sceneRef.current.remove(laser.targetAsteroid.trailSystem.particles);
+                  laser.targetAsteroid.trailSystem.particles.geometry.dispose();
+                  if (laser.targetAsteroid.trailSystem.particles.material instanceof THREE.Material) {
+                    laser.targetAsteroid.trailSystem.particles.material.dispose();
+                  }
+                  // Clean up trail line
+                  if (laser.targetAsteroid.trailSystem.trailLine) {
+                    sceneRef.current.remove(laser.targetAsteroid.trailSystem.trailLine);
+                    laser.targetAsteroid.trailSystem.trailLine.geometry.dispose();
+                    if (laser.targetAsteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+                      laser.targetAsteroid.trailSystem.trailLine.material.dispose();
+                    }
                   }
                 }
               }
-            }
-          };
-          animateExplosion();
-          
-          // Delay setting selected asteroid and pausing game until after explosion completes
-          setTimeout(() => {
-            setSelectedAsteroid(laser.targetAsteroid.data);
-            setGamePaused(true);
-          }, explosionDuration + 200); // Shorter delay: reduced buffer from 500ms to 200ms
+            };
+            animateExplosion();
+            
+            // Delay setting selected asteroid and pausing game until after explosion completes
+            setTimeout(() => {
+              setSelectedAsteroid(laser.targetAsteroid.data);
+              setGamePaused(true);
+            }, explosionDuration + 200);
+          }
         }
         
         // Remove laser
@@ -1135,15 +1470,29 @@ export const AsteroidDefenseGame3D = () => {
       
       return true;
     });
-  }, [setSelectedAsteroid, setGamePaused, setScore, setAsteroidsDestroyed]);
+  }, [setSelectedAsteroid, setGamePaused, setScore, setAsteroidsDestroyed, splitImpactor2025]);
 
   const spawnWave = useCallback(() => {
+    console.log('🚀 SPAWNING ASTEROIDS for wave', wave, '- Available asteroids:', asteroidData.length);
+    
+    // Special handling for wave 6 - final boss wave
+    if (wave === 6) {
+      console.log('🔴 FINAL BOSS WAVE - Spawning Impactor-2025');
+      const bossAsteroid = createImpactor2025(0);
+      if (bossAsteroid) {
+        asteroidsRef.current.push(bossAsteroid);
+        setBossSpawned(true); // Track that boss has been spawned
+        console.log('✅ Successfully spawned Impactor-2025 boss asteroid');
+      } else {
+        console.log('❌ Failed to create Impactor-2025');
+      }
+      return;
+    }
+
     if (asteroidData.length === 0) {
       console.log('No asteroid data available for spawning');
       return;
     }
-
-    console.log('🚀 SPAWNING ASTEROIDS for wave', wave, '- Available asteroids:', asteroidData.length);
     
     // Progressive difficulty: more asteroids as waves increase
     let asteroidsToSpawn;
@@ -1152,7 +1501,7 @@ export const AsteroidDefenseGame3D = () => {
     } else if (wave <= 5) {
       asteroidsToSpawn = 2; // Waves 3-5: 2 asteroids
     } else if (wave <= 10) {
-      asteroidsToSpawn = 3; // Waves 6-10: 3 asteroids
+      asteroidsToSpawn = 3; // Waves 7-10: 3 asteroids (wave 6 is boss)
     } else if (wave <= 15) {
       asteroidsToSpawn = 4; // Waves 11-15: 4 asteroids
     } else {
@@ -1183,7 +1532,7 @@ export const AsteroidDefenseGame3D = () => {
         }
       }, i * 500); // 500ms delay between each asteroid spawn
     }
-  }, [asteroidData, createAsteroid, wave]);
+  }, [asteroidData, createAsteroid, createImpactor2025, wave, setBossSpawned]);
 
   const handleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
     console.log('🎯 CLICK EVENT TRIGGERED');
@@ -1456,15 +1805,18 @@ export const AsteroidDefenseGame3D = () => {
 
     rendererRef.current.render(sceneRef.current, cameraRef.current);
     
-    if (gameStarted && !gameOver) {
+    if (gameStarted && !gameOver && !gameVictory) {
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     }
-  }, [gameStarted, gameOver, gamePaused, createImpactExplosion, updateAsteroidTrail, updateLasers]);
+  }, [gameStarted, gameOver, gameVictory, gamePaused, createImpactExplosion, updateAsteroidTrail, updateLasers]);
 
   const startGame = () => {
     console.log('Starting game...');
     setGameStarted(true);
     setGameOver(false);
+    setGameVictory(false);
+    setShowBossCutscene(false);
+    setBossSpawned(false);
     setScore(0);
     setWave(1);
     setAsteroidsDestroyed(0);
@@ -1501,9 +1853,22 @@ export const AsteroidDefenseGame3D = () => {
     setSelectedAsteroid(null); // Clear selected asteroid when continuing
   };
 
+  const continueToBoss = () => {
+    console.log('🚀 Continuing to boss wave 6');
+    setShowBossCutscene(false);
+    setWave(6);
+    // Clear any existing asteroids to ensure clean boss fight
+    asteroidsRef.current = [];
+    // Force spawn the boss after a brief delay
+    setTimeout(() => {
+      console.log('⚡ Manually spawning boss for wave 6');
+      spawnWave();
+    }, 500);
+  };
+
   // Game loop
   useEffect(() => {
-    if (gameStarted && !gameOver) {
+    if (gameStarted && !gameOver && !gameVictory) {
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     }
 
@@ -1512,18 +1877,39 @@ export const AsteroidDefenseGame3D = () => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [gameStarted, gameOver, gameLoop]);
+  }, [gameStarted, gameOver, gameVictory, gameLoop]);
 
   // Spawn new waves with longer delays
   useEffect(() => {
     const activeAsteroids = asteroidsRef.current.filter(a => !a.destroyed);
-    console.log('Wave check - Active asteroids:', activeAsteroids.length, 'Destroyed:', asteroidsDestroyed, 'Game started:', gameStarted, 'Game over:', gameOver, 'Game paused:', gamePaused, 'Current wave:', wave);
+    console.log('Wave check - Active asteroids:', activeAsteroids.length, 'Destroyed:', asteroidsDestroyed, 'Game started:', gameStarted, 'Game over:', gameOver, 'Game paused:', gamePaused, 'Current wave:', wave, 'Cutscene:', showBossCutscene);
+    
+    // Don't check wave progression during cutscene
+    if (showBossCutscene) {
+      console.log('⏸️ Skipping wave progression - cutscene is showing');
+      return;
+    }
     
     // Spawn a new wave if:
     // 1. Game is started and not over/paused
     // 2. No active asteroids remaining 
     // 3. Wave number is reasonable (not stuck)
-    if (gameStarted && !gameOver && !gamePaused && activeAsteroids.length === 0) {
+    // 4. Not showing cutscene
+    if (gameStarted && !gameOver && !gameVictory && !gamePaused && activeAsteroids.length === 0) {
+      // Check for victory condition after wave 6 (boss defeated)
+      if (wave === 6 && bossSpawned) {
+        console.log('🎉 VICTORY! Impactor-2025 and all fragments defeated!');
+        setGameVictory(true);
+        return;
+      }
+      
+      // Show cutscene before wave 6 (final boss)
+      if (wave === 5) {
+        console.log('📽️ Showing boss cutscene after wave 5');
+        setShowBossCutscene(true);
+        return;
+      }
+      
       console.log('Conditions met for new wave - Starting wave timer for wave', wave + 1);
       const timer = setTimeout(() => {
         console.log('Timer fired - Spawning new wave', wave + 1);
@@ -1552,11 +1938,11 @@ export const AsteroidDefenseGame3D = () => {
         wave
       });
     }
-  }, [gameStarted, gameOver, gamePaused, asteroidsDestroyed, spawnWave, wave]);
+  }, [gameStarted, gameOver, gameVictory, gamePaused, asteroidsDestroyed, spawnWave, wave, showBossCutscene, bossSpawned]);
 
   // Backup wave spawning mechanism - ensures game continues
   useEffect(() => {
-    if (!gameStarted || gameOver || gamePaused) return;
+    if (!gameStarted || gameOver || gameVictory || gamePaused) return;
     
     const interval = setInterval(() => {
       const activeAsteroids = asteroidsRef.current.filter(a => !a.destroyed);
@@ -1571,7 +1957,7 @@ export const AsteroidDefenseGame3D = () => {
     }, 5000); // Check every 5 seconds
 
     return () => clearInterval(interval);
-  }, [gameStarted, gameOver, gamePaused, spawnWave, wave]);
+  }, [gameStarted, gameOver, gameVictory, gamePaused, spawnWave, wave]);
 
   return (
     <div className="flex h-screen bg-black overflow-hidden">
@@ -1670,6 +2056,63 @@ export const AsteroidDefenseGame3D = () => {
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded text-lg"
               >
                 Play Again
+              </button>
+            </div>
+          </div>
+        )}
+
+        {gameVictory && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-95 z-20">
+            <div className="text-center text-white">
+              {/* Victory celebration */}
+              <div className="mb-6">
+                <div className="text-8xl mb-4">🌍✨</div>
+                <div className="text-6xl mb-4">🎉</div>
+              </div>
+              
+              <h1 className="text-5xl font-bold mb-4 text-green-400">YOU SAVED THE EARTH!</h1>
+              <p className="text-2xl mb-4 text-yellow-300">Impactor-2025 Destroyed!</p>
+              <p className="text-xl mb-2">You successfully defeated the massive asteroid</p>
+              <p className="text-xl mb-2">and all its deadly fragments!</p>
+              <p className="text-lg mb-2 text-blue-300">Final Score: {score}</p>
+              <p className="text-lg mb-2 text-blue-300">Waves Completed: {wave}</p>
+              <p className="text-lg mb-6 text-blue-300">Asteroids Destroyed: {asteroidsDestroyed}</p>
+              <p className="text-lg mb-6 text-green-300">🏆 EARTH DEFENDER CHAMPION 🏆</p>
+              <button
+                onClick={startGame}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded text-lg"
+              >
+                Play Again
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showBossCutscene && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-95 z-20">
+            <div className="text-center text-white">
+              {/* Warning visuals */}
+              <div className="mb-6">
+                <div className="text-8xl mb-4 animate-pulse">⚠️</div>
+                <div className="text-6xl mb-4 text-red-500">💀</div>
+                <div className="text-8xl mb-4">☄️</div>
+              </div>
+              
+              <h1 className="text-4xl font-bold mb-4 text-red-400 animate-pulse">INCOMING THREAT DETECTED</h1>
+              <p className="text-2xl mb-4 text-yellow-300">MASSIVE ASTEROID APPROACHING</p>
+              <p className="text-xl mb-2">Scientists have detected Impactor-2025,</p>
+              <p className="text-xl mb-2">a massive asteroid on a collision course with Earth!</p>
+              <p className="text-lg mb-4 text-orange-300">This is our final battle...</p>
+              <p className="text-md mb-6 text-gray-300">
+                ⚠️ Warning: This asteroid requires multiple hits to destroy<br/>
+                🔴 It will split into smaller but deadly fragments<br/>
+                🌍 The fate of Earth depends on you!
+              </p>
+              <button
+                onClick={continueToBoss}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded text-xl animate-pulse"
+              >
+                ENGAGE FINAL BATTLE
               </button>
             </div>
           </div>
