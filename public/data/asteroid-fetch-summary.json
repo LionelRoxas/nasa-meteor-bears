@@ -1,0 +1,160 @@
+{
+  "last_updated": "2025-10-05T01:54:08.997Z",
+  "unique_asteroids": 1976,
+  "hazardous_asteroids": 75,
+  "approach_events": 2040,
+  "largest_asteroid": {
+    "id": "2000887",
+    "name": "887 Alinda (A918 AA)",
+    "nasa_jpl_url": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2000887",
+    "absolute_magnitude_h": 13.81,
+    "diameter_meters": 7439.48062159795,
+    "diameter_km": 7.43948062159795,
+    "is_hazardous": false,
+    "is_sentry_object": false,
+    "orbital_data": null,
+    "latest_approach": {
+      "date": "2025-01-08",
+      "velocity_km_s": 8.2486989067,
+      "distance_km": 12296605.087478507
+    },
+    "total_approaches": 1
+  },
+  "most_hazardous": {
+    "id": "54016489",
+    "name": "(2020 GA2)",
+    "nasa_jpl_url": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=54016489",
+    "absolute_magnitude_h": 21.14,
+    "diameter_meters": 254.41494355654999,
+    "diameter_km": 0.25441494355655,
+    "is_hazardous": true,
+    "is_sentry_object": false,
+    "orbital_data": null,
+    "latest_approach": {
+      "date": "2025-10-07",
+      "velocity_km_s": 30.0366565688,
+      "distance_km": 44561001.638214916
+    },
+    "total_approaches": 1
+  },
+  "closest_approach": {
+    "id": "54549695",
+    "name": "(2025 TF)",
+    "nasa_jpl_url": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=54549695",
+    "absolute_magnitude_h": 31.702,
+    "diameter_meters": 1.9640051256,
+    "diameter_km": 0.0019640051256,
+    "is_hazardous": false,
+    "is_sentry_object": false,
+    "orbital_data": null,
+    "latest_approach": {
+      "date": "2025-10-01",
+      "velocity_km_s": 20.8761143007,
+      "distance_km": 6780.463618602
+    },
+    "total_approaches": 1
+  },
+  "fetch_stats": {
+    "totalApiCalls": 19,
+    "totalAsteroidsFound": 1976,
+    "duplicatesSkipped": 64,
+    "dateRangesFetched": [
+      {
+        "start": "2025-10-05",
+        "end": "2025-10-12",
+        "description": "Current week"
+      },
+      {
+        "start": "2025-09-28",
+        "end": "2025-10-04",
+        "description": "Past week 1"
+      },
+      {
+        "start": "2025-09-21",
+        "end": "2025-09-27",
+        "description": "Past week 2"
+      },
+      {
+        "start": "2025-09-14",
+        "end": "2025-09-20",
+        "description": "Past week 3"
+      },
+      {
+        "start": "2025-09-07",
+        "end": "2025-09-13",
+        "description": "Past week 4"
+      },
+      {
+        "start": "2025-10-13",
+        "end": "2025-10-19",
+        "description": "Future week 1"
+      },
+      {
+        "start": "2025-10-20",
+        "end": "2025-10-26",
+        "description": "Future week 2"
+      },
+      {
+        "start": "2025-10-27",
+        "end": "2025-11-02",
+        "description": "Future week 3"
+      },
+      {
+        "start": "2025-11-03",
+        "end": "2025-11-09",
+        "description": "Future week 4"
+      },
+      {
+        "start": "2025-08-06",
+        "end": "2025-08-12",
+        "description": "Historical week 1"
+      },
+      {
+        "start": "2025-07-07",
+        "end": "2025-07-13",
+        "description": "Historical week 2"
+      },
+      {
+        "start": "2025-06-07",
+        "end": "2025-06-13",
+        "description": "Historical week 3"
+      },
+      {
+        "start": "2025-05-08",
+        "end": "2025-05-14",
+        "description": "Historical week 4"
+      },
+      {
+        "start": "2025-04-08",
+        "end": "2025-04-14",
+        "description": "Historical week 5"
+      },
+      {
+        "start": "2025-03-09",
+        "end": "2025-03-15",
+        "description": "Historical week 6"
+      },
+      {
+        "start": "2025-02-07",
+        "end": "2025-02-13",
+        "description": "Historical week 7"
+      },
+      {
+        "start": "2025-01-08",
+        "end": "2025-01-14",
+        "description": "Historical week 8"
+      },
+      {
+        "start": "2024-12-09",
+        "end": "2024-12-15",
+        "description": "Historical week 9"
+      },
+      {
+        "start": "2024-11-09",
+        "end": "2024-11-15",
+        "description": "Historical week 10"
+      }
+    ],
+    "startTime": 1759629199293
+  }
+}

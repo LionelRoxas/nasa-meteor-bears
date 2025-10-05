@@ -1,0 +1,46 @@
+{
+  "last_updated": "2025-10-05T01:33:32.761Z",
+  "earthquakes_today": 213,
+  "earthquakes_this_week": 1992,
+  "significant_events": 10,
+  "largest_this_week": {
+    "id": "us6000rdrz",
+    "magnitude": 6.9,
+    "location": "10 km E of Bateria, Philippines",
+    "time": "2025-09-30T13:59:43.322Z",
+    "coordinates": {
+      "longitude": 124.1266,
+      "latitude": 11.1357,
+      "depth": 10
+    },
+    "tsunami_warning": true,
+    "felt_reports": 594,
+    "damage_alert": "orange",
+    "significance": 1541,
+    "magnitude_type": "mww",
+    "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000rdrz",
+    "detail_url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/us6000rdrz.geojson",
+    "energy_joules": 1412537544622761.2,
+    "energy_mt": 0.3376045756746561
+  },
+  "largest_historical": {
+    "id": "official20041226005853450_30",
+    "magnitude": 9.1,
+    "location": "2004 Sumatra - Andaman Islands Earthquake",
+    "time": "2004-12-26T00:58:53.450Z",
+    "coordinates": {
+      "longitude": 95.982,
+      "latitude": 3.295,
+      "depth": 30
+    },
+    "tsunami_warning": false,
+    "felt_reports": 4,
+    "damage_alert": "none",
+    "significance": 1278,
+    "magnitude_type": "mw",
+    "url": "https://earthquake.usgs.gov/earthquakes/eventpage/official20041226005853450_30",
+    "detail_url": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=official20041226005853450_30&format=geojson",
+    "energy_joules": 2818382931264449000,
+    "energy_mt": 673.6096872046962
+  }
+}
