@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/page.tsx
 "use client";
 
@@ -140,10 +139,14 @@ export default function Home() {
               setImpactLocation({ lat, lng });
               console.log(
                 "📍 Impact location set to:",
-                `${lat.toFixed(2)}°, ${lng.toFixed(2)}° (${prediction.impact_location.type || "unknown"})`
+                `${lat.toFixed(2)}°, ${lng.toFixed(2)}° (${
+                  prediction.impact_location.type || "unknown"
+                })`
               );
             } else {
-              console.warn("⚠️ No impact_location in prediction, using default (0, 0)");
+              console.warn(
+                "⚠️ No impact_location in prediction, using default (0, 0)"
+              );
             }
           }
         } catch (error) {
@@ -604,47 +607,7 @@ export default function Home() {
                 className="absolute bottom-0 left-0 flex items-end h-auto pointer-events-auto"
                 style={{ zIndex: 45 }}
               >
-                <div className="bg-black/80 backdrop-blur-lg rounded-xl px-6 py-4 border border-white/20 mb-8 ml-8 shadow-2xl">
-                  <h3 className="text-lg font-bold text-white mb-2">
-                    Impact Analysis
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4 text-base">
-                    <div>
-                      <span className="text-white/60">Energy:</span>
-                      <span className="text-white ml-2">
-                        {impactData.energy.toFixed(2)} MT
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-white/60">Crater:</span>
-                      <span className="text-white ml-2">
-                        {impactData.crater.toFixed(1)} km
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-white/60">Radius:</span>
-                      <span className="text-white ml-2">
-                        {impactData.radius.toFixed(0)} km
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-white/60">Threat:</span>
-                      <span
-                        className={`ml-2 font-bold ${
-                          impactData.threatLevel === "GLOBAL"
-                            ? "text-red-500"
-                            : impactData.threatLevel === "REGIONAL"
-                            ? "text-orange-500"
-                            : impactData.threatLevel === "LOCAL"
-                            ? "text-yellow-500"
-                            : "text-green-500"
-                        }`}
-                      >
-                        {impactData.threatLevel}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                
               </div>
             )}
           </div>
