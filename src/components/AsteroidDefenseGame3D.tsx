@@ -231,6 +231,7 @@ export const AsteroidDefenseGame3D = () => {
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
   const mouseRef = useRef<THREE.Vector2 | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const activeTimersRef = useRef<NodeJS.Timeout[]>([]);
 
   const [selectedAsteroid, setSelectedAsteroid] = useState<AsteroidData | null>(null);
   const [score, setScore] = useState(0);
@@ -1316,6 +1317,16 @@ export const AsteroidDefenseGame3D = () => {
                 }
               }
               
+              // Remove impactor mesh from scene immediately
+              if (sceneRef.current) {
+                console.log('🧹 Removing impactor mesh from scene');
+                sceneRef.current.remove(laser.targetAsteroid.mesh);
+                laser.targetAsteroid.mesh.geometry.dispose();
+                if (laser.targetAsteroid.mesh.material instanceof THREE.Material) {
+                  laser.targetAsteroid.mesh.material.dispose();
+                }
+              }
+              
               // Increment impactor parts destroyed counter
               setImpactorPartsDestroyed(prev => {
                 const newCount = prev + 1;
@@ -1324,7 +1335,8 @@ export const AsteroidDefenseGame3D = () => {
                 // Check for immediate victory if all 6 parts destroyed
                 if (newCount >= 6) {
                   console.log('🎉 ALL IMPACTOR PARTS DESTROYED - TRIGGERING VICTORY!');
-                  setTimeout(() => setGameVictory(true), 1000); // Delay for explosion effect
+                  const victoryTimer = setTimeout(() => setGameVictory(true), 1000); // Delay for explosion effect
+                  activeTimersRef.current.push(victoryTimer);
                 }
                 
                 return newCount;
@@ -1384,8 +1396,8 @@ export const AsteroidDefenseGame3D = () => {
               };
               animateExplosion();
               
-              // Only pause for the main boss (generation 0) and first split (generation 1)
-              if (laser.targetAsteroid.splitGeneration !== undefined && laser.targetAsteroid.splitGeneration <= 1) {
+              // Only pause for the main boss (generation 0) - the initial impactor
+              if (laser.targetAsteroid.splitGeneration !== undefined && laser.targetAsteroid.splitGeneration === 0) {
                 setTimeout(() => {
                   setSelectedAsteroid(laser.targetAsteroid.data);
                   setGamePaused(true);
@@ -1505,13 +1517,14 @@ export const AsteroidDefenseGame3D = () => {
     });
   }, [setSelectedAsteroid, setGamePaused, setScore, setAsteroidsDestroyed, splitImpactor2025, setImpactorPartsDestroyed]);
 
-  const spawnWave = useCallback(() => {
-    console.log('🚀 SPAWNING ASTEROIDS for wave', wave, '- Available asteroids:', asteroidData.length);
+  const spawnWave = useCallback((forceWave?: number) => {
+    const currentWave = forceWave !== undefined ? forceWave : wave;
+    console.log('🚀 SPAWNING ASTEROIDS for wave', currentWave, '(forced:', forceWave, ') - Available asteroids:', asteroidData.length);
     
     // ABSOLUTE PROTECTION: Only boss for wave 6+
-    if (wave >= 6) {
+    if (currentWave >= 6) {
       console.log('🔴 WAVE 6+ DETECTED - Only boss spawning allowed');
-      if (wave === 6) {
+      if (currentWave === 6) {
         console.log('🔴 FINAL BOSS WAVE - Spawning Impactor-2025');
         const bossAsteroid = createImpactor2025(0);
         if (bossAsteroid) {
@@ -1532,19 +1545,19 @@ export const AsteroidDefenseGame3D = () => {
     
     // Progressive difficulty: more asteroids as waves increase
     let asteroidsToSpawn;
-    if (wave <= 2) {
+    if (currentWave <= 2) {
       asteroidsToSpawn = 1; // Start easy with 1 asteroid
-    } else if (wave <= 5) {
+    } else if (currentWave <= 5) {
       asteroidsToSpawn = 2; // Waves 3-5: 2 asteroids
-    } else if (wave <= 10) {
+    } else if (currentWave <= 10) {
       asteroidsToSpawn = 3; // Waves 7-10: 3 asteroids (wave 6 is boss)
-    } else if (wave <= 15) {
+    } else if (currentWave <= 15) {
       asteroidsToSpawn = 4; // Waves 11-15: 4 asteroids
     } else {
-      asteroidsToSpawn = Math.min(5 + Math.floor((wave - 15) / 5), 8); // Waves 16+: 5-8 asteroids (cap at 8)
+      asteroidsToSpawn = Math.min(5 + Math.floor((currentWave - 15) / 5), 8); // Waves 16+: 5-8 asteroids (cap at 8)
     }
     
-    console.log(`📈 Wave ${wave} difficulty: spawning ${asteroidsToSpawn} asteroids`);
+    console.log(`📈 Wave ${currentWave} difficulty: spawning ${asteroidsToSpawn} asteroids`);
     
     for (let i = 0; i < asteroidsToSpawn; i++) {
       // Add slight delay between spawns for visual effect
@@ -1564,7 +1577,7 @@ export const AsteroidDefenseGame3D = () => {
         // Log total after last asteroid is spawned
         if (i === asteroidsToSpawn - 1) {
           const totalActive = asteroidsRef.current.filter(a => !a.destroyed).length;
-          console.log('🎯 Wave', wave, 'completed spawning', asteroidsToSpawn, 'asteroids. Total active:', totalActive);
+          console.log('🎯 Wave', currentWave, 'completed spawning', asteroidsToSpawn, 'asteroids. Total active:', totalActive);
         }
       }, i * 500); // 500ms delay between each asteroid spawn
     }
@@ -1847,8 +1860,20 @@ export const AsteroidDefenseGame3D = () => {
   }, [gameStarted, gameOver, gameVictory, gamePaused, createImpactExplosion, updateAsteroidTrail, updateLasers]);
 
   const startGame = () => {
-    console.log('Starting game...');
-    setGameStarted(true);
+    console.log('🔄 COMPLETE GAME RESET - Starting fresh game...');
+    
+    // Stop any running animation frames
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    
+    // Clear all active timers to prevent interference
+    activeTimersRef.current.forEach(timer => clearTimeout(timer));
+    activeTimersRef.current = [];
+    
+    // Reset ALL game state variables
+    setGameStarted(false); // Set to false first to stop any running loops
     setGameOver(false);
     setGameVictory(false);
     setShowBossCutscene(false);
@@ -1858,6 +1883,8 @@ export const AsteroidDefenseGame3D = () => {
     setWave(1);
     setAsteroidsDestroyed(0);
     setEarthHealth(100);
+    setGamePaused(false);
+    setSelectedAsteroid(null);
     
     // Clear existing asteroids and their trail systems
     asteroidsRef.current.forEach(asteroid => {
@@ -1902,7 +1929,16 @@ export const AsteroidDefenseGame3D = () => {
     });
     lasersRef.current = [];
     
-    spawnWave();
+    // Wait a brief moment for all cleanup to complete, then start the game
+    setTimeout(() => {
+      console.log('✅ Starting fresh game at wave 1');
+      setGameStarted(true);
+      // Force spawn wave 1 explicitly to avoid state closure issues
+      setTimeout(() => {
+        console.log('📊 Force spawning wave 1 after reset');
+        spawnWave(1); // Force wave 1
+      }, 50);
+    }, 100);
   };
 
   const continueGame = () => {
