@@ -613,27 +613,46 @@ export const AsteroidDefenseGame3D = () => {
       return;
     }
 
-    console.log('🚀 SPAWNING ASTEROID for wave', wave, '- Available asteroids:', asteroidData.length);
+    console.log('🚀 SPAWNING ASTEROIDS for wave', wave, '- Available asteroids:', asteroidData.length);
     
-    // Spawn multiple asteroids for higher waves to increase difficulty
-    const asteroidsToSpawn = Math.min(1 + Math.floor(wave / 5), 3); // 1-3 asteroids depending on wave
-    
-    for (let i = 0; i < asteroidsToSpawn; i++) {
-      const randomIndex = Math.floor(Math.random() * asteroidData.length);
-      const randomData = asteroidData[randomIndex];
-      console.log('Selected asteroid index:', randomIndex, 'Name:', randomData.name, `(${i + 1}/${asteroidsToSpawn})`);
-      
-      const asteroid = createAsteroid(randomData);
-      if (asteroid) {
-        asteroidsRef.current.push(asteroid);
-        console.log('✅ Successfully spawned asteroid:', asteroid.data.name);
-      } else {
-        console.log('❌ Failed to create asteroid');
-      }
+    // Progressive difficulty: more asteroids as waves increase
+    let asteroidsToSpawn;
+    if (wave <= 2) {
+      asteroidsToSpawn = 1; // Start easy with 1 asteroid
+    } else if (wave <= 5) {
+      asteroidsToSpawn = 2; // Waves 3-5: 2 asteroids
+    } else if (wave <= 10) {
+      asteroidsToSpawn = 3; // Waves 6-10: 3 asteroids
+    } else if (wave <= 15) {
+      asteroidsToSpawn = 4; // Waves 11-15: 4 asteroids
+    } else {
+      asteroidsToSpawn = Math.min(5 + Math.floor((wave - 15) / 5), 8); // Waves 16+: 5-8 asteroids (cap at 8)
     }
     
-    const totalActive = asteroidsRef.current.filter(a => !a.destroyed).length;
-    console.log('🎯 Wave', wave, 'spawned', asteroidsToSpawn, 'asteroids. Total active:', totalActive);
+    console.log(`📈 Wave ${wave} difficulty: spawning ${asteroidsToSpawn} asteroids`);
+    
+    for (let i = 0; i < asteroidsToSpawn; i++) {
+      // Add slight delay between spawns for visual effect
+      setTimeout(() => {
+        const randomIndex = Math.floor(Math.random() * asteroidData.length);
+        const randomData = asteroidData[randomIndex];
+        console.log('Selected asteroid index:', randomIndex, 'Name:', randomData.name, `(${i + 1}/${asteroidsToSpawn})`);
+        
+        const asteroid = createAsteroid(randomData);
+        if (asteroid) {
+          asteroidsRef.current.push(asteroid);
+          console.log('✅ Successfully spawned asteroid:', asteroid.data.name);
+        } else {
+          console.log('❌ Failed to create asteroid');
+        }
+        
+        // Log total after last asteroid is spawned
+        if (i === asteroidsToSpawn - 1) {
+          const totalActive = asteroidsRef.current.filter(a => !a.destroyed).length;
+          console.log('🎯 Wave', wave, 'completed spawning', asteroidsToSpawn, 'asteroids. Total active:', totalActive);
+        }
+      }, i * 500); // 500ms delay between each asteroid spawn
+    }
   }, [asteroidData, createAsteroid, wave]);
 
   const handleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
@@ -982,6 +1001,17 @@ export const AsteroidDefenseGame3D = () => {
             <p>Wave: {wave}</p>
             <p>Destroyed: {asteroidsDestroyed}</p>
             <p>Active Asteroids: {asteroidsRef.current?.filter(a => !a.destroyed).length || 0}</p>
+            {/* Wave Difficulty Indicator */}
+            <div className="mt-2">
+              <p className="text-sm text-cyan-400">Wave Difficulty:</p>
+              <p className="text-xs text-gray-300">
+                {wave <= 2 ? '1 asteroid per wave' :
+                 wave <= 5 ? '2 asteroids per wave' :
+                 wave <= 10 ? '3 asteroids per wave' :
+                 wave <= 15 ? '4 asteroids per wave' :
+                 `${Math.min(5 + Math.floor((wave - 15) / 5), 8)} asteroids per wave`}
+              </p>
+            </div>
             {gamePaused && (
               <p className="text-yellow-400 font-bold mt-2">⏸️ GAME PAUSED</p>
             )}
