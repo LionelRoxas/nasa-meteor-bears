@@ -32,6 +32,16 @@ interface AsteroidData {
   absolute_magnitude_h: number;
 }
 
+interface LaserBeam {
+  id: string;
+  mesh: THREE.Mesh;
+  startPosition: THREE.Vector3;
+  endPosition: THREE.Vector3;
+  progress: number;
+  targetAsteroid: GameAsteroid;
+  createdAt: number;
+}
+
 interface GameAsteroid {
   id: string;
   mesh: THREE.Mesh;
@@ -212,6 +222,7 @@ export const AsteroidDefenseGame3D = () => {
   const earthRef = useRef<THREE.Mesh | null>(null);
   const enhancedEarthRef = useRef<EnhancedEarth | null>(null);
   const asteroidsRef = useRef<GameAsteroid[]>([]);
+  const lasersRef = useRef<LaserBeam[]>([]);
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
   const mouseRef = useRef<THREE.Vector2 | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -981,6 +992,151 @@ export const AsteroidDefenseGame3D = () => {
     animateExplosion();
   }, []);
 
+  const createLaser = useCallback((startPos: THREE.Vector3, targetAsteroid: GameAsteroid) => {
+    if (!sceneRef.current) return null;
+
+    // Create laser beam geometry
+    const laserGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1, 8);
+    const laserMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff0000, // Bright red laser
+      transparent: true,
+      opacity: 0.8
+    });
+    
+    const laserMesh = new THREE.Mesh(laserGeometry, laserMaterial);
+    
+    // Position laser at start position
+    laserMesh.position.copy(startPos);
+    
+    // Create laser beam object
+    const laser: LaserBeam = {
+      id: `laser-${Date.now()}-${Math.random()}`,
+      mesh: laserMesh,
+      startPosition: startPos.clone(),
+      endPosition: targetAsteroid.mesh.position.clone(),
+      progress: 0,
+      targetAsteroid,
+      createdAt: Date.now()
+    };
+    
+    sceneRef.current.add(laserMesh);
+    lasersRef.current.push(laser);
+    
+    return laser;
+  }, []);
+
+  const updateLasers = useCallback(() => {
+    if (!sceneRef.current) return;
+
+    lasersRef.current = lasersRef.current.filter(laser => {
+      // Update laser progress
+      laser.progress += 0.05; // Laser speed
+      
+      // Update laser position and orientation
+      const currentPos = laser.startPosition.clone().lerp(laser.endPosition, laser.progress);
+      laser.mesh.position.copy(currentPos);
+      
+      // Orient laser towards target
+      laser.mesh.lookAt(laser.endPosition);
+      laser.mesh.rotateX(Math.PI / 2); // Correct orientation for cylinder
+      
+      // Scale laser length based on distance traveled
+      const totalDistance = laser.startPosition.distanceTo(laser.endPosition);
+      const currentDistance = laser.progress * totalDistance;
+      laser.mesh.scale.set(1, currentDistance, 1);
+      
+      // Check if laser reached target
+      if (laser.progress >= 1.0) {
+        // Laser hit the asteroid
+        if (!laser.targetAsteroid.destroyed) {
+          // Destroy the asteroid
+          laser.targetAsteroid.destroyed = true;
+          
+          // Set impacting flag for hazardous asteroids to freeze their trail
+          if (laser.targetAsteroid.isHazardous) {
+            laser.targetAsteroid.impacting = true;
+          }
+          
+          // Update score immediately
+          const points = laser.targetAsteroid.isHazardous ? 150 : 75;
+          setScore(prev => prev + points);
+          setAsteroidsDestroyed(prev => prev + 1);
+          
+          // Create explosion effect at asteroid position
+          const explosionGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+          const explosionMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xff6600,
+            transparent: true,
+            opacity: 0.8
+          });
+          const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+          explosion.position.copy(laser.targetAsteroid.mesh.position);
+          if (sceneRef.current) {
+            sceneRef.current.add(explosion);
+          }
+
+          // Animate explosion
+          let explosionScale = 1;
+          const explosionDuration = laser.targetAsteroid.isHazardous ? 1500 : 500; // Faster: reduced from 3000/1000ms
+          const startTime = Date.now();
+          
+          const animateExplosion = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = elapsed / explosionDuration;
+            
+            explosionScale += 0.1;
+            explosion.scale.setScalar(explosionScale);
+            explosion.material.opacity = Math.max(0, 0.8 * (1 - progress));
+            
+            if (progress < 1) {
+              requestAnimationFrame(animateExplosion);
+            } else {
+              if (sceneRef.current) {
+                sceneRef.current.remove(explosion);
+              }
+              
+              // Clean up trail for hazardous asteroids when explosion ends
+              if (laser.targetAsteroid.isHazardous && laser.targetAsteroid.trailSystem && sceneRef.current) {
+                sceneRef.current.remove(laser.targetAsteroid.trailSystem.particles);
+                laser.targetAsteroid.trailSystem.particles.geometry.dispose();
+                if (laser.targetAsteroid.trailSystem.particles.material instanceof THREE.Material) {
+                  laser.targetAsteroid.trailSystem.particles.material.dispose();
+                }
+                // Clean up trail line
+                if (laser.targetAsteroid.trailSystem.trailLine) {
+                  sceneRef.current.remove(laser.targetAsteroid.trailSystem.trailLine);
+                  laser.targetAsteroid.trailSystem.trailLine.geometry.dispose();
+                  if (laser.targetAsteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+                    laser.targetAsteroid.trailSystem.trailLine.material.dispose();
+                  }
+                }
+              }
+            }
+          };
+          animateExplosion();
+          
+          // Delay setting selected asteroid and pausing game until after explosion completes
+          setTimeout(() => {
+            setSelectedAsteroid(laser.targetAsteroid.data);
+            setGamePaused(true);
+          }, explosionDuration + 200); // Shorter delay: reduced buffer from 500ms to 200ms
+        }
+        
+        // Remove laser
+        if (sceneRef.current) {
+          sceneRef.current.remove(laser.mesh);
+        }
+        laser.mesh.geometry.dispose();
+        if (laser.mesh.material instanceof THREE.Material) {
+          laser.mesh.material.dispose();
+        }
+        return false;
+      }
+      
+      return true;
+    });
+  }, [setSelectedAsteroid, setGamePaused, setScore, setAsteroidsDestroyed]);
+
   const spawnWave = useCallback(() => {
     if (asteroidData.length === 0) {
       console.log('No asteroid data available for spawning');
@@ -1093,73 +1249,19 @@ export const AsteroidDefenseGame3D = () => {
       );
       
       if (asteroid && !asteroid.destroyed) {
-        console.log('✅ Asteroid HIT! Name:', asteroid.data.name);
+        console.log('✅ Asteroid TARGETED! Name:', asteroid.data.name);
         console.log('✅ Asteroid hazardous status:', asteroid.isHazardous);
-        console.log('✅ Asteroid data being set:', asteroid.data);
+        console.log('🔫 Firing laser at asteroid...');
         
-        asteroid.destroyed = true;
+        // Calculate laser start position (from Earth's surface towards camera)
+        const earthPosition = new THREE.Vector3(0, 0, 0);
+        const targetPosition = asteroid.mesh.position.clone();
+        const direction = targetPosition.clone().sub(earthPosition).normalize();
+        const laserStartDistance = 1.2; // Start laser just above Earth's surface
+        const laserStartPosition = earthPosition.clone().add(direction.multiplyScalar(laserStartDistance));
         
-        // Set impacting flag for hazardous asteroids to freeze their trail
-        if (asteroid.isHazardous) {
-          asteroid.impacting = true;
-        }
-        
-        setSelectedAsteroid(asteroid.data);
-        setGamePaused(true); // Pause the game when asteroid is clicked
-        
-        // Different scoring: hazardous give more points since they're the main threat
-        const points = asteroid.isHazardous ? 150 : 75; // Better reward for all asteroids
-        setScore(prev => prev + points);
-        setAsteroidsDestroyed(prev => prev + 1);
-
-        // Add explosion effect
-        const explosionGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-        const explosionMaterial = new THREE.MeshBasicMaterial({ 
-          color: 0xff6600,
-          transparent: true,
-          opacity: 0.8
-        });
-        const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
-        explosion.position.copy(asteroid.mesh.position);
-        sceneRef.current?.add(explosion);
-
-        // Animate explosion and schedule trail cleanup for hazardous asteroids
-        let explosionScale = 1;
-        const explosionDuration = asteroid.isHazardous ? 3000 : 1000; // Longer for hazardous
-        const startTime = Date.now();
-        
-        const animateExplosion = () => {
-          const elapsed = Date.now() - startTime;
-          const progress = elapsed / explosionDuration;
-          
-          explosionScale += 0.1;
-          explosion.scale.setScalar(explosionScale);
-          explosion.material.opacity = Math.max(0, 0.8 * (1 - progress));
-          
-          if (progress < 1) {
-            requestAnimationFrame(animateExplosion);
-          } else {
-            sceneRef.current?.remove(explosion);
-            
-            // Clean up trail for hazardous asteroids when explosion ends
-            if (asteroid.isHazardous && asteroid.trailSystem && sceneRef.current) {
-              sceneRef.current.remove(asteroid.trailSystem.particles);
-              asteroid.trailSystem.particles.geometry.dispose();
-              if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
-                asteroid.trailSystem.particles.material.dispose();
-              }
-              // Clean up trail line
-              if (asteroid.trailSystem.trailLine) {
-                sceneRef.current.remove(asteroid.trailSystem.trailLine);
-                asteroid.trailSystem.trailLine.geometry.dispose();
-                if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
-                  asteroid.trailSystem.trailLine.material.dispose();
-                }
-              }
-            }
-          }
-        };
-        animateExplosion();
+        // Create and fire laser
+        createLaser(laserStartPosition, asteroid);
       } else {
         console.log('❌ Found intersection but asteroid not found or already destroyed');
       }
@@ -1171,10 +1273,13 @@ export const AsteroidDefenseGame3D = () => {
         console.log(`Asteroid ${index}: position (${asteroid.mesh.position.x.toFixed(2)}, ${asteroid.mesh.position.y.toFixed(2)}, ${asteroid.mesh.position.z.toFixed(2)})`);
       });
     }
-  }, [gamePaused, gameStarted]);
+  }, [gamePaused, gameStarted, createLaser]);
 
   const gameLoop = useCallback(() => {
     if (!rendererRef.current || !sceneRef.current || !cameraRef.current || gamePaused) return;
+
+    // Update lasers
+    updateLasers();
 
     // Animate Enhanced Earth with multiple layers
     if (enhancedEarthRef.current) {
@@ -1354,7 +1459,7 @@ export const AsteroidDefenseGame3D = () => {
     if (gameStarted && !gameOver) {
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     }
-  }, [gameStarted, gameOver, gamePaused, createImpactExplosion, updateAsteroidTrail]);
+  }, [gameStarted, gameOver, gamePaused, createImpactExplosion, updateAsteroidTrail, updateLasers]);
 
   const startGame = () => {
     console.log('Starting game...');
