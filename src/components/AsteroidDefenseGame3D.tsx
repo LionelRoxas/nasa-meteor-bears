@@ -2127,7 +2127,7 @@ export const AsteroidDefenseGame3D = () => {
   }, [gameStarted, gameOver, gameVictory, gamePaused, spawnWave, wave]);
 
   return (
-    <div className="flex h-screen bg-black overflow-hidden">
+    <div className="flex h-screen bg-black overflow-hidden pt-14">
       <div className="flex-1 relative">
         <div ref={mountRef} className="w-full h-full cursor-crosshair" onClick={handleClick} />
         
