@@ -104,6 +104,23 @@ export interface EnhancedPrediction {
     energy_comparison_summary: string;
     hazard_pattern_analysis: string;
   };
+  trajectory?: Record<string, unknown>; // Full trajectory data from consequence prediction
+  impact_location?: {
+    latitude: number;
+    longitude: number;
+    type: string;
+  };
+  impact_physics?: {
+    energy: number; // Joules
+    craterDiameter: number; // km
+    earthquakeMagnitude: number;
+    affectedRadius: number; // km
+    megatonsEquivalent: number; // MT TNT
+    tsunamiHeight?: number; // meters
+  };
+  threatLevel?: string;
+  populationAtRisk?: number;
+  economicDamage?: number;
 }
 
 export function useEnhancedPredictions() {
@@ -143,6 +160,32 @@ export function useEnhancedPredictions() {
       return null;
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Get consequence prediction with trajectory data
+  const getConsequencePrediction = async (asteroidId: string, correlationData: AsteroidCorrelationData): Promise<Record<string, unknown> | null> => {
+    try {
+      // Import the consequence predictor dynamically to avoid server-side issues
+      const ConsequencePredictor = (await import('@/app/utils/consequence-predictor')).default;
+      const predictor = new ConsequencePredictor();
+
+      // Convert correlation data to asteroid format
+      const asteroidData = {
+        id: asteroidId,
+        name: correlationData.asteroidName,
+        diameter_meters: correlationData.nasaData.diameter_meters,
+        velocity_km_s: 20, // Default velocity - could be enhanced
+        kinetic_energy_mt: correlationData.nasaData.kinetic_energy_mt,
+        is_hazardous: correlationData.nasaData.is_hazardous
+      };
+
+      // Get consequence prediction which includes trajectory
+      const consequencePrediction = await predictor.predictConsequences(asteroidData);
+      return consequencePrediction;
+    } catch (error) {
+      console.warn('Failed to get consequence prediction:', error);
+      return null;
     }
   };
 
@@ -204,8 +247,34 @@ export function useEnhancedPredictions() {
         return null;
       }
 
-      // Step 2: Generate enhanced prediction with LLM
+      // Step 2: Get consequence prediction with trajectory data
+      const consequencePrediction = await getConsequencePrediction(asteroidId, correlationData);
+
+      // Step 3: Generate enhanced prediction with LLM
       const enhancedPrediction = await generateEnhancedPrediction(asteroidId, correlationData);
+
+      // Step 4: Combine with trajectory and physics data
+      if (enhancedPrediction && consequencePrediction) {
+        enhancedPrediction.trajectory = consequencePrediction.trajectory;
+        enhancedPrediction.impact_location = {
+          latitude: consequencePrediction.trajectory.impact_location.latitude,
+          longitude: consequencePrediction.trajectory.impact_location.longitude,
+          type: consequencePrediction.trajectory.impact_location.geographic_type
+        };
+        // Add the real physics data for dynamic visualization
+        enhancedPrediction.impact_physics = {
+          energy: consequencePrediction.impactPhysics.energy,
+          craterDiameter: consequencePrediction.impactPhysics.craterDiameter,
+          earthquakeMagnitude: consequencePrediction.impactPhysics.earthquakeMagnitude,
+          affectedRadius: consequencePrediction.impactPhysics.affectedRadius,
+          megatonsEquivalent: consequencePrediction.impactPhysics.megatonsEquivalent,
+          tsunamiHeight: consequencePrediction.impactPhysics.tsunamiHeight
+        };
+        enhancedPrediction.threatLevel = consequencePrediction.threatLevel;
+        enhancedPrediction.populationAtRisk = consequencePrediction.populationAtRisk;
+        enhancedPrediction.economicDamage = consequencePrediction.economicDamage;
+      }
+
       return enhancedPrediction;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to get enhanced prediction';

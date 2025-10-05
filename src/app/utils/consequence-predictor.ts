@@ -290,8 +290,29 @@ class ConsequencePredictor {
   }
 
   // Build correlation context for enhanced LLM analysis
-  private buildCorrelationContext(correlationData: any, energy: number, impactLocation: ImpactLocation): string {
-    const { asteroidFeatures, nasaData, correlatedEarthquakes } = correlationData;
+  private buildCorrelationContext(
+    correlationData: {
+      asteroidFeatures: Record<string, unknown>;
+      nasaData: Record<string, unknown>;
+      correlatedEarthquakes: Array<{
+        location: string;
+        time: string;
+        magnitude: number;
+        magnitude_type: string;
+        energy_joules?: number;
+        depth_km: number;
+        correlationScore: number;
+        tsunami_warning: boolean;
+        significance: string;
+        damage_alert: string;
+      }>;
+      asteroidName: string;
+      asteroidId: string;
+    },
+    energy: number,
+    impactLocation: ImpactLocation
+  ): string {
+    const { correlatedEarthquakes } = correlationData;
     const megatonsEquivalent = energy / (this.TNT_ENERGY_PER_KG * 1e9);
 
     return `
@@ -305,7 +326,7 @@ Current Simulation Parameters:
 
 CORRELATED HISTORICAL EARTHQUAKE DATA (Top ${correlatedEarthquakes.length} Most Similar):
 
-${correlatedEarthquakes.map((eq: any, index: number) => `
+${correlatedEarthquakes.map((eq, index: number) => `
 ${index + 1}. ${eq.location} - ${new Date(eq.time).toLocaleDateString()}
    - Magnitude: ${eq.magnitude} ${eq.magnitude_type}
    - Energy: ${eq.energy_joules ? (eq.energy_joules / 4.184e15).toFixed(2) + ' MT TNT equivalent' : 'N/A'}
@@ -333,7 +354,14 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
     threatLevel: string,
     megatonsEquivalent: number,
     populationAtRisk: number,
-    enhancedRiskAssessment?: any
+    enhancedRiskAssessment?: {
+      threat_category: string;
+      risk_score: number;
+      confidence: number;
+      correlation_context: {
+        top_similar_earthquakes: number;
+      };
+    }
   ): string {
     const diameter = asteroid.diameter_meters ||
       (asteroid.estimated_diameter?.kilometers.estimated_diameter_max || 0.1) * 1000;
@@ -601,7 +629,7 @@ MANDATORY JSON STRUCTURE:
   },
   "historicalComparison": "Energy comparable to: ${
     similarEarthquakes
-      .map((eq: any) => `${eq.location} (M${eq.magnitude.toFixed(1)})`)
+      .map((eq: { location: string; magnitude: number }) => `${eq.location} (M${eq.magnitude.toFixed(1)})`)
       .join(", ") || "No comparable historical seismic events"
   }"
 }
@@ -644,7 +672,7 @@ IMPACT LOCATION:
 TOP 10 CONTEXT DATA:
 - Similar Energy Earthquakes: ${top10Earthquakes
       .slice(0, 3)
-      .map((eq: any) => `${eq.location} (M${eq.magnitude.toFixed(1)})`)
+      .map((eq: { location: string; magnitude: number }) => `${eq.location} (M${eq.magnitude.toFixed(1)})`)
       .join(", ")}
 - Comparable Asteroids: ${top10Asteroids
       .slice(0, 3)
