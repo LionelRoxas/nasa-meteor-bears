@@ -31,11 +31,12 @@ export default function Home() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [hasImpacted, setHasImpacted] = useState(false);
+  const [wasNASAPanelOpen, setWasNASAPanelOpen] = useState(false); // Track NASA panel state
   const [asteroidParams, setAsteroidParams] = useState({
     diameter: 200,
     velocity: 20,
     angle: 45,
-    distance: 100000,
+    distance: 10000,
     mass: 0,
     energy: 0,
     craterSize: 0,
@@ -52,6 +53,9 @@ export default function Home() {
   const [selectedNASAAsteroid, setSelectedNASAAsteroid] =
     useState<NASAAsteroidData | null>(null);
   const [showNASAPanel, setShowNASAPanel] = useState(false);
+  const [currentDistance, setCurrentDistance] = useState<number | undefined>(
+    undefined
+  );
 
   // Handle countdown and automatic start
   useEffect(() => {
@@ -63,8 +67,15 @@ export default function Home() {
     } else if (countdown === 0) {
       setIsSimulating(true);
       setCountdown(null);
+      // Panels are already closed from handleStartImpact, no need to close again
     }
   }, [countdown]);
+
+  useEffect(() => {
+    if (!isSimulating) {
+      setCurrentDistance(undefined);
+    }
+  }, [isSimulating]);
 
   // Calculate impact data whenever params change
   useEffect(() => {
@@ -101,9 +112,16 @@ export default function Home() {
     if (!isSimulating && !countdown) {
       setCountdown(5);
       setHasImpacted(false);
+      // Remember NASA panel state and auto-close panels when starting countdown
+      setWasNASAPanelOpen(showNASAPanel);
+      setIsSidebarCollapsed(true);
+      setShowNASAPanel(false);
     } else {
+      // Stopping simulation - re-open sidebar and restore NASA panel
       setIsSimulating(false);
       setCountdown(null);
+      setIsSidebarCollapsed(false);
+      setShowNASAPanel(wasNASAPanelOpen);
     }
   };
 
@@ -111,6 +129,9 @@ export default function Home() {
     setIsSimulating(false);
     setCountdown(null);
     setHasImpacted(false);
+    // Re-open sidebar and restore NASA panel after reset
+    setIsSidebarCollapsed(false);
+    setShowNASAPanel(wasNASAPanelOpen);
   };
 
   const handleImpact = () => {
@@ -118,6 +139,11 @@ export default function Home() {
     // Stop simulation after impact
     setTimeout(() => {
       setIsSimulating(false);
+      // Re-open sidebar and restore NASA panel after impact animation completes
+      setTimeout(() => {
+        setIsSidebarCollapsed(false);
+        setShowNASAPanel(wasNASAPanelOpen);
+      }, 1000);
     }, 2000);
   };
 
@@ -170,13 +196,14 @@ export default function Home() {
         isSimulating={isSimulating}
         hasImpacted={hasImpacted}
         onImpact={handleImpact}
+        onDistanceUpdate={setCurrentDistance}
       />
 
       {/* Countdown Overlay */}
       {countdown !== null && (
         <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
           <div className="text-8xl font-bold text-white animate-pulse drop-shadow-2xl">
-            {countdown || "IMPACT!"}
+            {countdown}
           </div>
         </div>
       )}
@@ -197,6 +224,8 @@ export default function Home() {
         selectedNASAAsteroid={selectedNASAAsteroid}
         isSimulating={isSimulating}
         countdown={countdown}
+        currentDistance={currentDistance}
+        hasImpacted={hasImpacted}
       />
 
       {/* Main Content Area */}
@@ -226,32 +255,32 @@ export default function Home() {
 
           {/* Impact Info Overlay */}
           {hasImpacted && (
-            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20">
-              <div className="bg-black/80 backdrop-blur-lg rounded-lg px-6 py-4 border border-white/20">
-                <h3 className="text-xl font-bold text-white mb-2">
+            <div className="absolute bottom-0 left-0 z-20 flex items-end h-auto">
+              <div className="bg-black/80 backdrop-blur-lg rounded-xl px-6 py-4 border-white/20 mb-8 ml-8 shadow-2xl">
+                <h3 className="text-lg font-bold text-white mb-2">
                   Impact Analysis
                 </h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-base">
                   <div>
-                    <span className="text-white/60">Energy Released:</span>
+                    <span className="text-white/60">Energy:</span>
                     <span className="text-white ml-2">
                       {impactData.energy.toFixed(2)} MT
                     </span>
                   </div>
                   <div>
-                    <span className="text-white/60">Crater Size:</span>
+                    <span className="text-white/60">Crater:</span>
                     <span className="text-white ml-2">
                       {impactData.crater.toFixed(1)} km
                     </span>
                   </div>
                   <div>
-                    <span className="text-white/60">Affected Radius:</span>
+                    <span className="text-white/60">Radius:</span>
                     <span className="text-white ml-2">
                       {impactData.radius.toFixed(0)} km
                     </span>
                   </div>
                   <div>
-                    <span className="text-white/60">Threat Level:</span>
+                    <span className="text-white/60">Threat:</span>
                     <span
                       className={`ml-2 font-bold ${
                         impactData.threatLevel === "GLOBAL"

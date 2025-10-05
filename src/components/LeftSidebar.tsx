@@ -147,7 +147,7 @@ export default function LeftSidebar({
               type="range"
               className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
               min="15"
-              max="90"
+              max="360"
               value={asteroidParams.angle}
               onChange={(e) =>
                 setAsteroidParams((prev) => ({
@@ -158,7 +158,7 @@ export default function LeftSidebar({
             />
             <div className="flex justify-between mt-1">
               <span className="text-[9px] text-white/30">15°</span>
-              <span className="text-[9px] text-white/30">90°</span>
+              <span className="text-[9px] text-white/30">360°</span>
             </div>
           </div>
 

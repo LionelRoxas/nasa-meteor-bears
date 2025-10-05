@@ -16,13 +16,20 @@ interface ImpactSimulatorProps {
   isSimulating: boolean;
   hasImpacted: boolean;
   onImpact: () => void;
+  onDistanceUpdate?: (distance: number) => void;
 }
+
+// Scale constants
+const EARTH_RADIUS_UNITS = 6; // Earth radius in scene units
+const EARTH_RADIUS_KM = 6371; // Earth's actual radius in km
+const KM_PER_UNIT = EARTH_RADIUS_KM / EARTH_RADIUS_UNITS; // ~1,062 km per scene unit
 
 export default function ImpactSimulator({
   asteroidParams,
   isSimulating,
   hasImpacted,
   onImpact,
+  onDistanceUpdate,
 }: ImpactSimulatorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -90,7 +97,7 @@ export default function ImpactSimulator({
 
     // Create Enhanced Earth
     const enhancedEarth = new EnhancedEarth(scene);
-    enhancedEarth.setScale(6); // Earth radius
+    enhancedEarth.setScale(EARTH_RADIUS_UNITS); // Earth radius = 6 units
     enhancedEarthRef.current = enhancedEarth;
 
     // Lighting
@@ -156,8 +163,9 @@ export default function ImpactSimulator({
 
       const asteroid = new THREE.Mesh(asteroidGeometry, asteroidMaterial);
 
-      // Position asteroid at starting distance
-      const scaledDistance = asteroidParams.distance / 10000; // Scale distance
+      // Position asteroid at starting distance (distance is from Earth's surface)
+      const scaledDistance =
+        asteroidParams.distance / KM_PER_UNIT + EARTH_RADIUS_UNITS;
       const angle = (asteroidParams.angle * Math.PI) / 180;
 
       asteroid.position.set(
@@ -271,7 +279,7 @@ export default function ImpactSimulator({
     const scene = sceneRef.current;
     const camera = cameraRef.current;
     const renderer = rendererRef.current;
-    const earthRadius = 6; // Earth radius in scene units
+    const earthRadius = EARTH_RADIUS_UNITS; // Use constant
 
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
@@ -292,14 +300,22 @@ export default function ImpactSimulator({
 
         // Calculate distance to Earth center
         const earthPosition = new THREE.Vector3(0, 0, 0);
-        const distanceToEarth = asteroid.position.length();
+        const distanceToEarthCenter = asteroid.position.length();
+
+        // Convert scene units to kilometers correctly
+        // Subtract Earth's radius to get distance from surface, not center
+        const distanceFromSurface = Math.max(
+          0,
+          (distanceToEarthCenter - EARTH_RADIUS_UNITS) * KM_PER_UNIT
+        );
+        onDistanceUpdate?.(distanceFromSurface);
 
         // Apply gravity (increases as asteroid gets closer)
         const gravityDirection = earthPosition
           .clone()
           .sub(asteroid.position)
           .normalize();
-        const gravity = 0.001 * (50 / Math.max(distanceToEarth, 1)); // Stronger gravity when closer
+        const gravity = 0.001 * (50 / Math.max(distanceToEarthCenter, 1)); // Stronger gravity when closer
         asteroidVelocityRef.current.add(
           gravityDirection.multiplyScalar(gravity)
         );
@@ -322,7 +338,7 @@ export default function ImpactSimulator({
           // Not every frame to optimize
           const trailGeometry = new THREE.SphereGeometry(0.05, 4, 4);
           const trailMaterial = new THREE.PointsMaterial({
-            color: distanceToEarth < 20 ? 0xff0000 : 0xff4500,
+            color: distanceToEarthCenter < 20 ? 0xff0000 : 0xff4500,
             transparent: true,
             opacity: 0.7,
             size: 0.1,
@@ -340,10 +356,10 @@ export default function ImpactSimulator({
         }
 
         // Dynamic camera movement during approach (ONLY during simulation)
-        if (distanceToEarth > 25) {
+        if (distanceToEarthCenter > 25) {
           // Wide view
           camera.position.lerp(new THREE.Vector3(10, 15, 35), 0.02);
-        } else if (distanceToEarth > 15) {
+        } else if (distanceToEarthCenter > 15) {
           // Follow asteroid
           const offset = asteroid.position
             .clone()
@@ -359,7 +375,7 @@ export default function ImpactSimulator({
 
         // Check for impact
         if (
-          distanceToEarth <=
+          distanceToEarthCenter <=
           earthRadius + (asteroid.geometry.boundingSphere?.radius || 0.5)
         ) {
           asteroid.visible = false;
@@ -424,7 +440,7 @@ export default function ImpactSimulator({
         cancelAnimationFrame(animationIdRef.current);
       }
     };
-  }, [isSimulating, hasImpacted, createExplosion]);
+  }, [isSimulating, hasImpacted, createExplosion, onDistanceUpdate]);
 
   // Reset when simulation stops
   useEffect(() => {
@@ -445,9 +461,10 @@ export default function ImpactSimulator({
       explosionParticlesRef.current = [];
       impactOccurredRef.current = false;
 
-      // Reset asteroid
+      // Reset asteroid (distance from surface + Earth radius)
       asteroidRef.current.visible = true;
-      const scaledDistance = asteroidParams.distance / 10000;
+      const scaledDistance =
+        asteroidParams.distance / KM_PER_UNIT + EARTH_RADIUS_UNITS;
       const angle = (asteroidParams.angle * Math.PI) / 180;
       asteroidRef.current.position.set(
         Math.cos(angle) * scaledDistance,
