@@ -77,10 +77,9 @@ interface AsteroidMesh extends THREE.Mesh {
 
 interface AsteroidInfoPanelProps {
   asteroid: AsteroidData | null;
-  onContinue: () => void;
 }
 
-const AsteroidInfoPanel = ({ asteroid, onContinue }: AsteroidInfoPanelProps) => {
+const AsteroidInfoPanel = ({ asteroid }: AsteroidInfoPanelProps) => {
   console.log('AsteroidInfoPanel received asteroid:', asteroid);
   
   if (!asteroid) {
@@ -201,19 +200,6 @@ const AsteroidInfoPanel = ({ asteroid, onContinue }: AsteroidInfoPanelProps) => 
           <p className="text-xs text-gray-400">{asteroid.id}</p>
         </div>
       </div>
-      
-      {/* Continue button */}
-      <div className="mt-6 pt-4 border-t border-gray-700">
-        <button
-          onClick={onContinue}
-          className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded text-lg transition-colors"
-        >
-          Continue Game
-        </button>
-        <p className="text-xs text-gray-400 mt-2 text-center">
-          Game is paused - click to continue
-        </p>
-      </div>
     </div>
   );
 };
@@ -246,6 +232,38 @@ export const AsteroidDefenseGame3D = () => {
   const [earthHealth, setEarthHealth] = useState(100);
   const [asteroidData, setAsteroidData] = useState<AsteroidData[]>([]);
   const [gamePaused, setGamePaused] = useState(false);
+  const [pauseCountdown, setPauseCountdown] = useState(0);
+
+  // Sound effects utility functions
+  const playLaserSound = useCallback(() => {
+    try {
+      const audio = new Audio('/sounds/lasershot.wav');
+      audio.volume = 0.3; // Adjust volume (0.0 to 1.0)
+      audio.play().catch(error => console.log('Laser sound failed to play:', error));
+    } catch (error) {
+      console.log('Error creating laser audio:', error);
+    }
+  }, []);
+
+  const playExplosionSound = useCallback(() => {
+    try {
+      const audio = new Audio('/sounds/explode.wav');
+      audio.volume = 0.4; // Adjust volume (0.0 to 1.0)
+      audio.play().catch(error => console.log('Explosion sound failed to play:', error));
+    } catch (error) {
+      console.log('Error creating explosion audio:', error);
+    }
+  }, []);
+
+  const playImpactSound = useCallback(() => {
+    try {
+      const audio = new Audio('/sounds/explode.wav'); // Using explode sound for impact too
+      audio.volume = 0.5; // Slightly louder for Earth impact
+      audio.play().catch(error => console.log('Impact sound failed to play:', error));
+    } catch (error) {
+      console.log('Error creating impact audio:', error);
+    }
+  }, []);
 
   // Load asteroid data
   useEffect(() => {
@@ -1264,8 +1282,11 @@ export const AsteroidDefenseGame3D = () => {
     sceneRef.current.add(laserMesh);
     lasersRef.current.push(laser);
     
+    // Play laser sound effect
+    playLaserSound();
+    
     return laser;
-  }, []);
+  }, [playLaserSound]);
 
   const updateLasers = useCallback(() => {
     if (!sceneRef.current) return;
@@ -1369,6 +1390,9 @@ export const AsteroidDefenseGame3D = () => {
                 sceneRef.current.add(explosion);
               }
 
+              // Play explosion sound effect
+              playExplosionSound();
+
               // Split the asteroid if not final generation
               if (laser.targetAsteroid.splitGeneration !== undefined && laser.targetAsteroid.splitGeneration < 2) {
                 setTimeout(() => {
@@ -1404,6 +1428,20 @@ export const AsteroidDefenseGame3D = () => {
                 setTimeout(() => {
                   setSelectedAsteroid(laser.targetAsteroid.data);
                   setGamePaused(true);
+                  setPauseCountdown(3);
+                  
+                  // Start countdown timer
+                  let count = 3;
+                  const countdownInterval = setInterval(() => {
+                    count--;
+                    setPauseCountdown(count);
+                    if (count <= 0) {
+                      clearInterval(countdownInterval);
+                      setGamePaused(false);
+                      setSelectedAsteroid(null);
+                      setPauseCountdown(0);
+                    }
+                  }, 1000);
                 }, explosionDuration + 200);
               }
             } else {
@@ -1457,6 +1495,9 @@ export const AsteroidDefenseGame3D = () => {
               sceneRef.current.add(explosion);
             }
 
+            // Play explosion sound effect
+            playExplosionSound();
+
             // Animate explosion
             let explosionScale = 1;
             const explosionDuration = laser.targetAsteroid.isHazardous ? 1500 : 500;
@@ -1497,10 +1538,24 @@ export const AsteroidDefenseGame3D = () => {
             };
             animateExplosion();
             
-            // Delay setting selected asteroid and pausing game until after explosion completes
+            // Delay setting selected asteroid and showing it briefly, then auto-continue after 6 seconds
             setTimeout(() => {
               setSelectedAsteroid(laser.targetAsteroid.data);
               setGamePaused(true);
+              setPauseCountdown(4);
+              
+              // Start countdown timer
+              let count = 3;
+              const countdownInterval = setInterval(() => {
+                count--;
+                setPauseCountdown(count);
+                if (count <= 0) {
+                  clearInterval(countdownInterval);
+                  setGamePaused(false);
+                  setSelectedAsteroid(null);
+                  setPauseCountdown(0);
+                }
+              }, 1000);
             }, explosionDuration + 200);
           }
         }
@@ -1518,7 +1573,7 @@ export const AsteroidDefenseGame3D = () => {
       
       return true;
     });
-  }, [setSelectedAsteroid, setGamePaused, setScore, setAsteroidsDestroyed, splitImpactor2025, setImpactorPartsDestroyed]);
+  }, [setSelectedAsteroid, setGamePaused, setScore, setAsteroidsDestroyed, splitImpactor2025, setImpactorPartsDestroyed, playExplosionSound]);
 
   const spawnWave = useCallback((forceWave?: number) => {
     const currentWave = forceWave !== undefined ? forceWave : wave;
@@ -1595,7 +1650,7 @@ export const AsteroidDefenseGame3D = () => {
     }
 
     if (gamePaused) {
-      console.log('⏸️ Game is PAUSED - click should not work for asteroids');
+      console.log('⏸️ Game is temporarily paused - showing asteroid info before auto-continue');
       return;
     }
 
@@ -1784,6 +1839,9 @@ export const AsteroidDefenseGame3D = () => {
           // Create impact explosion effect at collision point
           createImpactExplosion(asteroid.mesh.position);
           
+          // Play impact sound effect
+          playImpactSound();
+          
           // Remove asteroid mesh immediately but keep trail for explosion duration
           sceneRef.current?.remove(asteroid.mesh);
           
@@ -1868,7 +1926,7 @@ export const AsteroidDefenseGame3D = () => {
     if (gameStarted && !gameOver && !gameVictory) {
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     }
-  }, [gameStarted, gameOver, gameVictory, gamePaused, createImpactExplosion, updateAsteroidTrail, updateLasers]);
+  }, [gameStarted, gameOver, gameVictory, gamePaused, createImpactExplosion, updateAsteroidTrail, updateLasers, playImpactSound]);
 
   const startGame = () => {
     console.log('🔄 COMPLETE GAME RESET - Starting fresh game...');
@@ -1950,11 +2008,6 @@ export const AsteroidDefenseGame3D = () => {
         spawnWave(1); // Force wave 1
       }, 50);
     }, 100);
-  };
-
-  const continueGame = () => {
-    setGamePaused(false);
-    setSelectedAsteroid(null); // Clear selected asteroid when continuing
   };
 
   const continueToBoss = () => {
@@ -2127,14 +2180,14 @@ export const AsteroidDefenseGame3D = () => {
   }, [gameStarted, gameOver, gameVictory, gamePaused, spawnWave, wave]);
 
   return (
-    <div className="flex h-screen bg-black overflow-hidden">
+    <div className="flex h-screen bg-black overflow-hidden pt-14">
       <div className="flex-1 relative">
         <div ref={mountRef} className="w-full h-full cursor-crosshair" onClick={handleClick} />
         
         {/* Game UI */}
         <div className="absolute top-4 left-4 text-white z-10">
           <div className="bg-black bg-opacity-70 p-4 rounded">
-            <h1 className="text-2xl font-bold mb-2">Asteroid Defense 3D</h1>
+            <h1 className="text-2xl font-bold mb-2">Meteor Madness</h1>
             <p>Score: {score}</p>
             <p>Wave: {wave}</p>
             <p>Destroyed: {asteroidsDestroyed}</p>
@@ -2151,7 +2204,7 @@ export const AsteroidDefenseGame3D = () => {
               </p>
             </div>
             {gamePaused && (
-              <p className="text-yellow-400 font-bold mt-2">⏸️ GAME PAUSED</p>
+              <p className="text-yellow-400 font-bold mt-2">⏸️ ASTEROID DESTROYED - Continuing in {pauseCountdown}s...</p>
             )}
             <div className="mt-2">
               <p className="text-sm">Earth Health:</p>
@@ -2177,7 +2230,7 @@ export const AsteroidDefenseGame3D = () => {
         {!gameStarted && (
           <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-80 z-20">
             <div className="text-center text-white">
-              <h1 className="text-4xl font-bold mb-4">Asteroid Defense 3D</h1>
+              <h1 className="text-4xl font-bold mb-4">Meteor Madness</h1>
               <p className="text-lg mb-6">Protect Earth by clicking on incoming asteroids!</p>
               <p className="text-sm mb-2">🔴 Red rings = Hazardous asteroids on collision course (150 points, 20 damage)</p>
               <p className="text-sm mb-4">🟢 Green rings = Non-hazardous asteroids in safe orbit (75 points, 10 damage)</p>
@@ -2245,7 +2298,7 @@ export const AsteroidDefenseGame3D = () => {
               <p className="text-lg mb-2 text-blue-300">Final Score: {score}</p>
               <p className="text-lg mb-2 text-blue-300">Waves Completed: {wave}</p>
               <p className="text-lg mb-6 text-blue-300">Asteroids Destroyed: {asteroidsDestroyed}</p>
-              <p className="text-lg mb-6 text-green-300">🏆 EARTH DEFENDER CHAMPION 🏆</p>
+              <p className="text-lg mb-6 text-green-300">🏆</p>
               <button
                 onClick={startGame}
                 className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded text-lg"
@@ -2266,11 +2319,10 @@ export const AsteroidDefenseGame3D = () => {
                 <div className="text-8xl mb-4">☄️</div>
               </div>
               
-              <h1 className="text-4xl font-bold mb-4 text-red-400 animate-pulse">INCOMING THREAT DETECTED</h1>
+              <h1 className="text-4xl font-bold mb-4 text-red-400 animate-pulse">FINAL THREAT DETECTED</h1>
               <p className="text-2xl mb-4 text-yellow-300">MASSIVE ASTEROID APPROACHING</p>
               <p className="text-xl mb-2">Scientists have detected Impactor-2025,</p>
               <p className="text-xl mb-2">a massive asteroid on a collision course with Earth!</p>
-              <p className="text-lg mb-4 text-orange-300">This is our final battle...</p>
               <p className="text-md mb-6 text-gray-300">
                 ⚠️ Warning: This asteroid requires multiple hits to destroy<br/>
                 🔴 It will split into 2 fragments, each fragment splits into 2 more<br/>
@@ -2288,7 +2340,7 @@ export const AsteroidDefenseGame3D = () => {
         )}
       </div>
 
-      <AsteroidInfoPanel asteroid={selectedAsteroid} onContinue={continueGame} />
+      <AsteroidInfoPanel asteroid={selectedAsteroid} />
     </div>
   );
 };
