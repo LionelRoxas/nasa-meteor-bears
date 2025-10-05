@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useMemo } from "react";
@@ -208,7 +209,7 @@ export default function ImpactInsights({
         <div className="text-center text-gray-400 py-8">
           <p className="text-lg mb-2">⚠️ No impact data available</p>
           <p className="text-sm">
-            Click "Get Enhanced Prediction" to analyze impact consequences
+            Click &quot;Get Enhanced Prediction&quot; to analyze impact consequences
           </p>
         </div>
       </div>

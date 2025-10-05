@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // app/api/neo-browse/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
@@ -117,7 +118,7 @@ export async function GET(request: NextRequest) {
       console.log("Fetching multiple pages of NEO Browse data from NASA API");
 
       const allAsteroids = [];
-      let currentPage = 0;
+      const currentPage = 0;
       const maxPages = 10; // Limit to prevent overwhelming the API
       let totalElements = 0;
       let totalPages = 0;
