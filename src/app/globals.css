@@ -216,6 +216,18 @@ input:focus {
   }
 }
 
+@keyframes flash {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* Utility Classes */
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
