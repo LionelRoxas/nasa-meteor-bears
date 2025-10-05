@@ -11,7 +11,6 @@ import {
   type EnhancedPrediction,
 } from "@/hooks/useEnhancedPredictions";
 import TerrainVisualizer from "@/components/TerrainVisualizer";
-import ConsequenceAnalysis from "@/components/ConsequenceAnalysis";
 import USGSDataPanel from "@/components/USGSDataPanel";
 
 // Simulation phase type for 3D→2D transition
@@ -40,7 +39,7 @@ interface NASAAsteroidData {
   miss_distance_lunar?: number;
   orbiting_body?: string;
   orbit_class?: string;
-  raw_data?: any;
+  raw_data?: Record<string, unknown>;
 }
 
 export default function Home() {
@@ -83,6 +82,17 @@ export default function Home() {
   const [enhancedPrediction, setEnhancedPrediction] =
     useState<EnhancedPrediction | null>(null);
   const [impactLocation, setImpactLocation] = useState({ lat: 0, lng: 0 });
+  const [asteroidClicked, setAsteroidClicked] = useState(false);
+  const [callout, setCallout] = useState<{
+    x: number;
+    y: number;
+    visible: boolean;
+  }>({ x: 0, y: 0, visible: false });
+  const [showBoxes, setShowBoxes] = useState<{
+    asteroid: boolean;
+    consequence: boolean;
+    usgs: boolean;
+  }>({ asteroid: true, consequence: false, usgs: false });
 
   // Handle countdown and automatic start
   useEffect(() => {
@@ -92,11 +102,19 @@ export default function Home() {
       }, 1000);
       return () => clearTimeout(timer);
     } else if (countdown === 0) {
-      setIsSimulating(true);
-      setCountdown(null);
-      setSimulationPhase("3d-simulation");
+      // DON'T start simulation immediately - wait for prediction if fetching
+      if (simulationPhase === "fetching-prediction") {
+        console.log(
+          "⏳ Waiting for prediction to complete before starting simulation..."
+        );
+        // Keep countdown at 0, will be triggered when prediction completes
+      } else {
+        setIsSimulating(true);
+        setCountdown(null);
+        setSimulationPhase("3d-simulation");
+      }
     }
-  }, [countdown]);
+  }, [countdown, simulationPhase]);
 
   // Fetch enhanced prediction during countdown (BEFORE simulation starts)
   useEffect(() => {
@@ -130,12 +148,23 @@ export default function Home() {
           console.error("❌ Failed to fetch enhanced prediction:", error);
         }
 
+        // Set back to countdown - the effect above will start simulation if countdown is 0
         setSimulationPhase("countdown");
       }
     };
 
     fetchPrediction();
   }, [countdown, selectedNASAAsteroid, getEnhancedPrediction]);
+
+  // Start simulation when prediction completes and countdown is at 0
+  useEffect(() => {
+    if (countdown === 0 && simulationPhase === "countdown" && !isSimulating) {
+      console.log("🎬 Starting simulation now that prediction is ready!");
+      setIsSimulating(true);
+      setCountdown(null);
+      setSimulationPhase("3d-simulation");
+    }
+  }, [countdown, simulationPhase, isSimulating]);
 
   useEffect(() => {
     if (!isSimulating) {
@@ -178,6 +207,7 @@ export default function Home() {
     if (!isSimulating && !countdown) {
       setCountdown(5);
       setHasImpacted(false);
+      setAsteroidClicked(false);
       setSimulationPhase("countdown");
       setWasNASAPanelOpen(showNASAPanel);
       setIsSidebarCollapsed(true);
@@ -195,6 +225,7 @@ export default function Home() {
     setIsSimulating(false);
     setCountdown(null);
     setHasImpacted(false);
+    setAsteroidClicked(false);
     setSimulationPhase("idle");
     setEnhancedPrediction(null);
     setIsSidebarCollapsed(false);
@@ -229,11 +260,18 @@ export default function Home() {
     console.log("Loading NASA asteroid data:", asteroid);
 
     let calculatedDiameter = asteroid.diameter;
-    if (asteroid.raw_data?.estimated_diameter?.meters) {
-      const minDiameter =
-        asteroid.raw_data.estimated_diameter.meters.estimated_diameter_min;
-      const maxDiameter =
-        asteroid.raw_data.estimated_diameter.meters.estimated_diameter_max;
+    const raw = asteroid.raw_data as Record<string, unknown> | undefined;
+    const est = raw?.estimated_diameter as
+      | {
+          meters?: {
+            estimated_diameter_min?: number;
+            estimated_diameter_max?: number;
+          };
+        }
+      | undefined;
+    if (est?.meters) {
+      const minDiameter = est.meters.estimated_diameter_min;
+      const maxDiameter = est.meters.estimated_diameter_max;
       if (minDiameter && maxDiameter) {
         calculatedDiameter = (minDiameter + maxDiameter) / 2;
       }
@@ -276,7 +314,7 @@ export default function Home() {
           style={{ zIndex: 0 }}
         >
           <div className="w-full h-full flex flex-col items-center justify-center p-8 gap-6">
-            <div className="w-full max-w-6xl">
+            <div className="w-full max-w-6xl relative">
               <TerrainVisualizer
                 width={1200}
                 height={600}
@@ -291,23 +329,169 @@ export default function Home() {
                 }
                 showImpact={true}
                 enhancedPrediction={enhancedPrediction || undefined}
+                onAsteroidClick={(x, y) => {
+                  if (asteroidClicked && callout.visible) {
+                    setAsteroidClicked(false);
+                    setCallout((c) => ({ ...c, visible: false }));
+                    setShowBoxes({
+                      asteroid: false,
+                      consequence: false,
+                      usgs: false,
+                    });
+                    return;
+                  }
+                  setAsteroidClicked(true);
+                  setCallout({ x, y, visible: true });
+                  setShowBoxes({
+                    asteroid: true,
+                    consequence: false,
+                    usgs: true,
+                  });
+                }}
               />
-            </div>
 
-            {enhancedPrediction && (
-              <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <ConsequenceAnalysis
-                  enhancedPrediction={enhancedPrediction}
-                  asteroidData={{
-                    diameter_meters: asteroidParams.diameter,
-                    kinetic_energy_mt: asteroidParams.energy,
-                    is_hazardous: asteroidParams.energy > 10,
+              {enhancedPrediction && asteroidClicked && callout.visible && (
+                <div
+                  className="absolute z-50"
+                  style={{
+                    left: callout.x + 24,
+                    top: callout.y + 24,
                   }}
-                  impactLocation={impactLocation}
-                />
-                <USGSDataPanel prediction={enhancedPrediction} />
-              </div>
-            )}
+                >
+                  {/* Skinny connector line */}
+                  <div className="absolute -left-20 top-8 w-20 h-px bg-white/30"></div>
+
+                  {/* Tooltip box styled like sidebar/NASA overlays */}
+                  <div className="bg-black/80 backdrop-blur-md border border-white/20 rounded-xl p-4 shadow-2xl min-w-[260px] max-w-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-white/90">
+                        {selectedNASAAsteroid?.name || "Asteroid"}
+                      </h4>
+                      <button
+                        className="text-white/60 hover:text-white"
+                        onClick={() => {
+                          setAsteroidClicked(false);
+                          setCallout((c) => ({ ...c, visible: false }));
+                        }}
+                        aria-label="Close"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div className="text-xs text-white/70 space-y-1">
+                      <div className="flex justify-between">
+                        <span>Diameter</span>
+                        <span className="text-white font-medium">
+                          {asteroidParams.diameter.toFixed(0)} m
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Energy</span>
+                        <span className="text-white font-medium">
+                          {asteroidParams.energy.toFixed(1)} MT
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Threat</span>
+                        <span className="text-white font-medium">
+                          {impactData.threatLevel}
+                        </span>
+                      </div>
+                    </div>
+
+                    {enhancedPrediction?.impact_physics && (
+                      <div className="mt-3 pt-3 border-t border-white/10 text-xs text-white/70 space-y-1">
+                        <div className="flex justify-between">
+                          <span>Crater Diameter</span>
+                          <span className="text-white font-medium">
+                            {enhancedPrediction.impact_physics.craterDiameter?.toFixed(
+                              2
+                            ) ?? "—"}{" "}
+                            km
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Damage Radius</span>
+                          <span className="text-white font-medium">
+                            {enhancedPrediction.impact_physics.affectedRadius?.toFixed(
+                              1
+                            ) ?? "—"}{" "}
+                            km
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Location</span>
+                          <span className="text-white font-medium">
+                            {impactLocation.lat.toFixed(2)}°,{" "}
+                            {impactLocation.lng.toFixed(2)}°
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>EQ Magnitude</span>
+                          <span className="text-white font-medium">
+                            {enhancedPrediction.impact_physics.earthquakeMagnitude?.toFixed?.(
+                              1
+                            ) ?? "—"}
+                          </span>
+                        </div>
+                        {enhancedPrediction?.usgsData &&
+                          enhancedPrediction.usgsData.expectedTsunamiHeight >
+                            0 && (
+                            <div className="flex justify-between">
+                              <span>Tsunami</span>
+                              <span className="text-white font-medium">
+                                {enhancedPrediction.usgsData?.expectedTsunamiHeight.toFixed(
+                                  1
+                                )}{" "}
+                                m
+                              </span>
+                            </div>
+                          )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Impact consequences tooltip removed; data merged into info tooltip */}
+
+              {/* USGS tooltip (top-left, opposite of info box) */}
+              {enhancedPrediction &&
+                asteroidClicked &&
+                callout.visible &&
+                showBoxes.usgs && (
+                  <div
+                    className="absolute z-50"
+                    style={{
+                      left: callout.x - 24 - 360,
+                      top: callout.y - 24 - 220,
+                    }}
+                  >
+                    <div className="absolute -right-32 top-8 w-32 h-px bg-white/30"></div>
+                    <div className="bg-black/80 backdrop-blur-md border border-white/20 rounded-xl p-4 shadow-2xl min-w-[300px] max-w-md">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-semibold text-white/90">
+                          USGS Assessment
+                        </h4>
+                        <button
+                          className="text-white/60 hover:text-white"
+                          onClick={() =>
+                            setShowBoxes((s) => ({ ...s, usgs: false }))
+                          }
+                          aria-label="Close"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <USGSDataPanel
+                        prediction={enhancedPrediction}
+                        variant="inline"
+                      />
+                    </div>
+                  </div>
+                )}
+            </div>
           </div>
         </div>
       ) : (
