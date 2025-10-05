@@ -43,7 +43,7 @@ export default function ImpactSimulator({
   // Simulation state
   const asteroidVelocityRef = useRef<THREE.Vector3>(new THREE.Vector3());
   const explosionParticlesRef = useRef<THREE.Mesh[]>([]);
-  const asteroidTrailRef = useRef<THREE.Mesh[]>([]); // Changed from Points[] to Mesh[]
+  const asteroidTrailRef = useRef<THREE.Mesh[]>([]);
   const impactOccurredRef = useRef(false);
 
   // Initialize Three.js scene
@@ -53,7 +53,7 @@ export default function ImpactSimulator({
 
     // Create scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000011); // Dark space background like game
+    scene.background = new THREE.Color(0x000011); // Dark space background
     sceneRef.current = scene;
 
     // Setup camera
@@ -61,19 +61,26 @@ export default function ImpactSimulator({
       75,
       container.clientWidth / container.clientHeight,
       0.1,
-      1000
+      500
     );
     camera.position.set(0, 10, 30);
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
-    // Setup renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Setup renderer with conservative settings
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
     renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.sortObjects = true;
+    renderer.localClippingEnabled = false; // Disable clipping that might cause artifacts
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -109,30 +116,33 @@ export default function ImpactSimulator({
     sunLight.castShadow = true;
     scene.add(sunLight);
 
-    // Add stars background
-    const starsGeometry = new THREE.BufferGeometry();
-    const starsMaterial = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 0.1,
-      transparent: true,
-    });
-    const starsVertices = [];
-    for (let i = 0; i < 1000; i++) {
-      const x = (Math.random() - 0.5) * 200;
-      const y = (Math.random() - 0.5) * 200;
-      const z = (Math.random() - 0.5) * 200;
-      starsVertices.push(x, y, z);
-    }
-    starsGeometry.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(starsVertices, 3)
+    // Create starfield using a different approach - textured sphere
+    const starsTexture = new THREE.DataTexture(
+      new Uint8Array(
+        Array.from({ length: 256 * 256 * 3 }, () =>
+          Math.random() > 0.99 ? 255 : 0
+        )
+      ),
+      256,
+      256,
+      THREE.RGBFormat
     );
-    const stars = new THREE.Points(starsGeometry, starsMaterial);
-    scene.add(stars);
+    starsTexture.needsUpdate = true;
+
+    const starsSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(200, 32, 32),
+      new THREE.MeshBasicMaterial({
+        map: starsTexture,
+        side: THREE.BackSide,
+        transparent: true,
+        opacity: 0.3,
+        depthWrite: false,
+      })
+    );
+    scene.add(starsSphere);
 
     // Create asteroid
     const createAsteroid = () => {
-      // Scale asteroid size appropriately
       const radius = asteroidParams.diameter / 1000;
       const asteroidGeometry = new THREE.IcosahedronGeometry(radius, 1);
 
@@ -153,9 +163,8 @@ export default function ImpactSimulator({
       asteroidGeometry.attributes.position.needsUpdate = true;
       asteroidGeometry.computeVertexNormals();
 
-      // Hazardous asteroid coloring
       const asteroidMaterial = new THREE.MeshPhongMaterial({
-        color: 0x8b0000, // Dark red
+        color: 0x8b0000,
         shininess: 30,
         emissive: 0x442211,
         emissiveIntensity: 0.1,
@@ -163,7 +172,7 @@ export default function ImpactSimulator({
 
       const asteroid = new THREE.Mesh(asteroidGeometry, asteroidMaterial);
 
-      // Position asteroid at starting distance
+      // Position asteroid
       const scaledDistance =
         asteroidParams.distance / KM_PER_UNIT + EARTH_RADIUS_UNITS;
       const angle = (asteroidParams.angle * Math.PI) / 180;
@@ -174,7 +183,7 @@ export default function ImpactSimulator({
         Math.sin(angle) * scaledDistance
       );
 
-      // Initial velocity toward Earth
+      // Initial velocity
       const direction = new THREE.Vector3(0, 0, 0)
         .sub(asteroid.position)
         .normalize();
@@ -191,10 +200,10 @@ export default function ImpactSimulator({
     scene.add(asteroid);
     asteroidRef.current = asteroid;
 
-    // Add hazardous warning ring
+    // Add warning ring
     const ringGeometry = new THREE.RingGeometry(
-      asteroid.geometry.boundingSphere?.radius || 0.5 * 2.5,
-      asteroid.geometry.boundingSphere?.radius || 0.5 * 3,
+      (asteroidParams.diameter / 1000) * 2.5,
+      (asteroidParams.diameter / 1000) * 3,
       16
     );
     const ringMaterial = new THREE.MeshBasicMaterial({
@@ -202,6 +211,7 @@ export default function ImpactSimulator({
       transparent: true,
       opacity: 0.8,
       side: THREE.DoubleSide,
+      depthWrite: false,
     });
     const ring = new THREE.Mesh(ringGeometry, ringMaterial);
     asteroid.add(ring);
@@ -232,13 +242,15 @@ export default function ImpactSimulator({
     (position: THREE.Vector3) => {
       if (!sceneRef.current) return;
 
-      // Clear old explosion particles
+      // Clear old particles
       explosionParticlesRef.current.forEach((particle) => {
+        particle.geometry.dispose();
+        (particle.material as THREE.Material).dispose();
         sceneRef.current?.remove(particle);
       });
       explosionParticlesRef.current = [];
 
-      // Create explosion particles
+      // Create new explosion
       for (let i = 0; i < 20; i++) {
         const particleGeometry = new THREE.SphereGeometry(
           0.1 + Math.random() * 0.2,
@@ -246,7 +258,7 @@ export default function ImpactSimulator({
           4
         );
         const particleMaterial = new THREE.MeshBasicMaterial({
-          color: 0xffa500, // Orange
+          color: 0xffa500,
           transparent: true,
           opacity: 1,
         });
@@ -254,7 +266,6 @@ export default function ImpactSimulator({
         const particle = new THREE.Mesh(particleGeometry, particleMaterial);
         particle.position.copy(position);
 
-        // Random explosion direction
         const angle = (i / 20) * Math.PI * 2;
         const speed = Math.random() * 0.5 + 0.2;
         particle.userData.velocity = new THREE.Vector3(
@@ -284,7 +295,7 @@ export default function ImpactSimulator({
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
 
-      // Animate Enhanced Earth
+      // Animate Earth
       if (enhancedEarthRef.current) {
         enhancedEarthRef.current.animate();
       }
@@ -297,12 +308,9 @@ export default function ImpactSimulator({
         !impactOccurredRef.current
       ) {
         const asteroid = asteroidRef.current;
-
-        // Calculate distance to Earth center
         const earthPosition = new THREE.Vector3(0, 0, 0);
         const distanceToEarthCenter = asteroid.position.length();
 
-        // Convert to kilometers from surface
         const distanceFromSurface = Math.max(
           0,
           (distanceToEarthCenter - EARTH_RADIUS_UNITS) * KM_PER_UNIT
@@ -326,33 +334,38 @@ export default function ImpactSimulator({
         asteroid.rotation.x += 0.02;
         asteroid.rotation.y += 0.03;
 
-        // Update warning ring orientation to face camera
+        // Update ring orientation
         const ring = asteroid.children[0];
         if (ring) {
           ring.lookAt(camera.position);
         }
 
-        // Create trail effect (FIXED: using Mesh instead of Points)
-        if (Math.random() > 0.3) {
-          const trailGeometry = new THREE.SphereGeometry(0.05, 4, 4);
+        // Trail effect - simpler implementation
+        if (Math.random() > 0.8) {
+          const trailGeometry = new THREE.SphereGeometry(0.03, 3, 3);
           const trailMaterial = new THREE.MeshBasicMaterial({
-            color: distanceToEarthCenter < 20 ? 0xff0000 : 0xff4500,
+            color: 0xff4500,
             transparent: true,
-            opacity: 0.7,
+            opacity: 0.6,
+            depthWrite: false,
           });
           const trail = new THREE.Mesh(trailGeometry, trailMaterial);
           trail.position.copy(asteroid.position);
           scene.add(trail);
           asteroidTrailRef.current.push(trail);
 
-          // Remove old trail points
-          if (asteroidTrailRef.current.length > 30) {
+          // Limit trail length
+          if (asteroidTrailRef.current.length > 15) {
             const oldTrail = asteroidTrailRef.current.shift();
-            if (oldTrail) scene.remove(oldTrail);
+            if (oldTrail) {
+              oldTrail.geometry.dispose();
+              (oldTrail.material as THREE.Material).dispose();
+              scene.remove(oldTrail);
+            }
           }
         }
 
-        // Dynamic camera movement during approach
+        // Camera movement
         if (distanceToEarthCenter > 25) {
           camera.position.lerp(new THREE.Vector3(10, 15, 35), 0.02);
         } else if (distanceToEarthCenter > 15) {
@@ -367,48 +380,54 @@ export default function ImpactSimulator({
         }
         camera.lookAt(0, 0, 0);
 
-        // Check for impact
+        // Check impact
         if (
           distanceToEarthCenter <=
-          earthRadius + (asteroid.geometry.boundingSphere?.radius || 0.5)
+          earthRadius + asteroidParams.diameter / 1000
         ) {
           asteroid.visible = false;
           createExplosion(asteroid.position);
           impactOccurredRef.current = true;
         }
       } else if (!isSimulating) {
-        // Update orbit controls when not simulating
         controlsRef.current?.update();
       }
 
-      // Animate explosion particles
-      explosionParticlesRef.current.forEach((particle, index) => {
-        if (particle.userData.velocity) {
-          particle.position.add(particle.userData.velocity);
-          particle.userData.velocity.multiplyScalar(0.95);
+      // Animate explosions
+      explosionParticlesRef.current = explosionParticlesRef.current.filter(
+        (particle) => {
+          if (particle.userData.velocity) {
+            particle.position.add(particle.userData.velocity);
+            particle.userData.velocity.multiplyScalar(0.95);
 
-          // Fade out
-          const material = particle.material as THREE.MeshBasicMaterial;
-          material.opacity -= 0.02;
+            const material = particle.material as THREE.MeshBasicMaterial;
+            material.opacity -= 0.02;
 
-          if (material.opacity <= 0) {
-            scene.remove(particle);
-            explosionParticlesRef.current.splice(index, 1);
+            if (material.opacity <= 0) {
+              particle.geometry.dispose();
+              material.dispose();
+              scene.remove(particle);
+              return false;
+            }
           }
+          return true;
         }
-      });
+      );
 
-      // Fade trail (FIXED: using MeshBasicMaterial instead of PointsMaterial)
-      asteroidTrailRef.current.forEach((trail, index) => {
+      // Fade trail
+      asteroidTrailRef.current = asteroidTrailRef.current.filter((trail) => {
         const material = trail.material as THREE.MeshBasicMaterial;
-        material.opacity -= 0.01;
+        material.opacity -= 0.02;
         if (material.opacity <= 0) {
+          trail.geometry.dispose();
+          material.dispose();
           scene.remove(trail);
-          asteroidTrailRef.current.splice(index, 1);
+          return false;
         }
+        return true;
       });
 
-      // Camera shake on impact
+      // Camera shake
       if (
         impactOccurredRef.current &&
         explosionParticlesRef.current.length > 15
@@ -418,7 +437,7 @@ export default function ImpactSimulator({
         camera.position.y += (Math.random() - 0.5) * shake;
       }
 
-      // Idle asteroid rotation when not simulating
+      // Idle rotation
       if (!isSimulating && asteroidRef.current) {
         asteroidRef.current.rotation.x += 0.003;
         asteroidRef.current.rotation.y += 0.005;
@@ -434,9 +453,15 @@ export default function ImpactSimulator({
         cancelAnimationFrame(animationIdRef.current);
       }
     };
-  }, [isSimulating, hasImpacted, createExplosion, onDistanceUpdate]);
+  }, [
+    isSimulating,
+    hasImpacted,
+    createExplosion,
+    onDistanceUpdate,
+    asteroidParams,
+  ]);
 
-  // Reset when simulation stops
+  // Reset simulation
   useEffect(() => {
     if (
       !hasImpacted &&
@@ -444,18 +469,23 @@ export default function ImpactSimulator({
       sceneRef.current &&
       asteroidRef.current
     ) {
-      // Clear effects
-      asteroidTrailRef.current.forEach((trail) =>
-        sceneRef.current?.remove(trail)
-      );
+      // Clear all effects
+      asteroidTrailRef.current.forEach((trail) => {
+        trail.geometry.dispose();
+        (trail.material as THREE.Material).dispose();
+        sceneRef.current?.remove(trail);
+      });
       asteroidTrailRef.current = [];
-      explosionParticlesRef.current.forEach((particle) =>
-        sceneRef.current?.remove(particle)
-      );
+
+      explosionParticlesRef.current.forEach((particle) => {
+        particle.geometry.dispose();
+        (particle.material as THREE.Material).dispose();
+        sceneRef.current?.remove(particle);
+      });
       explosionParticlesRef.current = [];
       impactOccurredRef.current = false;
 
-      // Reset asteroid
+      // Reset asteroid position
       asteroidRef.current.visible = true;
       const scaledDistance =
         asteroidParams.distance / KM_PER_UNIT + EARTH_RADIUS_UNITS;
@@ -475,12 +505,24 @@ export default function ImpactSimulator({
 
       // Reset camera
       if (cameraRef.current) {
-        cameraRef.current.position.set(0, 10, 30);
+        cameraRef.current.position.set(0, 5, 20); // Match the closer initial position
         cameraRef.current.lookAt(0, 0, 0);
         controlsRef.current?.update();
       }
     }
   }, [hasImpacted, isSimulating, asteroidParams]);
 
-  return <div ref={containerRef} className="absolute inset-0" />;
+  return (
+    <div
+      ref={containerRef}
+      className="absolute inset-0"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+      }}
+    />
+  );
 }
