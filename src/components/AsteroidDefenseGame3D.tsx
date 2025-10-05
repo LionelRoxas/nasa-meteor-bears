@@ -463,6 +463,9 @@ export const AsteroidDefenseGame3D = () => {
 
     // Raycaster for mouse interaction
     const raycaster = new THREE.Raycaster();
+    // Increase raycaster threshold for better hit detection on small/distant objects
+    raycaster.params.Points!.threshold = 0.1;
+    raycaster.params.Line!.threshold = 0.1;
     const mouse = new THREE.Vector2();
     raycasterRef.current = raycaster;
     mouseRef.current = mouse;
@@ -643,7 +646,7 @@ export const AsteroidDefenseGame3D = () => {
     const mesh = new THREE.Mesh(geometry, material);
     
     // Add invisible larger collision sphere for easier clicking
-    const collisionGeometry = new THREE.SphereGeometry(radius * 1.5, 8, 8);
+    const collisionGeometry = new THREE.SphereGeometry(radius * 2.0, 8, 8); // Increased from 1.5 to 2.0 for better hit detection
     const collisionMaterial = new THREE.MeshBasicMaterial({
       transparent: true,
       opacity: 0,
@@ -915,7 +918,7 @@ export const AsteroidDefenseGame3D = () => {
     const mesh = new THREE.Mesh(geometry, material);
     
     // Larger collision sphere for easier targeting
-    const collisionGeometry = new THREE.SphereGeometry(baseRadius * 1.8, 8, 8);
+    const collisionGeometry = new THREE.SphereGeometry(baseRadius * 2.2, 8, 8); // Increased from 1.8 to 2.2 for better hit detection
     const collisionMaterial = new THREE.MeshBasicMaterial({
       transparent: true,
       opacity: 0,
@@ -1234,8 +1237,8 @@ export const AsteroidDefenseGame3D = () => {
   const createLaser = useCallback((startPos: THREE.Vector3, targetAsteroid: GameAsteroid) => {
     if (!sceneRef.current) return null;
 
-    // Create laser beam geometry
-    const laserGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1, 8);
+    // Create laser beam geometry - Made thicker for better visibility
+    const laserGeometry = new THREE.CylinderGeometry(0.08, 0.08, 1, 8); // Increased from 0.02 to 0.08 for thicker lasers
     const laserMaterial = new THREE.MeshBasicMaterial({
       color: 0xff0000, // Bright red laser
       transparent: true,
@@ -1608,9 +1611,9 @@ export const AsteroidDefenseGame3D = () => {
     mouseRef.current.x = mouseX;
     mouseRef.current.y = mouseY;
 
-    console.log('🎯 Click detected at:', mouseX, mouseY);
-    console.log('📦 Rect:', rect);
-    console.log('🖱️ Event client:', event.clientX, event.clientY);
+    console.log('🎯 Click detected at:', mouseX.toFixed(3), mouseY.toFixed(3));
+    console.log('📦 Canvas size:', rect.width, 'x', rect.height);
+    console.log('🖱️ Event client coords:', event.clientX, event.clientY);
 
     raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
     
@@ -1618,11 +1621,12 @@ export const AsteroidDefenseGame3D = () => {
     // Include both main mesh and collision mesh for better hit detection
     const asteroidMeshes: THREE.Object3D[] = [];
     activeAsteroids.forEach(asteroid => {
-      asteroidMeshes.push(asteroid.mesh);
+      // Add collision mesh first (higher priority for intersection)
       const collisionMesh = (asteroid.mesh as THREE.Mesh & { collisionMesh?: THREE.Mesh }).collisionMesh;
       if (collisionMesh) {
         asteroidMeshes.push(collisionMesh);
       }
+      asteroidMeshes.push(asteroid.mesh);
     });
     
     console.log('🌌 Active asteroids:', activeAsteroids.length);
@@ -1635,16 +1639,23 @@ export const AsteroidDefenseGame3D = () => {
     
     const intersects = raycasterRef.current.intersectObjects(asteroidMeshes, true);
 
-    console.log('💥 Intersections found:', intersects.length);
+    console.log('💥 Total intersections found:', intersects.length);
+    if (intersects.length > 0) {
+      console.log('📍 First intersection distance:', intersects[0].distance.toFixed(2));
+    }
 
     if (intersects.length > 0) {
       const clickedMesh = intersects[0].object as THREE.Mesh;
+      
       // Find the asteroid by checking both main mesh and collision mesh
-      const asteroid = activeAsteroids.find(a => 
-        a.mesh === clickedMesh || 
-        (a.mesh as THREE.Mesh & { collisionMesh?: THREE.Mesh }).collisionMesh === clickedMesh ||
-        a.mesh === clickedMesh.parent
-      );
+      // Also check the parent in case the clicked mesh is a child
+      const asteroid = activeAsteroids.find(a => {
+        const isMainMesh = a.mesh === clickedMesh || a.mesh === clickedMesh.parent;
+        const isCollisionMesh = (a.mesh as THREE.Mesh & { collisionMesh?: THREE.Mesh }).collisionMesh === clickedMesh;
+        const isChildOfAsteroid = clickedMesh.parent === a.mesh;
+        
+        return isMainMesh || isCollisionMesh || isChildOfAsteroid;
+      });
       
       if (asteroid && !asteroid.destroyed) {
         console.log('✅ Asteroid TARGETED! Name:', asteroid.data.name);
