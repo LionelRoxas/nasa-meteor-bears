@@ -607,6 +607,151 @@ export const AsteroidDefenseGame3D = () => {
     return asteroid;
   }, []);
 
+  const createImpactExplosion = useCallback((position: THREE.Vector3, isHazardous: boolean = true) => {
+    if (!sceneRef.current) return;
+
+    console.log('💥 Creating impact explosion at position:', position.x.toFixed(2), position.y.toFixed(2), position.z.toFixed(2));
+
+    // Create explosion group for all effects
+    const explosionGroup = new THREE.Group();
+    explosionGroup.position.copy(position);
+    sceneRef.current.add(explosionGroup);
+
+    // Main explosion flash
+    const flashSize = isHazardous ? 1.5 : 1.0;
+    const flashGeometry = new THREE.SphereGeometry(flashSize, 16, 16);
+    const flashMaterial = new THREE.MeshBasicMaterial({
+      color: isHazardous ? 0xff4400 : 0xffaa00,
+      transparent: true,
+      opacity: 0.9
+    });
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+    explosionGroup.add(flash);
+
+    // Create multiple smoke particles
+    const smokeParticles: THREE.Mesh[] = [];
+    const smokeCount = isHazardous ? 12 : 8;
+    
+    for (let i = 0; i < smokeCount; i++) {
+      const smokeGeometry = new THREE.SphereGeometry(0.3 + Math.random() * 0.4, 8, 8);
+      const smokeMaterial = new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setHSL(0, 0, 0.2 + Math.random() * 0.3), // Gray to dark gray
+        transparent: true,
+        opacity: 0.7
+      });
+      const smoke = new THREE.Mesh(smokeGeometry, smokeMaterial);
+      
+      // Random positions around impact point
+      const angle = (i / smokeCount) * Math.PI * 2;
+      const radius = 0.5 + Math.random() * 0.8;
+      smoke.position.set(
+        Math.cos(angle) * radius,
+        (Math.random() - 0.5) * 0.5,
+        Math.sin(angle) * radius
+      );
+      
+      explosionGroup.add(smoke);
+      smokeParticles.push(smoke);
+    }
+
+    // Create debris particles
+    const debrisParticles: THREE.Mesh[] = [];
+    const debrisCount = isHazardous ? 8 : 5;
+    
+    for (let i = 0; i < debrisCount; i++) {
+      const debrisGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+      const debrisMaterial = new THREE.MeshBasicMaterial({
+        color: 0x8B4513, // Brown rock color
+        transparent: true,
+        opacity: 0.8
+      });
+      const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
+      
+      // Random positions and velocities
+      debris.position.set(
+        (Math.random() - 0.5) * 1.5,
+        (Math.random() - 0.5) * 1.5,
+        (Math.random() - 0.5) * 1.5
+      );
+      
+      explosionGroup.add(debris);
+      debrisParticles.push(debris);
+    }
+
+    // Animation variables
+    let animationTime = 0;
+    const totalDuration = 5000; // 5 seconds
+    const startTime = Date.now();
+
+    const animateExplosion = () => {
+      const currentTime = Date.now();
+      animationTime = currentTime - startTime;
+      const progress = Math.min(animationTime / totalDuration, 1);
+
+      if (progress >= 1) {
+        // Animation complete, remove explosion
+        sceneRef.current?.remove(explosionGroup);
+        return;
+      }
+
+      // Flash animation (quick bright flash then fade)
+      if (progress < 0.1) {
+        // Quick bright flash in first 10% of animation
+        const flashProgress = progress / 0.1;
+        flash.scale.setScalar(1 + flashProgress * 2);
+        flash.material.opacity = 0.9 * (1 - flashProgress);
+      } else {
+        // Hide flash after initial burst
+        flash.visible = false;
+      }
+
+      // Smoke animation (expand and fade)
+      smokeParticles.forEach((smoke, index) => {
+        // Each particle has slightly different timing
+        const particleDelay = (index / smokeParticles.length) * 0.2;
+        const particleProgress = Math.max(0, (progress - particleDelay) / (1 - particleDelay));
+        
+        if (particleProgress > 0) {
+          // Expand smoke
+          const scale = 1 + particleProgress * 3;
+          smoke.scale.setScalar(scale);
+          
+          // Move smoke upward and outward
+          smoke.position.y += particleProgress * 0.02;
+          smoke.position.x *= 1 + particleProgress * 0.5;
+          smoke.position.z *= 1 + particleProgress * 0.5;
+          
+          // Fade smoke
+          (smoke.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - particleProgress);
+        }
+      });
+
+      // Debris animation (spread out and fade)
+      debrisParticles.forEach((debris, index) => {
+        const particleDelay = (index / debrisParticles.length) * 0.15;
+        const particleProgress = Math.max(0, (progress - particleDelay) / (1 - particleDelay));
+        
+        if (particleProgress > 0) {
+          // Move debris outward
+          debris.position.multiplyScalar(1 + particleProgress * 0.02);
+          debris.position.y += particleProgress * 0.01; // Slight upward movement
+          
+          // Rotate debris
+          debris.rotation.x += 0.1;
+          debris.rotation.y += 0.1;
+          debris.rotation.z += 0.1;
+          
+          // Fade debris
+          (debris.material as THREE.MeshBasicMaterial).opacity = 0.8 * (1 - particleProgress);
+        }
+      });
+
+      requestAnimationFrame(animateExplosion);
+    };
+
+    animateExplosion();
+  }, []);
+
   const spawnWave = useCallback(() => {
     if (asteroidData.length === 0) {
       console.log('No asteroid data available for spawning');
@@ -867,11 +1012,19 @@ export const AsteroidDefenseGame3D = () => {
             return newHealth;
           });
           console.log('💥 Hazardous asteroid hit Earth! Damage:', damage);
+          
+          // Create impact explosion effect at collision point
+          createImpactExplosion(asteroid.mesh.position);
+          
           sceneRef.current?.remove(asteroid.mesh);
           return false; // Remove asteroid but continue game if health > 0
         } else {
           // Non-hazardous asteroids just bounce off or get destroyed without damage
           console.log('🌍 Non-hazardous asteroid safely passed by Earth');
+          
+          // Create smaller impact explosion for non-hazardous asteroids
+          createImpactExplosion(asteroid.mesh.position, false);
+          
           sceneRef.current?.remove(asteroid.mesh);
           return false;
         }
@@ -891,7 +1044,7 @@ export const AsteroidDefenseGame3D = () => {
     if (gameStarted && !gameOver) {
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     }
-  }, [gameStarted, gameOver, gamePaused]);
+  }, [gameStarted, gameOver, gamePaused, createImpactExplosion]);
 
   const startGame = () => {
     console.log('Starting game...');
