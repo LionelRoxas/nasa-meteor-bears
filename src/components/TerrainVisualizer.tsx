@@ -38,6 +38,7 @@ interface TerrainVisualizerProps {
       longitude?: number;
     };
   };
+  onAsteroidClick?: (x: number, y: number) => void;
 }
 
 interface TerrainPoint {
@@ -56,6 +57,7 @@ export default function TerrainVisualizer({
   simulationPhase = "approach",
   showImpact = false,
   enhancedPrediction,
+  onAsteroidClick,
 }: TerrainVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [terrain, setTerrain] = useState<TerrainPoint[][]>([]);
@@ -70,6 +72,7 @@ export default function TerrainVisualizer({
     lng: 0,
   });
   const [, setRealTerrainInfo] = useState<RealTerrainData | null>(null);
+  const [isHoveringCrater, setIsHoveringCrater] = useState(false);
 
   // Enhanced visualization state
   const [cameraAngle, setCameraAngle] = useState(0); // 0 = 2D top-down, π/2 = 3D side view
@@ -1342,11 +1345,22 @@ export default function TerrainVisualizer({
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
+    const realCraterKm = realCraterDiameter || asteroidData?.craterRadius || 1;
+    const craterPixelRadius = Math.max(realCraterKm * 3, 20);
+
+    const distanceFromImpact = Math.sqrt(
+      Math.pow(x - impactPoint.x, 2) + Math.pow(y - impactPoint.y, 2)
+    );
+
+    if (distanceFromImpact <= craterPixelRadius * 1.5 && onAsteroidClick) {
+      onAsteroidClick(x, y);
+      return;
+    }
+
     setImpactPoint({ x, y });
 
-    // Convert pixel coordinates to lat/lng (simplified)
-    const lat = 90 - (y / height) * 180; // -90 to 90
-    const lng = (x / width) * 360 - 180; // -180 to 180
+    const lat = 90 - (y / height) * 180;
+    const lng = (x / width) * 360 - 180;
 
     if (onImpactLocationChange) {
       onImpactLocationChange(lat, lng);
@@ -1357,34 +1371,44 @@ export default function TerrainVisualizer({
   const handleMouseUp = () => setIsDragging(false);
 
   const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging) return;
-    handleCanvasClick(event);
+    if (isDragging) {
+      handleCanvasClick(event);
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const realCraterKm = realCraterDiameter || asteroidData?.craterRadius || 1;
+    const craterPixelRadius = Math.max(realCraterKm * 3, 20);
+
+    const distanceFromImpact = Math.sqrt(
+      Math.pow(x - impactPoint.x, 2) + Math.pow(y - impactPoint.y, 2)
+    );
+
+    setIsHoveringCrater(distanceFromImpact <= craterPixelRadius * 1.5);
   };
 
   return (
     <div className="terrain-visualizer">
-      <div className="mb-4">
-        <h3 className="text-lg font-bold text-white mb-2">
-          Dynamic Impact Zone Terrain
-        </h3>
-        <p className="text-sm text-gray-400">
-          {enhancedPrediction?.impact_location
-            ? "Showing realistic terrain at predicted impact coordinates from trajectory calculation."
-            : "Click anywhere to set impact location. Real-time terrain with biomes, elevation, and population centers."}
-        </p>
-      </div>
-
       <div className="relative border border-gray-600 rounded-lg overflow-hidden">
         <canvas
           ref={canvasRef}
           width={width}
           height={height}
-          className="cursor-crosshair"
+          className={isHoveringCrater ? "cursor-pointer" : "cursor-crosshair"}
           onClick={handleCanvasClick}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseMove={handleMouseMove}
-          onMouseLeave={() => setIsDragging(false)}
+          onMouseLeave={() => {
+            setIsDragging(false);
+            setIsHoveringCrater(false);
+          }}
         />
 
         {/* Legend */}

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { logger } from '@/logger';
 
 export interface CorrelatedEarthquake {
@@ -147,6 +147,10 @@ export function useEnhancedPredictions() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cache to prevent duplicate requests
+  const cacheRef = useRef<Map<string, EnhancedPrediction>>(new Map());
+  const pendingRequestsRef = useRef<Map<string, Promise<EnhancedPrediction | null>>>(new Map());
+
   // Get 10 best correlated datasets for an asteroid
   const getCorrelationData = async (asteroidId: string): Promise<AsteroidCorrelationData | null> => {
     try {
@@ -264,8 +268,23 @@ export function useEnhancedPredictions() {
 
   // Main function to get complete enhanced prediction
   const getEnhancedPrediction = async (asteroidId: string): Promise<EnhancedPrediction | null> => {
+    // Check cache first
+    if (cacheRef.current.has(asteroidId)) {
+      console.log("✅ Using cached prediction for asteroid:", asteroidId);
+      return cacheRef.current.get(asteroidId)!;
+    }
+
+    // Check if request is already pending
+    if (pendingRequestsRef.current.has(asteroidId)) {
+      console.log("⏳ Request already pending for asteroid:", asteroidId);
+      return pendingRequestsRef.current.get(asteroidId)!;
+    }
+
     console.log("🌟 ========== GET ENHANCED PREDICTION STARTED ==========");
     console.log("🆔 Asteroid ID:", asteroidId);
+
+    // Create promise and store it
+    const requestPromise = (async () => {
     try {
       // Step 1: Get correlation data
       console.log("📊 Step 1: Getting correlation data...");
@@ -323,13 +342,27 @@ export function useEnhancedPredictions() {
 
       console.log("🎁 Final enhanced prediction has usgsData:", !!enhancedPrediction?.usgsData);
 
+      // Cache the result
+      if (enhancedPrediction) {
+        cacheRef.current.set(asteroidId, enhancedPrediction);
+      }
+
       return enhancedPrediction;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to get enhanced prediction';
       setError(errorMessage);
       logger.error('Failed to get enhanced prediction', { asteroidId, error: err });
       return null;
+    } finally {
+      // Remove from pending requests
+      pendingRequestsRef.current.delete(asteroidId);
     }
+    })();
+
+    // Store the pending request
+    pendingRequestsRef.current.set(asteroidId, requestPromise);
+
+    return requestPromise;
   };
 
   // Build context string for LLM from correlation data
