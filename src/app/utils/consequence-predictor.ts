@@ -1,4 +1,5 @@
 import Groq from "groq-sdk";
+import { AsteroidTrajectoryCalculator, AsteroidTrajectory } from "../../utils/asteroid-trajectory";
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -71,6 +72,7 @@ export interface ConsequencePrediction {
   populationAtRisk: number;
   economicDamage: number; // billions USD
   threatLevel: "LOW" | "MODERATE" | "HIGH" | "CATASTROPHIC";
+  trajectory: AsteroidTrajectory; // Precise trajectory data
   fullResponse: Record<string, unknown>; // Complete JSON response from LLM
 }
 
@@ -78,6 +80,9 @@ class ConsequencePredictor {
   // EXACT NASA Challenge physics constants from CHALLENGE.md specifications
   private readonly ASTEROID_DENSITY = 3000; // kg/m³ as specified in CHALLENGE.md
   private readonly TNT_ENERGY_PER_KG = 4.184e6; // J/kg TNT equivalent
+
+  // Initialize trajectory calculator
+  private trajectoryCalculator = new AsteroidTrajectoryCalculator();
 
   // EXACT crater scaling laws from scientific literature (CHALLENGE.md + links.md)
   // From research: E = 9.1 × 10^24 D^2.59 erg relationship rearranged
@@ -284,16 +289,29 @@ class ConsequencePredictor {
   }
 
   async predictConsequences(
-    asteroid: AsteroidData,
-    impactLocation: ImpactLocation
+    asteroid: AsteroidData
   ): Promise<ConsequencePrediction> {
     console.log("Starting consequence prediction for asteroid:", asteroid.name);
+
+    // Step 0: Calculate precise trajectory to determine exact impact location
+    const trajectory = this.trajectoryCalculator.calculateImpactTrajectory(asteroid);
+
+    // Use calculated impact location from trajectory (override provided location)
+    const actualImpactLocation: ImpactLocation = {
+      type: trajectory.impact_location.geographic_type,
+      name: `${trajectory.impact_location.latitude.toFixed(2)}°, ${trajectory.impact_location.longitude.toFixed(2)}°`,
+      latitude: trajectory.impact_location.latitude,
+      longitude: trajectory.impact_location.longitude,
+      population: trajectory.impact_location.population_density * 100, // Estimate population in area
+    };
+
+    console.log("Calculated impact location:", actualImpactLocation);
 
     // Step 1: Calculate physics-based parameters using EXACT scientific formulas
     const energy = this.calculateKineticEnergy(asteroid);
     const craterDiameter = this.calculateCraterDiameter(energy);
     const earthquakeMagnitude = this.calculateEarthquakeMagnitude(energy);
-    const tsunamiHeight = this.calculateTsunamiHeight(energy, impactLocation);
+    const tsunamiHeight = this.calculateTsunamiHeight(energy, actualImpactLocation);
     const affectedRadius = Math.max(craterDiameter * 20, 5); // Significant damage radius based on crater size
     const megatonsEquivalent = energy / (this.TNT_ENERGY_PER_KG * 1e9);
 
@@ -481,11 +499,11 @@ ${
 - Damage Radius: ${affectedRadius.toFixed(1)} km (crater-scaled impact zone)
 
 IMPACT LOCATION:
-- Site: ${impactLocation.name} (${impactLocation.type} terrain)
-- Population Density: ${impactLocation.population.toLocaleString()} people nearby
-- Coordinates: ${impactLocation.latitude.toFixed(
+- Site: ${actualImpactLocation.name} (${actualImpactLocation.type} terrain)
+- Population Density: ${actualImpactLocation.population.toLocaleString()} people nearby
+- Coordinates: ${actualImpactLocation.latitude.toFixed(
       2
-    )}°, ${impactLocation.longitude.toFixed(2)}°
+    )}°, ${actualImpactLocation.longitude.toFixed(2)}°
 
 TOP 10 CONTEXT DATA:
 - Similar Energy Earthquakes: ${top10Earthquakes
@@ -617,10 +635,10 @@ Return ONLY the JSON object for 2D terrain visualization.`;
 
       const damageArea = Math.PI * Math.pow(affectedRadius, 2); // km²
 
-      switch (impactLocation.type) {
+      switch (actualImpactLocation.type) {
         case "city":
           populationAtRisk = Math.min(
-            impactLocation.population,
+            actualImpactLocation.population,
             damageArea * 3000
           );
           economicDamage = populationAtRisk * 0.2 + craterDiameter * 50;
@@ -632,7 +650,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
           economicDamage = populationAtRisk * 0.1 + (tsunamiHeight || 0) * 10;
           break;
         case "land":
-          populationAtRisk = damageArea * (impactLocation.population / 5000);
+          populationAtRisk = damageArea * (actualImpactLocation.population / 5000);
           economicDamage = populationAtRisk * 0.08 + craterDiameter * 10;
           break;
         case "mountain":
@@ -656,6 +674,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         populationAtRisk: Math.round(populationAtRisk),
         economicDamage: Math.round(economicDamage / 1000), // Convert to billions
         threatLevel,
+        trajectory,
         fullResponse,
       };
     } catch (error) {
@@ -676,6 +695,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         populationAtRisk: Math.round(affectedRadius * affectedRadius * 200),
         economicDamage: Math.round(craterDiameter * 10),
         threatLevel,
+        trajectory,
         fullResponse: {
           threatAssessment: {
             level: threatLevel,
