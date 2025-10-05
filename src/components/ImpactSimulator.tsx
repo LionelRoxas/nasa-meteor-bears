@@ -228,7 +228,7 @@ export default function ImpactSimulator({
       const direction = new THREE.Vector3(0, 0, 0)
         .sub(asteroid.position)
         .normalize();
-      const speed = asteroidParams.velocity * 0.0003; // Reduced from 0.001 to 0.0003
+      const speed = asteroidParams.velocity * 0.0005; // Reduced from 0.001 to 0.0003
       asteroidVelocityRef.current = direction.multiplyScalar(speed);
 
       asteroid.castShadow = true;
@@ -364,7 +364,7 @@ export default function ImpactSimulator({
           .clone()
           .sub(asteroid.position)
           .normalize();
-        const gravity = 0.0003 * (50 / Math.max(distanceToEarthCenter, 1)); // Reduced from 0.001 to 0.0003
+        const gravity = 0.0005 * (50 / Math.max(distanceToEarthCenter, 1)); // Reduced from 0.001 to 0.0003
         asteroidVelocityRef.current.add(
           gravityDirection.multiplyScalar(gravity)
         );
