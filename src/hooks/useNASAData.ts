@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { logger } from "@/logger";
-import { useMLPredictions } from "./useMLPredictions";
 
 export interface NASAAsteroidData {
   id: string;
@@ -76,9 +75,6 @@ export function useNASAData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ML predictions integration
-  const { getMLPrediction, isMLAvailable, getHighRiskAsteroids } =
-    useMLPredictions();
 
   // Load data from local JSON files
   useEffect(() => {
@@ -201,8 +197,6 @@ export function useNASAData() {
     else if (energyMt > 10) threatLevel = "REGIONAL";
     else if (energyMt > 1) threatLevel = "LOCAL";
 
-    // Get ML predictions if available
-    const mlPrediction = getMLPrediction(asteroid.id);
 
     return {
       ...asteroid,
@@ -211,19 +205,6 @@ export function useNASAData() {
       craterSize,
       affectedRadius,
       threatLevel,
-      // ML predictions
-      mlPrediction,
-      mlHazardProbability: mlPrediction.hazard_probability,
-      mlRiskScore: mlPrediction.risk_score,
-      mlConfidence: mlPrediction.confidence,
-      mlRecommendation: mlPrediction.recommendation,
-      mlThreatCategory: mlPrediction.threat_category,
-      // Combined risk assessment
-      isHighMLRisk: mlPrediction.hazard_probability > 0.7,
-      combinedThreatLevel: getCombinedThreatLevel(
-        threatLevel,
-        mlPrediction.threat_category
-      ),
     };
   };
 
@@ -327,26 +308,6 @@ export function useNASAData() {
     ];
   };
 
-  // Get asteroids with high ML risk scores
-  const getMLHighRiskAsteroids = (): NASAAsteroidData[] => {
-    if (!simulationData || !isMLAvailable()) return [];
-
-    const highRiskIds = getHighRiskAsteroids(0.7);
-    return simulationData.all.filter((asteroid) =>
-      highRiskIds.includes(asteroid.id)
-    );
-  };
-
-  // Get ML-enhanced random asteroid
-  const getMLRecommendedAsteroid = (): NASAAsteroidData | null => {
-    const highRiskAsteroids = getMLHighRiskAsteroids();
-    if (highRiskAsteroids.length > 0) {
-      const randomIndex = Math.floor(Math.random() * highRiskAsteroids.length);
-      return highRiskAsteroids[randomIndex];
-    }
-    return getRandomAsteroid(); // Fallback to regular random
-  };
-
   return {
     // Data
     simulationData,
@@ -366,10 +327,6 @@ export function useNASAData() {
     getCometsByPeriod,
     getFamousComets,
     searchComets,
-
-    // ML-enhanced functions
-    getMLHighRiskAsteroids,
-    getMLRecommendedAsteroid,
 
     // General functions
     getHistoricalComparisons,
@@ -399,7 +356,7 @@ export function useNASAData() {
     hazardousCometCount:
       simulationData?.comets?.filter((comet) => comet.is_hazardous).length || 0,
     // ML status
-    isMLAvailable: isMLAvailable(),
-    mlHighRiskCount: getMLHighRiskAsteroids().length,
+    isMLAvailable: false,
+    mlHighRiskCount: 0,
   };
 }

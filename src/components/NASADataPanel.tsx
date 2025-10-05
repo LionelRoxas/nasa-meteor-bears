@@ -215,7 +215,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
     if (asteroid.is_sentry_object) return "border-amber-600/50 bg-amber-950/20";
     if (asteroid.is_hazardous) return "border-red-600/50 bg-red-950/20";
     if (asteroid.diameter > 500) return "border-orange-600/50 bg-orange-950/20";
-    return "border-slate-600/50 bg-slate-900/50";
+    return "border-white/10 bg-black/20";
   };
 
   const getThreatBadge = (asteroid: NASAAsteroidData) => {
@@ -318,44 +318,15 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
   };
 
   return (
-    <div className="w-[420px] bg-slate-950 rounded-md border border-slate-800 overflow-hidden flex flex-col h-[85vh] shadow-2xl">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700">
-        <div className="px-5 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium text-slate-300 uppercase tracking-wider">
-                NASA NEO Database
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Near-Earth Object Tracking System
-              </p>
-            </div>
-            {dataMode !== "selection" && (
-              <button
-                onClick={() => {
-                  setDataMode("selection");
-                  setAsteroids([]);
-                  setError(null);
-                }}
-                className="px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-700/50 rounded transition-all"
-              >
-                Back
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="h-0.5 bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-600"></div>
-      </div>
-
+    <div className="w-[420px] bg-black/70 backdrop-blur-lg rounded-lg border border-white/10 overflow-hidden flex flex-col h-[85vh] shadow-2xl">
       {/* Mode Selection */}
       {dataMode === "selection" && (
-        <div className="flex-1 p-6 space-y-4 bg-gradient-to-b from-slate-900 to-slate-950">
+        <div className="flex-1 p-6 space-y-6">
           <div className="mb-8">
-            <h4 className="text-lg font-light text-white mb-2">
+            <h4 className="text-lg font-light text-white/90 mb-2">
               Data Source Selection
             </h4>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-white/50">
               Choose your preferred method to access asteroid data
             </p>
           </div>
@@ -365,21 +336,21 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
               setDataMode("feed");
               fetchFeedData();
             }}
-            className="w-full p-5 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 border border-slate-700 hover:border-blue-600/50 rounded transition-all group"
+            className="w-full p-5 bg-black/40 hover:bg-black/60 backdrop-blur-sm border border-white/10 hover:border-blue-400/30 rounded transition-all group"
           >
             <div className="text-left">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded bg-blue-600/20 flex items-center justify-center">
+                <div className="w-8 h-8 rounded bg-blue-500/10 backdrop-blur-sm flex items-center justify-center">
                   <span className="text-blue-400 text-sm font-bold">F</span>
                 </div>
-                <div className="text-white font-medium text-sm uppercase tracking-wide">
+                <div className="text-white/90 font-light text-sm uppercase tracking-wide">
                   Date Range Feed
                 </div>
               </div>
-              <div className="text-slate-400 text-xs leading-relaxed">
+              <div className="text-white/60 text-xs leading-relaxed">
                 Access asteroids approaching Earth within specified date ranges
               </div>
-              <div className="text-slate-500 text-[10px] mt-2 uppercase tracking-wider">
+              <div className="text-white/40 text-[10px] mt-2 uppercase tracking-wider">
                 7-Day Maximum • Real-Time Data
               </div>
             </div>
@@ -390,21 +361,21 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
               setDataMode("browse");
               fetchBrowseData(0);
             }}
-            className="w-full p-5 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 border border-slate-700 hover:border-violet-600/50 rounded transition-all group"
+            className="w-full p-5 bg-black/40 hover:bg-black/60 backdrop-blur-sm border border-white/10 hover:border-violet-400/30 rounded transition-all group"
           >
             <div className="text-left">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded bg-violet-600/20 flex items-center justify-center">
+                <div className="w-8 h-8 rounded bg-violet-500/10 backdrop-blur-sm flex items-center justify-center">
                   <span className="text-violet-400 text-sm font-bold">B</span>
                 </div>
-                <div className="text-white font-medium text-sm uppercase tracking-wide">
+                <div className="text-white/90 font-light text-sm uppercase tracking-wide">
                   Browse Database
                 </div>
               </div>
-              <div className="text-slate-400 text-xs leading-relaxed">
+              <div className="text-white/60 text-xs leading-relaxed">
                 Navigate through the complete NEO catalog with pagination
               </div>
-              <div className="text-slate-500 text-[10px] mt-2 uppercase tracking-wider">
+              <div className="text-white/40 text-[10px] mt-2 uppercase tracking-wider">
                 30,000+ Objects • Paginated Access
               </div>
             </div>
@@ -412,71 +383,35 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
 
           <button
             onClick={() => setDataMode("lookup")}
-            className="w-full p-5 bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 border border-slate-700 hover:border-emerald-600/50 rounded transition-all group"
+            className="w-full p-5 bg-black/40 hover:bg-black/60 backdrop-blur-sm border border-white/10 hover:border-emerald-400/30 rounded transition-all group"
           >
             <div className="text-left">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded bg-emerald-600/20 flex items-center justify-center">
+                <div className="w-8 h-8 rounded bg-emerald-500/10 backdrop-blur-sm flex items-center justify-center">
                   <span className="text-emerald-400 text-sm font-bold">L</span>
                 </div>
-                <div className="text-white font-medium text-sm uppercase tracking-wide">
+                <div className="text-white/90 font-light text-sm uppercase tracking-wide">
                   Direct Lookup
                 </div>
               </div>
-              <div className="text-slate-400 text-xs leading-relaxed">
+              <div className="text-white/60 text-xs leading-relaxed">
                 Query specific asteroids by their unique identifier
               </div>
-              <div className="text-slate-500 text-[10px] mt-2 uppercase tracking-wider">
+              <div className="text-white/40 text-[10px] mt-2 uppercase tracking-wider">
                 Instant Access • Detailed Data
               </div>
             </div>
           </button>
-
-          <div className="mt-8 p-4 bg-slate-900/50 rounded border border-slate-800">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <div className="text-2xl font-light text-blue-400">30K+</div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">
-                  Tracked
-                </div>
-              </div>
-              <div>
-                <div className="text-2xl font-light text-amber-400">1.9K</div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">
-                  Hazardous
-                </div>
-              </div>
-              <div>
-                <div className="text-2xl font-light text-emerald-400">24/7</div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">
-                  Monitoring
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
       {/* Feed Mode Controls */}
       {dataMode === "feed" && (
-        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+        <div className="p-4 border-b border-white/10 bg-black/30 backdrop-blur-sm">
           <div className="space-y-3">
-            <div className="p-3 bg-amber-950/30 border border-amber-900/50 rounded">
-              <div className="flex items-start gap-2">
-                <div className="w-1 h-12 bg-amber-500 rounded-full"></div>
-                <div className="flex-1">
-                  <div className="text-amber-400 text-xs font-medium uppercase tracking-wider mb-1">
-                    API Constraint
-                  </div>
-                  <div className="text-amber-200/80 text-xs">
-                    Maximum date range limited to 7 days per request
-                  </div>
-                </div>
-              </div>
-            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
                   Start Date
                 </label>
                 <input
@@ -500,11 +435,11 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                       setEndDate(newEnd.toISOString().split("T")[0]);
                     }
                   }}
-                  className="w-full mt-1 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full mt-1 px-3 py-1.5 bg-black/50 backdrop-blur-sm border border-white/20 rounded text-white text-sm focus:outline-none focus:border-white/40 transition-colors"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
                   End Date
                 </label>
                 <input
@@ -528,7 +463,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                       setStartDate(newStart.toISOString().split("T")[0]);
                     }
                   }}
-                  className="w-full mt-1 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full mt-1 px-3 py-1.5 bg-black/50 backdrop-blur-sm border border-white/20 rounded text-white text-sm focus:outline-none focus:border-white/40 transition-colors"
                 />
               </div>
             </div>
@@ -542,8 +477,8 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                 daysDiff > 0 && (
                   <div className="text-center">
                     <span
-                      className={`text-xs font-medium ${
-                        daysDiff > 7 ? "text-red-400" : "text-slate-500"
+                      className={`text-xs font-light ${
+                        daysDiff > 7 ? "text-red-400" : "text-white/50"
                       }`}
                     >
                       Range: {daysDiff} day{daysDiff !== 1 ? "s" : ""}
@@ -556,7 +491,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
             <button
               onClick={fetchFeedData}
               disabled={loading}
-              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded text-sm font-medium transition-colors uppercase tracking-wider"
+              className="w-full px-4 py-2 bg-white text-black hover:bg-white/90 disabled:bg-white/20 disabled:text-white/50 rounded text-xs font-light transition-colors uppercase tracking-wider"
             >
               {loading ? "Processing..." : "Execute Query"}
             </button>
@@ -566,27 +501,27 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
 
       {/* Browse Mode Controls */}
       {dataMode === "browse" && !loading && (
-        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+        <div className="p-4 border-b border-white/10 bg-black/30 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <button
               onClick={() => fetchBrowseData(currentPage - 1)}
               disabled={currentPage === 0}
-              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:text-slate-600 text-white rounded text-xs font-medium transition-colors"
+              className="px-4 py-1.5 bg-black/50 hover:bg-black/70 disabled:bg-black/20 disabled:text-white/30 text-white/80 backdrop-blur-sm border border-white/20 rounded text-xs font-light transition-colors"
             >
               Previous
             </button>
             <div className="text-center">
-              <div className="text-sm text-white font-medium">
+              <div className="text-sm text-white/90 font-light">
                 Page {currentPage + 1} / {totalPages}
               </div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+              <div className="text-[10px] text-white/50 uppercase tracking-wider">
                 {totalElements.toLocaleString()} Total Objects
               </div>
             </div>
             <button
               onClick={() => fetchBrowseData(currentPage + 1)}
               disabled={currentPage >= totalPages - 1}
-              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:text-slate-600 text-white rounded text-xs font-medium transition-colors"
+              className="px-4 py-1.5 bg-black/50 hover:bg-black/70 disabled:bg-black/20 disabled:text-white/30 text-white/80 backdrop-blur-sm border border-white/20 rounded text-xs font-light transition-colors"
             >
               Next
             </button>
@@ -596,10 +531,10 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
 
       {/* Lookup Mode Controls */}
       {dataMode === "lookup" && (
-        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+        <div className="p-4 border-b border-white/10 bg-black/30 backdrop-blur-sm">
           <div className="space-y-3">
             <div>
-              <label className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+              <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
                 Asteroid Identifier
               </label>
               <input
@@ -607,17 +542,17 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                 value={asteroidId}
                 onChange={(e) => setAsteroidId(e.target.value)}
                 placeholder="Enter asteroid ID (e.g., 2000433)"
-                className="w-full mt-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white text-sm placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full mt-1 px-3 py-2 bg-black/50 backdrop-blur-sm border border-white/20 rounded text-white text-sm placeholder-white/30 focus:outline-none focus:border-white/40 transition-colors"
               />
             </div>
             <button
               onClick={fetchLookupData}
               disabled={loading}
-              className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded text-sm font-medium transition-colors uppercase tracking-wider"
+              className="w-full px-4 py-2 bg-white text-black hover:bg-white/90 disabled:bg-white/20 disabled:text-white/50 rounded text-xs font-light transition-colors uppercase tracking-wider"
             >
               {loading ? "Searching..." : "Execute Lookup"}
             </button>
-            <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500">
+            <div className="grid grid-cols-3 gap-2 text-[10px] text-white/40">
               <div className="text-center">433 (Eros)</div>
               <div className="text-center">99942 (Apophis)</div>
               <div className="text-center">3122 (Florence)</div>
@@ -627,10 +562,10 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
       )}
 
       {/* Results Area */}
-      <div className="flex-1 overflow-y-auto bg-slate-950 p-4">
+      <div className="flex-1 overflow-y-auto bg-black/30 backdrop-blur-sm p-4">
         {loading && (
           <div className="flex items-center justify-center py-12">
-            <div className="text-slate-500 text-sm">Processing request...</div>
+            <div className="text-white/50 text-sm">Processing request...</div>
           </div>
         )}
 
@@ -644,7 +579,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
           !error &&
           asteroids.length === 0 &&
           dataMode !== "selection" && (
-            <div className="text-center text-slate-500 py-12 text-sm">
+            <div className="text-center text-white/50 py-12 text-sm">
               No data available. Adjust search parameters.
             </div>
           )}
@@ -663,10 +598,10 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                 {/* Header */}
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <div className="text-white font-medium text-sm">
+                    <div className="text-white/90 font-light text-sm">
                       {asteroid.name}
                     </div>
-                    <div className="text-slate-500 text-[10px] font-mono">
+                    <div className="text-white/50 text-[10px] font-mono">
                       ID: {asteroid.id}
                     </div>
                   </div>
@@ -677,7 +612,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                         expandedCard === asteroid.id ? null : asteroid.id
                       );
                     }}
-                    className="text-slate-500 hover:text-white text-xs px-2 py-0.5"
+                    className="text-white/50 hover:text-white text-xs px-2 py-0.5"
                   >
                     {expandedCard === asteroid.id ? "−" : "+"}
                   </button>
@@ -691,34 +626,34 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                 {/* Metrics Grid */}
                 <div className="grid grid-cols-4 gap-3 mb-3">
                   <div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                    <div className="text-[10px] text-white/50 uppercase tracking-wider">
                       Size
                     </div>
-                    <div className="text-white font-medium text-xs">
+                    <div className="text-white/90 font-light text-xs">
                       {formatNumber(asteroid.diameter, 0)}m
                     </div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                    <div className="text-[10px] text-white/50 uppercase tracking-wider">
                       Speed
                     </div>
-                    <div className="text-white font-medium text-xs">
+                    <div className="text-white/90 font-light text-xs">
                       {asteroid.velocity.toFixed(1)} km/s
                     </div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                    <div className="text-[10px] text-white/50 uppercase tracking-wider">
                       Range
                     </div>
-                    <div className="text-white font-medium text-xs">
+                    <div className="text-white/90 font-light text-xs">
                       {formatNumber(asteroid.distance, 0)} km
                     </div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                    <div className="text-[10px] text-white/50 uppercase tracking-wider">
                       Mag
                     </div>
-                    <div className="text-white font-medium text-xs">
+                    <div className="text-white/90 font-light text-xs">
                       {asteroid.magnitude.toFixed(1)} H
                     </div>
                   </div>
@@ -726,9 +661,9 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
 
                 {/* Approach Data */}
                 {asteroid.approach_date && (
-                  <div className="pt-2 border-t border-slate-800">
+                  <div className="pt-2 border-t border-white/10">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                      <span className="text-[10px] text-white/50 uppercase tracking-wider">
                         Approach:{" "}
                         {new Date(asteroid.approach_date).toLocaleDateString()}
                       </span>
@@ -741,117 +676,20 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
                   </div>
                 )}
 
-                {/* Enhanced AI Analysis Button */}
-                <div className="pt-2 border-t border-slate-800 mt-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      generateEnhancedPrediction(asteroid);
-                    }}
-                    disabled={
-                      predictionLoading && showPredictionFor === asteroid.id
-                    }
-                    className="w-full px-3 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-slate-600 disabled:to-slate-700 text-white rounded text-[10px] font-medium uppercase tracking-wider transition-all"
-                  >
-                    {predictionLoading && showPredictionFor === asteroid.id
-                      ? "Analyzing..."
-                      : enhancedPredictions[asteroid.id]
-                      ? "Update AI Analysis"
-                      : "AI Impact Analysis"}
-                  </button>
-                </div>
-
-                {/* Enhanced Prediction Display */}
-                {enhancedPredictions[asteroid.id] && (
-                  <div
-                    className={`mt-2 p-2 rounded border ${getEnhancedThreatColor(
-                      enhancedPredictions[asteroid.id]
-                    )}`}
-                  >
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-white">
-                        AI Risk Assessment
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold ${
-                          enhancedPredictions[asteroid.id].threat_category ===
-                          "CRITICAL"
-                            ? "text-red-400"
-                            : enhancedPredictions[asteroid.id]
-                                .threat_category === "HIGH"
-                            ? "text-orange-400"
-                            : enhancedPredictions[asteroid.id]
-                                .threat_category === "MEDIUM"
-                            ? "text-yellow-400"
-                            : "text-green-400"
-                        }`}
-                      >
-                        {enhancedPredictions[asteroid.id].threat_category}
-                      </span>
-                    </div>
-
-                    {/* Quick Analysis Summary */}
-                    <div className="mb-2 p-1.5 bg-slate-800/50 rounded">
-                      <div className="text-[9px] text-slate-300 italic leading-relaxed">
-                        {generateQuickAnalysis(
-                          asteroid,
-                          enhancedPredictions[asteroid.id]
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 mb-2">
-                      <div>
-                        <div className="text-[9px] text-slate-400 uppercase">
-                          Risk
-                        </div>
-                        <div className="text-[10px] font-medium text-white">
-                          {enhancedPredictions[asteroid.id].risk_score}%
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[9px] text-slate-400 uppercase">
-                          Confidence
-                        </div>
-                        <div className="text-[10px] font-medium text-white">
-                          {(
-                            enhancedPredictions[asteroid.id].confidence * 100
-                          ).toFixed(0)}
-                          %
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[9px] text-slate-400 uppercase">
-                          Correlations
-                        </div>
-                        <div className="text-[10px] font-medium text-white">
-                          {
-                            enhancedPredictions[asteroid.id].correlation_context
-                              .top_similar_earthquakes
-                          }
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-[9px] text-slate-300 leading-relaxed">
-                      {enhancedPredictions[asteroid.id].recommendation}
-                    </div>
-                  </div>
-                )}
-
                 {/* Expanded View */}
                 {expandedCard === asteroid.id && asteroid.raw_data && (
-                  <div className="mt-3 pt-3 border-t border-slate-800 space-y-2">
-                    {asteroid.raw_data?.estimated_diameter && (
+                  <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
+                    {asteroid.raw_data.estimated_diameter && (
                       <div>
-                        <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                        <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">
                           Diameter Range
                         </div>
-                        <div className="text-xs text-slate-300">
-                          {asteroid.raw_data.estimated_diameter.meters?.estimated_diameter_min.toFixed(
+                        <div className="text-xs text-white/70">
+                          {asteroid.raw_data.estimated_diameter.meters?.estimated_diameter_min?.toFixed(
                             0
                           )}
                           -
-                          {asteroid.raw_data.estimated_diameter.meters?.estimated_diameter_max.toFixed(
+                          {asteroid.raw_data.estimated_diameter.meters?.estimated_diameter_max?.toFixed(
                             0
                           )}
                           m
@@ -882,9 +720,9 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
 
       {/* Status Bar */}
       {asteroids.length > 0 && !loading && (
-        <div className="px-4 py-2 border-t border-slate-800 bg-slate-900">
+        <div className="px-4 py-2 border-t border-white/10 bg-black/50 backdrop-blur-sm">
           <div className="flex justify-between items-center">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+            <span className="text-[10px] text-white/50 uppercase tracking-wider">
               {asteroids.length} Object{asteroids.length !== 1 ? "s" : ""}{" "}
               Loaded
             </span>
