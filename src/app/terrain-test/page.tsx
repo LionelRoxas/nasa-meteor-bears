@@ -8,6 +8,7 @@ import {
 } from "@/hooks/useEnhancedPredictions";
 import ConsequenceAnalysis from "@/components/ConsequenceAnalysis";
 import ImpactInsights from "@/components/ImpactInsights";
+import USGSDataPanel from "@/components/USGSDataPanel";
 
 // Mock asteroid data for testing
 const MOCK_ASTEROIDS = [
@@ -318,14 +319,9 @@ export default function TerrainTestPage() {
               />
             </div>
 
-            {/* Impact Insights - New focused insights component */}
+            {/* USGS Data Panel - Shows real seismic and tsunami data */}
             {enhancedData && (
-              <ImpactInsights
-                consequenceData={
-                  enhancedData as any // Type assertion for now
-                }
-                realTerrainData={realTerrainData}
-              />
+              <USGSDataPanel prediction={enhancedData} />
             )}
 
             {/* Consequence Analysis */}

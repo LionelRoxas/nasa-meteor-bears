@@ -121,6 +121,25 @@ export interface EnhancedPrediction {
   threatLevel?: string;
   populationAtRisk?: number;
   economicDamage?: number;
+  usgsData?: {
+    seismicZone: {
+      zone: string;
+      riskLevel: string;
+      description: string;
+      averageAnnualEvents: number;
+      maxHistoricalMagnitude: number;
+    };
+    tsunamiRisk: {
+      isCoastal: boolean;
+      riskLevel: string;
+      nearestCoastDistance: number;
+      elevationAboveSeaLevel: number;
+      tsunamiHistory: number;
+    };
+    expectedEarthquakeMagnitude: number;
+    expectedTsunamiHeight: number;
+    secondaryHazards: string[];
+  };
 }
 
 export function useEnhancedPredictions() {
@@ -253,7 +272,7 @@ export function useEnhancedPredictions() {
       // Step 3: Generate enhanced prediction with LLM
       const enhancedPrediction = await generateEnhancedPrediction(asteroidId, correlationData);
 
-      // Step 4: Combine with trajectory and physics data
+      // Step 4: Combine with trajectory, physics, and USGS data
       if (enhancedPrediction && consequencePrediction) {
         enhancedPrediction.trajectory = consequencePrediction.trajectory;
         enhancedPrediction.impact_location = {
@@ -273,6 +292,15 @@ export function useEnhancedPredictions() {
         enhancedPrediction.threatLevel = consequencePrediction.threatLevel;
         enhancedPrediction.populationAtRisk = consequencePrediction.populationAtRisk;
         enhancedPrediction.economicDamage = consequencePrediction.economicDamage;
+
+        // Add USGS data if available
+        if (consequencePrediction.usgsData) {
+          enhancedPrediction.usgsData = consequencePrediction.usgsData;
+          logger.info('USGS data integrated into prediction', {
+            seismicZone: consequencePrediction.usgsData.seismicZone.zone,
+            tsunamiRisk: consequencePrediction.usgsData.tsunamiRisk.riskLevel
+          });
+        }
       }
 
       return enhancedPrediction;

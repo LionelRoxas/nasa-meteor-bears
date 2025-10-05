@@ -776,7 +776,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
       ];
 
       const response = await groq.chat.completions.create({
-        model: "llama-3.1-70b-versatile",
+        model: "openai/gpt-oss-120b",
         messages: convertToGroqMessages(messages),
         temperature: 0.1, // Very low temperature for scientific consistency
         max_tokens: 2000,
@@ -893,6 +893,36 @@ Return ONLY the JSON object for 2D terrain visualization.`;
 
       console.log("Final consequence prediction calculated with exact physics");
 
+      // Step 6: Get USGS data for maximum accuracy via API
+      console.log("Fetching USGS seismic and tsunami data...");
+      let usgsAssessment;
+
+      try {
+        const usgsResponse = await fetch("/api/usgs-assessment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            latitude: trajectory.impact_location.latitude,
+            longitude: trajectory.impact_location.longitude,
+            impactEnergy: energy,
+            craterDiameter: craterDiameter,
+          }),
+        });
+
+        if (usgsResponse.ok) {
+          usgsAssessment = await usgsResponse.json();
+          console.log("USGS Assessment received:", usgsAssessment);
+        } else {
+          console.warn("USGS API failed, using fallback");
+          usgsAssessment = null;
+        }
+      } catch (error) {
+        console.error("USGS fetch error:", error);
+        usgsAssessment = null;
+      }
+
       const quickAnalysis = this.generateQuickAnalysis(
         asteroid,
         threatLevel,
@@ -905,9 +935,10 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         impactPhysics: {
           energy,
           craterDiameter,
-          earthquakeMagnitude,
+          earthquakeMagnitude:
+            usgsAssessment?.expectedEarthquakeMagnitude || earthquakeMagnitude, // Use USGS calculated value if available
           affectedRadius,
-          tsunamiHeight,
+          tsunamiHeight: usgsAssessment?.expectedTsunamiHeight || tsunamiHeight, // Use USGS value if available
           megatonsEquivalent,
         },
         populationAtRisk: Math.round(populationAtRisk),
