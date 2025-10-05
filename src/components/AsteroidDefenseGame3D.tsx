@@ -40,6 +40,20 @@ interface GameAsteroid {
   data: AsteroidData;
   destroyed: boolean;
   warningRing?: THREE.Mesh;
+  impacting?: boolean; // Flag to indicate asteroid is in impact phase
+  trailSystem?: {
+    particles: THREE.Points;
+    positions: Float32Array;
+    colors: Float32Array;
+    sizes: Float32Array;
+    velocities: Float32Array;
+    ages: Float32Array;
+    particleCount: number;
+    currentIndex: number;
+    trailLine?: THREE.Line;
+    trailLinePositions?: Float32Array;
+    aura?: THREE.Mesh;
+  };
 }
 
 interface AsteroidMesh extends THREE.Mesh {
@@ -462,6 +476,112 @@ export const AsteroidDefenseGame3D = () => {
     };
   }, []);
 
+  const updateAsteroidTrail = useCallback((asteroid: GameAsteroid) => {
+    if (!asteroid.isHazardous || !asteroid.trailSystem) return;
+
+    const trail = asteroid.trailSystem;
+    const time = Date.now() * 0.001; // Time in seconds
+
+    // Update particle positions and properties
+    for (let i = 0; i < trail.particleCount; i++) {
+      const idx = i * 3;
+
+      // Only age particles if asteroid is not impacting
+      if (!asteroid.impacting) {
+        // Age the particle (slower aging for longer trails)
+        trail.ages[i] += 0.012; // Reduced from 0.016 for longer lasting particles
+      }
+
+      // If particle is too old and asteroid is not impacting, respawn it at asteroid position
+      if (trail.ages[i] > 1.5 && !asteroid.impacting) { // Increased max age for longer trails
+        trail.positions[idx] = asteroid.mesh.position.x + (Math.random() - 0.5) * 0.8;
+        trail.positions[idx + 1] = asteroid.mesh.position.y + (Math.random() - 0.5) * 0.8;
+        trail.positions[idx + 2] = asteroid.mesh.position.z + (Math.random() - 0.5) * 0.8;
+        
+        // Reset age
+        trail.ages[i] = 0;
+
+        // Reassign particle type (more fire for brighter effect)
+        if (Math.random() < 0.75) {
+          // Fire particle (75% chance)
+          trail.colors[idx] = 1.0;
+          trail.colors[idx + 1] = 0.5 + Math.random() * 0.5; // Brighter orange
+          trail.colors[idx + 2] = 0.0;
+          trail.sizes[i] = 0.4 + Math.random() * 1.0;
+        } else {
+          // Smoke particle
+          const gray = 0.2 + Math.random() * 0.5; // Brighter smoke
+          trail.colors[idx] = gray;
+          trail.colors[idx + 1] = gray;
+          trail.colors[idx + 2] = gray;
+          trail.sizes[i] = 1.0 + Math.random() * 1.5;
+        }
+
+        // New random drift velocity
+        trail.velocities[idx] = (Math.random() - 0.5) * 0.04;
+        trail.velocities[idx + 1] = (Math.random() - 0.5) * 0.04;
+        trail.velocities[idx + 2] = (Math.random() - 0.5) * 0.04;
+      } else {
+        // Update existing particle position
+        trail.positions[idx] += trail.velocities[idx];
+        trail.positions[idx + 1] += trail.velocities[idx + 1];
+        trail.positions[idx + 2] += trail.velocities[idx + 2];
+
+        // Add more dramatic turbulence
+        trail.positions[idx] += Math.sin(time * 3 + i * 0.1) * 0.008;
+        trail.positions[idx + 1] += Math.cos(time * 2.5 + i * 0.15) * 0.008;
+
+        // Fade particles as they age, but only if not impacting
+        if (!asteroid.impacting) {
+          const fade = 1.0 - (trail.ages[i] / 1.5);
+          if (trail.colors[idx] > 0.5) {
+            // Fire particle - keep bright orange longer
+            trail.colors[idx + 1] = Math.max(0.2, trail.colors[idx + 1] * fade);
+            trail.colors[idx + 2] = 0;
+          } else {
+            // Smoke particle - fade to transparent
+            trail.colors[idx] *= fade;
+            trail.colors[idx + 1] *= fade;
+            trail.colors[idx + 2] *= fade;
+          }
+
+          // Grow smoke particles over time
+          if (trail.colors[idx] < 0.5) {
+            trail.sizes[i] *= 1.015; // Gradually grow smoke
+          }
+        }
+      }
+    }
+
+    // Update solid trail line positions (only if not impacting)
+    if (trail.trailLine && trail.trailLinePositions && !asteroid.impacting) {
+      // Shift existing positions back
+      for (let i = 19; i > 0; i--) {
+        trail.trailLinePositions[i * 3] = trail.trailLinePositions[(i - 1) * 3];
+        trail.trailLinePositions[i * 3 + 1] = trail.trailLinePositions[(i - 1) * 3 + 1];
+        trail.trailLinePositions[i * 3 + 2] = trail.trailLinePositions[(i - 1) * 3 + 2];
+      }
+      
+      // Add current position at front
+      trail.trailLinePositions[0] = asteroid.mesh.position.x;
+      trail.trailLinePositions[1] = asteroid.mesh.position.y;
+      trail.trailLinePositions[2] = asteroid.mesh.position.z;
+      
+      trail.trailLine.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // Update aura glow effect (keep pulsing even during impact)
+    if (trail.aura) {
+      (trail.aura.material as THREE.MeshBasicMaterial).opacity = 0.3 + Math.sin(time * 4) * 0.15; // More visible pulsing
+      trail.aura.scale.setScalar(1 + Math.sin(time * 6) * 0.15); // More dramatic breathing effect
+    }
+
+    // Update the geometry attributes
+    trail.particles.geometry.attributes.position.needsUpdate = true;
+    trail.particles.geometry.attributes.color.needsUpdate = true;
+    trail.particles.geometry.attributes.size.needsUpdate = true;
+  }, []);
+
   const createAsteroid = useCallback((data: AsteroidData): GameAsteroid | null => {
     if (!sceneRef.current) {
       console.log('❌ No scene available for asteroid creation');
@@ -472,7 +592,9 @@ export const AsteroidDefenseGame3D = () => {
 
     // Asteroid geometry and material with larger clickable area
     const diameter = data.estimated_diameter.kilometers.estimated_diameter_max;
-    const radius = Math.max(0.3, Math.min(1.2, diameter * 4)); // Increased size even more for easier clicking
+    const radius = data.is_potentially_hazardous_asteroid 
+      ? Math.max(0.2, Math.min(0.8, diameter * 2.5)) // Smaller hazardous asteroids (comets)
+      : Math.max(0.3, Math.min(1.2, diameter * 4)); // Keep non-hazardous same size
     
     console.log('Asteroid radius:', radius);
     
@@ -491,8 +613,10 @@ export const AsteroidDefenseGame3D = () => {
     geometry.computeVertexNormals();
 
     const material = new THREE.MeshPhongMaterial({
-      color: data.is_potentially_hazardous_asteroid ? 0x8B0000 : 0x696969,
-      shininess: 30
+      color: data.is_potentially_hazardous_asteroid ? 0xFF4500 : 0xC0C0C0, // Brighter orange-red for hazardous, bright silver for non-hazardous
+      shininess: 100, // Increased shininess for better visibility
+      emissive: data.is_potentially_hazardous_asteroid ? 0x331100 : 0x222222, // Add slight glow
+      emissiveIntensity: 0.2
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -518,8 +642,8 @@ export const AsteroidDefenseGame3D = () => {
       // Hazardous asteroids spawn further out (updated for larger Earth)
       distance = 40 + Math.random() * 15; // Increased spawn distance
     } else {
-      // Non-hazardous asteroids spawn closer for tighter orbits (updated for larger Earth)
-      distance = 15 + Math.random() * 8; // Updated: 15-23 units from larger Earth
+      // Non-hazardous asteroids spawn much closer to Earth
+      distance = 8 + Math.random() * 4; // Much closer: 8-12 units from Earth (was 15-23)
     }
     
     mesh.position.set(
@@ -542,20 +666,9 @@ export const AsteroidDefenseGame3D = () => {
       );
       console.log('🔴 Hazardous asteroid - heading toward Earth');
     } else {
-      // Non-hazardous asteroids orbit around Earth (safe)
-      const orbitRadius = Math.sqrt(mesh.position.x ** 2 + mesh.position.z ** 2);
-      const orbitSpeed = 0.0003 + Math.random() * 0.0002; // Much slower orbital speed
-      
-      // Calculate tangential velocity for circular orbit (perpendicular to radius)
-      // Normalize the orbital speed to prevent asteroids from flying away
-      const normalizedOrbitSpeed = orbitSpeed / Math.max(orbitRadius, 1);
-      
-      velocity = new THREE.Vector3(
-        -mesh.position.z * normalizedOrbitSpeed, // Perpendicular to radius for orbit
-        (Math.random() - 0.5) * 0.00005, // Very slight vertical movement
-        mesh.position.x * normalizedOrbitSpeed   // Perpendicular to radius for orbit
-      );
-      console.log('🟢 Non-hazardous asteroid - orbiting Earth with speed:', normalizedOrbitSpeed.toFixed(6));
+      // Non-hazardous asteroids are completely stationary (no movement)
+      velocity = new THREE.Vector3(0, 0, 0);
+      console.log('🟢 Non-hazardous asteroid - stationary (no movement)');
     }
 
     mesh.castShadow = true;
@@ -588,6 +701,122 @@ export const AsteroidDefenseGame3D = () => {
       mesh.add(ring);
       asteroid.warningRing = ring;
       console.log('🔴 Added hazardous warning ring');
+
+      // Create smoking and fiery trail system for hazardous asteroids
+      const particleCount = 150; // Increased for denser trail
+      const positions = new Float32Array(particleCount * 3);
+      const colors = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const velocities = new Float32Array(particleCount * 3);
+      const ages = new Float32Array(particleCount);
+
+      // Initialize particle system
+      for (let i = 0; i < particleCount; i++) {
+        // Position (start at asteroid position)
+        positions[i * 3] = mesh.position.x;
+        positions[i * 3 + 1] = mesh.position.y;
+        positions[i * 3 + 2] = mesh.position.z;
+
+        // Random colors between fire (red/orange) and smoke (gray)
+        if (Math.random() < 0.7) {
+          // Fire particles (70% chance - more fire for brighter trail)
+          colors[i * 3] = 1.0; // Red
+          colors[i * 3 + 1] = 0.5 + Math.random() * 0.5; // Brighter orange variation
+          colors[i * 3 + 2] = 0.0; // Blue
+        } else {
+          // Smoke particles (30% chance)
+          const gray = 0.3 + Math.random() * 0.4; // Brighter smoke
+          colors[i * 3] = gray;
+          colors[i * 3 + 1] = gray;
+          colors[i * 3 + 2] = gray;
+        }
+
+        // Particle sizes - wider range for more variety
+        sizes[i] = 0.3 + Math.random() * 2.0;
+
+        // Random velocities for particle drift
+        velocities[i * 3] = (Math.random() - 0.5) * 0.025;
+        velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.025;
+        velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.025;
+
+        // Age for fading effect
+        ages[i] = Math.random();
+      }
+
+      // Create geometry for particles
+      const particleGeometry = new THREE.BufferGeometry();
+      particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+      // Create material for particles
+      const particleMaterial = new THREE.PointsMaterial({
+        size: 1.5, // Increased size for better visibility
+        sizeAttenuation: true,
+        vertexColors: true,
+        transparent: true,
+        opacity: 1.0, // Full opacity for maximum visibility
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true // Enable depth testing to prevent rendering through Earth
+      });
+
+      // Create the particle system
+      const particles = new THREE.Points(particleGeometry, particleMaterial);
+      sceneRef.current.add(particles);
+
+      // Create solid trail line for comet tail effect
+      const trailLineGeometry = new THREE.BufferGeometry();
+      const trailLinePositions = new Float32Array(60); // 20 points (x,y,z each)
+      for (let i = 0; i < 20; i++) {
+        trailLinePositions[i * 3] = mesh.position.x;
+        trailLinePositions[i * 3 + 1] = mesh.position.y;
+        trailLinePositions[i * 3 + 2] = mesh.position.z;
+      }
+      trailLineGeometry.setAttribute('position', new THREE.BufferAttribute(trailLinePositions, 3));
+      
+      const trailLineMaterial = new THREE.LineBasicMaterial({
+        color: 0xff6600, // Orange color
+        transparent: true,
+        opacity: 0.9, // Increased opacity
+        linewidth: 5, // Thicker line
+        depthWrite: false,
+        depthTest: true // Enable depth testing to prevent rendering through Earth
+      });
+      
+      const trailLine = new THREE.Line(trailLineGeometry, trailLineMaterial);
+      sceneRef.current.add(trailLine);
+
+      // Create orange flame aura around the comet
+      const auraGeometry = new THREE.SphereGeometry(radius * 2.5, 16, 16);
+      const auraMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff6600, // Brighter orange
+        transparent: true,
+        opacity: 0.4, // Increased base opacity
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: true // Enable depth testing to prevent rendering through Earth
+      });
+      const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+      aura.position.copy(mesh.position);
+      mesh.add(aura); // Attach to asteroid so it moves with it
+
+      // Store trail system data
+      asteroid.trailSystem = {
+        particles,
+        positions,
+        colors,
+        sizes,
+        velocities,
+        ages,
+        particleCount,
+        currentIndex: 0,
+        trailLine,
+        trailLinePositions,
+        aura
+      };
+
+      console.log('🔥 Created enhanced smoking and fiery trail system with solid trail and aura for hazardous asteroid');
     } else {
       // Add subtle highlight ring for non-hazardous asteroids
       const ringGeometry = new THREE.RingGeometry(radius * 1.6, radius * 1.8, 16);
@@ -869,6 +1098,12 @@ export const AsteroidDefenseGame3D = () => {
         console.log('✅ Asteroid data being set:', asteroid.data);
         
         asteroid.destroyed = true;
+        
+        // Set impacting flag for hazardous asteroids to freeze their trail
+        if (asteroid.isHazardous) {
+          asteroid.impacting = true;
+        }
+        
         setSelectedAsteroid(asteroid.data);
         setGamePaused(true); // Pause the game when asteroid is clicked
         
@@ -888,17 +1123,40 @@ export const AsteroidDefenseGame3D = () => {
         explosion.position.copy(asteroid.mesh.position);
         sceneRef.current?.add(explosion);
 
-        // Animate explosion
+        // Animate explosion and schedule trail cleanup for hazardous asteroids
         let explosionScale = 1;
+        const explosionDuration = asteroid.isHazardous ? 3000 : 1000; // Longer for hazardous
+        const startTime = Date.now();
+        
         const animateExplosion = () => {
+          const elapsed = Date.now() - startTime;
+          const progress = elapsed / explosionDuration;
+          
           explosionScale += 0.1;
           explosion.scale.setScalar(explosionScale);
-          explosion.material.opacity -= 0.05;
+          explosion.material.opacity = Math.max(0, 0.8 * (1 - progress));
           
-          if (explosion.material.opacity > 0) {
+          if (progress < 1) {
             requestAnimationFrame(animateExplosion);
           } else {
             sceneRef.current?.remove(explosion);
+            
+            // Clean up trail for hazardous asteroids when explosion ends
+            if (asteroid.isHazardous && asteroid.trailSystem && sceneRef.current) {
+              sceneRef.current.remove(asteroid.trailSystem.particles);
+              asteroid.trailSystem.particles.geometry.dispose();
+              if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
+                asteroid.trailSystem.particles.material.dispose();
+              }
+              // Clean up trail line
+              if (asteroid.trailSystem.trailLine) {
+                sceneRef.current.remove(asteroid.trailSystem.trailLine);
+                asteroid.trailSystem.trailLine.geometry.dispose();
+                if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+                  asteroid.trailSystem.trailLine.material.dispose();
+                }
+              }
+            }
           }
         };
         animateExplosion();
@@ -937,30 +1195,36 @@ export const AsteroidDefenseGame3D = () => {
     asteroidsRef.current = asteroidsRef.current.filter(asteroid => {
       if (asteroid.destroyed) {
         sceneRef.current?.remove(asteroid.mesh);
+        // Only clean up trail system immediately for non-hazardous asteroids
+        // Hazardous asteroids have delayed trail cleanup that matches explosion duration
+        if (asteroid.trailSystem && !asteroid.isHazardous) {
+          sceneRef.current?.remove(asteroid.trailSystem.particles);
+          asteroid.trailSystem.particles.geometry.dispose();
+          if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
+            asteroid.trailSystem.particles.material.dispose();
+          }
+          // Clean up trail line
+          if (asteroid.trailSystem.trailLine) {
+            sceneRef.current?.remove(asteroid.trailSystem.trailLine);
+            asteroid.trailSystem.trailLine.geometry.dispose();
+            if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+              asteroid.trailSystem.trailLine.material.dispose();
+            }
+          }
+          // Aura is attached to mesh, so it gets cleaned up automatically
+        }
         return false;
       }
 
       // Update position with different behavior for hazardous vs non-hazardous
-      asteroid.mesh.position.add(asteroid.velocity);
+      if (asteroid.isHazardous && !asteroid.impacting) {
+        asteroid.mesh.position.add(asteroid.velocity);
+      }
+      // Non-hazardous asteroids stay completely stationary - no position updates
       
-      // For non-hazardous asteroids, add boundary enforcement
-      if (!asteroid.isHazardous) {
-        const position = asteroid.mesh.position;
-        const distanceFromCenter = Math.sqrt(position.x ** 2 + position.y ** 2 + position.z ** 2);
-        
-        // If asteroid gets too far from Earth, apply centripetal force
-        if (distanceFromCenter > 30) { // Updated for larger Earth scale
-          console.log('🛰️ Asteroid too far, applying centripetal force');
-          const centerDirection = position.clone().negate().normalize();
-          asteroid.velocity.add(centerDirection.multiplyScalar(0.0003));
-        }
-        
-        // If asteroid gets too close, apply outward force
-        if (distanceFromCenter < 10) { // Updated minimum distance for larger Earth
-          console.log('🛰️ Asteroid too close, applying outward force');
-          const outwardDirection = position.clone().normalize();
-          asteroid.velocity.add(outwardDirection.multiplyScalar(0.0001));
-        }
+      // Update trail system for hazardous asteroids (even when impacting to maintain visibility)
+      if (asteroid.isHazardous) {
+        updateAsteroidTrail(asteroid);
       }
       
       const earthPosition = new THREE.Vector3(0, 0, 0);
@@ -973,21 +1237,8 @@ export const AsteroidDefenseGame3D = () => {
           direction.normalize();
           asteroid.velocity.add(direction.multiplyScalar(0.00005)); // Gravity effect
         }
-      } else {
-        // Non-hazardous asteroids maintain stable orbit
-        // Apply slight centripetal force to maintain orbit
-        if (distance > 0) {
-          const orbitRadius = 18 + Math.random() * 12; // Updated target orbit radius for larger Earth
-          const radiusDiff = distance - orbitRadius;
-          
-          if (Math.abs(radiusDiff) > 1) {
-            // Gentle force to maintain orbit distance
-            direction.normalize();
-            const correctionForce = radiusDiff > 0 ? -0.00002 : 0.00002;
-            asteroid.velocity.add(direction.multiplyScalar(correctionForce));
-          }
-        }
       }
+      // Non-hazardous asteroids have no forces applied - they remain stationary
 
       // Slower asteroid rotation
       asteroid.mesh.rotation.x += 0.005; // Reduced from 0.01
@@ -1013,10 +1264,35 @@ export const AsteroidDefenseGame3D = () => {
           });
           console.log('💥 Hazardous asteroid hit Earth! Damage:', damage);
           
+          // Set impacting flag to freeze trail particles
+          asteroid.impacting = true;
+          
           // Create impact explosion effect at collision point
           createImpactExplosion(asteroid.mesh.position);
           
+          // Remove asteroid mesh immediately but keep trail for explosion duration
           sceneRef.current?.remove(asteroid.mesh);
+          
+          // Schedule trail cleanup to match explosion duration (5 seconds)
+          setTimeout(() => {
+            if (asteroid.trailSystem && sceneRef.current) {
+              sceneRef.current.remove(asteroid.trailSystem.particles);
+              asteroid.trailSystem.particles.geometry.dispose();
+              if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
+                asteroid.trailSystem.particles.material.dispose();
+              }
+              // Clean up trail line
+              if (asteroid.trailSystem.trailLine) {
+                sceneRef.current.remove(asteroid.trailSystem.trailLine);
+                asteroid.trailSystem.trailLine.geometry.dispose();
+                if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+                  asteroid.trailSystem.trailLine.material.dispose();
+                }
+              }
+              // Aura was attached to mesh, already cleaned up
+            }
+          }, 5000); // Match explosion duration
+          
           return false; // Remove asteroid but continue game if health > 0
         } else {
           // Non-hazardous asteroids just bounce off or get destroyed without damage
@@ -1026,6 +1302,23 @@ export const AsteroidDefenseGame3D = () => {
           createImpactExplosion(asteroid.mesh.position, false);
           
           sceneRef.current?.remove(asteroid.mesh);
+          // Clean up trail system if it exists (non-hazardous shouldn't have one, but just in case)
+          if (asteroid.trailSystem) {
+            sceneRef.current?.remove(asteroid.trailSystem.particles);
+            asteroid.trailSystem.particles.geometry.dispose();
+            if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
+              asteroid.trailSystem.particles.material.dispose();
+            }
+            // Clean up trail line
+            if (asteroid.trailSystem.trailLine) {
+              sceneRef.current?.remove(asteroid.trailSystem.trailLine);
+              asteroid.trailSystem.trailLine.geometry.dispose();
+              if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+                asteroid.trailSystem.trailLine.material.dispose();
+              }
+            }
+            // Aura is attached to mesh, so it gets cleaned up automatically
+          }
           return false;
         }
       }
@@ -1033,6 +1326,23 @@ export const AsteroidDefenseGame3D = () => {
       // Remove if too far away
       if (distance > 100) { // Increased removal distance for larger Earth scale
         sceneRef.current?.remove(asteroid.mesh);
+        // Clean up trail system if it exists
+        if (asteroid.trailSystem) {
+          sceneRef.current?.remove(asteroid.trailSystem.particles);
+          asteroid.trailSystem.particles.geometry.dispose();
+          if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
+            asteroid.trailSystem.particles.material.dispose();
+          }
+          // Clean up trail line
+          if (asteroid.trailSystem.trailLine) {
+            sceneRef.current?.remove(asteroid.trailSystem.trailLine);
+            asteroid.trailSystem.trailLine.geometry.dispose();
+            if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+              asteroid.trailSystem.trailLine.material.dispose();
+            }
+          }
+          // Aura is attached to mesh, so it gets cleaned up automatically
+        }
         return false;
       }
 
@@ -1044,7 +1354,7 @@ export const AsteroidDefenseGame3D = () => {
     if (gameStarted && !gameOver) {
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     }
-  }, [gameStarted, gameOver, gamePaused, createImpactExplosion]);
+  }, [gameStarted, gameOver, gamePaused, createImpactExplosion, updateAsteroidTrail]);
 
   const startGame = () => {
     console.log('Starting game...');
@@ -1058,6 +1368,23 @@ export const AsteroidDefenseGame3D = () => {
     // Clear existing asteroids
     asteroidsRef.current.forEach(asteroid => {
       sceneRef.current?.remove(asteroid.mesh);
+      // Clean up trail system if it exists
+      if (asteroid.trailSystem) {
+        sceneRef.current?.remove(asteroid.trailSystem.particles);
+        asteroid.trailSystem.particles.geometry.dispose();
+        if (asteroid.trailSystem.particles.material instanceof THREE.Material) {
+          asteroid.trailSystem.particles.material.dispose();
+        }
+        // Clean up trail line
+        if (asteroid.trailSystem.trailLine) {
+          sceneRef.current?.remove(asteroid.trailSystem.trailLine);
+          asteroid.trailSystem.trailLine.geometry.dispose();
+          if (asteroid.trailSystem.trailLine.material instanceof THREE.Material) {
+            asteroid.trailSystem.trailLine.material.dispose();
+          }
+        }
+        // Aura is attached to mesh, so it gets cleaned up automatically
+      }
     });
     asteroidsRef.current = [];
     
