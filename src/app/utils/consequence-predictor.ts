@@ -2,7 +2,7 @@ import Groq from "groq-sdk";
 import {
   AsteroidTrajectoryCalculator,
   AsteroidTrajectory,
-} from "../../utils/asteroid-trajectory";
+} from "../utils/asteroid-trajectory";
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,

@@ -7,6 +7,7 @@ import {
   type EnhancedPrediction,
 } from "@/hooks/useEnhancedPredictions";
 import ConsequenceAnalysis from "@/components/ConsequenceAnalysis";
+import ImpactInsights from "@/components/ImpactInsights";
 
 // Mock asteroid data for testing
 const MOCK_ASTEROIDS = [
@@ -53,6 +54,7 @@ export default function TerrainTestPage() {
   const [enhancedData, setEnhancedData] = useState<EnhancedPrediction | null>(
     null
   );
+  const [realTerrainData, setRealTerrainData] = useState<any>(null);
 
   const handleGetEnhancedData = async () => {
     const prediction = await getEnhancedPrediction(selectedAsteroid.id);
@@ -294,7 +296,7 @@ export default function TerrainTestPage() {
             </div>
           </div>
 
-          {/* Terrain Visualizer */}
+          {/* Terrain Visualizer and Insights */}
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-gray-800 rounded-lg p-6">
               <TerrainVisualizer
@@ -309,11 +311,22 @@ export default function TerrainTestPage() {
                 onImpactLocationChange={(lat, lng) =>
                   setImpactLocation({ lat, lng })
                 }
+                onTerrainDataChange={setRealTerrainData}
                 simulationPhase={simulationPhase}
                 showImpact={showImpact}
                 enhancedPrediction={enhancedData || undefined}
               />
             </div>
+
+            {/* Impact Insights - New focused insights component */}
+            {enhancedData && (
+              <ImpactInsights
+                consequenceData={
+                  enhancedData as any // Type assertion for now
+                }
+                realTerrainData={realTerrainData}
+              />
+            )}
 
             {/* Consequence Analysis */}
             {enhancedData && (

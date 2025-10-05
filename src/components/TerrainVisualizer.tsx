@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  realTerrainService,
+  RealTerrainData,
+} from "@/services/realTerrainData";
 
 interface TerrainVisualizerProps {
   width?: number;
@@ -61,6 +65,12 @@ export default function TerrainVisualizer({
     y: height / 2,
   });
   const [animationTime, setAnimationTime] = useState(0);
+  const [currentImpactCoords, setCurrentImpactCoords] = useState({
+    lat: 0,
+    lng: 0,
+  });
+  const [realTerrainInfo, setRealTerrainInfo] =
+    useState<RealTerrainData | null>(null);
 
   // Enhanced visualization state
   const [cameraAngle, setCameraAngle] = useState(0); // 0 = 2D top-down, π/2 = 3D side view
@@ -146,11 +156,33 @@ export default function TerrainVisualizer({
   // Get real-world terrain data for a specific location
   const getRealisticTerrain = useCallback(async (lat: number, lng: number) => {
     try {
-      // Use a simplified elevation model based on real geographic features
-      // In a real implementation, this would call a topographic API
-      return await simulateRealisticTerrain(lat, lng);
+      console.log("🌍 Fetching REAL terrain data from APIs for:", lat, lng);
+      // Use the real terrain data service to get actual Earth data
+      const realData = await realTerrainService.getTerrainData(lat, lng);
+
+      console.log("✅ Real terrain data received:", {
+        location: `${lat.toFixed(2)}, ${lng.toFixed(2)}`,
+        type: realData.landCoverType,
+        elevation: `${realData.elevation}m`,
+        isWater: realData.isWater,
+        city: realData.nearestCity?.name,
+        country: realData.countryName,
+      });
+
+      return {
+        baseElevation: realData.elevation / 4000, // Normalize to -1 to 1 range
+        terrainType: realData.landCoverType,
+        roughness: realData.landCoverType === "mountain" ? 0.8 : 0.3,
+        waterPresence: realData.isWater ? 1.0 : 0.2,
+        populationDensity: realData.populationDensity / 1000, // Normalize
+        climaticZone: realData.landCoverType === "ice" ? "polar" : "temperate",
+        realData, // Include the full real data for reference
+      };
     } catch (error) {
-      console.warn("Failed to get real terrain data, using fallback:", error);
+      console.warn(
+        "Failed to get real terrain data, using fallback simulation:",
+        error
+      );
       return simulateRealisticTerrain(lat, lng);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -290,22 +322,32 @@ export default function TerrainVisualizer({
   };
 
   const generateTerrain = useCallback(async () => {
-    if (!asteroidData) return;
-
-    // Use real trajectory coordinates if available from enhanced prediction
-    let impactLat = asteroidData.impactLat;
-    let impactLng = asteroidData.impactLng;
+    // Prioritize trajectory data from enhanced prediction over asteroidData
+    let impactLat: number;
+    let impactLng: number;
 
     if (enhancedPrediction?.impact_location) {
-      impactLat = enhancedPrediction.impact_location.latitude ?? impactLat;
-      impactLng = enhancedPrediction.impact_location.longitude ?? impactLng;
+      // Use real trajectory coordinates from consequence prediction
+      impactLat = enhancedPrediction.impact_location.latitude ?? 0;
+      impactLng = enhancedPrediction.impact_location.longitude ?? 0;
       console.log(
-        "Using real trajectory coordinates from prediction:",
+        "Using REAL trajectory coordinates from prediction:",
+        impactLat.toFixed(2),
+        impactLng.toFixed(2)
+      );
+    } else if (asteroidData) {
+      // Fallback to asteroidData if available
+      impactLat = asteroidData.impactLat;
+      impactLng = asteroidData.impactLng;
+      console.log(
+        "Using fallback coordinates from asteroidData:",
         impactLat,
         impactLng
       );
     } else {
-      console.log("Using fallback coordinates:", impactLat, impactLng);
+      // No data available, cannot generate terrain
+      console.warn("No impact location data available for terrain generation");
+      return;
     }
 
     console.log(
@@ -314,8 +356,19 @@ export default function TerrainVisualizer({
       impactLng
     );
 
+    // Update current impact coordinates state
+    setCurrentImpactCoords({ lat: impactLat, lng: impactLng });
+
+    // Center the impact point on the canvas
+    setImpactPoint({ x: width / 2, y: height / 2 });
+
     // Get terrain characteristics for the impact region
     const terrainData = await getRealisticTerrain(impactLat, impactLng);
+
+    // Store the real terrain info for display
+    if ("realData" in terrainData && terrainData.realData) {
+      setRealTerrainInfo(terrainData.realData);
+    }
 
     const terrainGrid: TerrainPoint[][] = [];
     const gridWidth = Math.floor(width / 3);
@@ -418,6 +471,17 @@ export default function TerrainVisualizer({
       }
     }
   }, [enhancedPrediction, asteroidData]);
+
+  // Regenerate terrain when impact location changes from prediction
+  useEffect(() => {
+    if (enhancedPrediction?.impact_location) {
+      console.log("🎯 New trajectory data received! Regenerating terrain at:", {
+        lat: enhancedPrediction.impact_location.latitude,
+        lng: enhancedPrediction.impact_location.longitude,
+      });
+      generateTerrain();
+    }
+  }, [enhancedPrediction?.impact_location, generateTerrain]);
 
   // Initialize canvas and terrain
   useEffect(() => {
@@ -1299,11 +1363,12 @@ export default function TerrainVisualizer({
     <div className="terrain-visualizer">
       <div className="mb-4">
         <h3 className="text-lg font-bold text-white mb-2">
-          Interactive Terrain Map
+          Dynamic Impact Zone Terrain
         </h3>
         <p className="text-sm text-gray-400">
-          Click anywhere to set impact location. Real-time terrain with biomes,
-          elevation, and population centers.
+          {enhancedPrediction?.impact_location
+            ? "Showing realistic terrain at predicted impact coordinates from trajectory calculation."
+            : "Click anywhere to set impact location. Real-time terrain with biomes, elevation, and population centers."}
         </p>
       </div>
 
@@ -1351,27 +1416,43 @@ export default function TerrainVisualizer({
           </div>
         </div>
 
-        {/* Impact info overlay */}
-        {asteroidData && (
-          <div className="absolute bottom-2 left-2 bg-black/80 p-3 rounded text-xs">
+        {/* Impact info overlay - Enhanced with real terrain data */}
+        {(asteroidData || enhancedPrediction) && (
+          <div className="absolute bottom-2 left-2 bg-black/80 p-3 rounded text-xs max-w-xs">
             <div className="text-red-400 font-bold mb-1">Impact Zone</div>
             <div className="text-gray-300">
-              Crater: {asteroidData.craterRadius.toFixed(1)} km
+              Crater:{" "}
+              {(realCraterDiameter || asteroidData?.craterRadius || 0).toFixed(
+                1
+              )}{" "}
+              km
             </div>
             <div className="text-gray-300">
-              Energy: {asteroidData.energy.toFixed(2)} MT TNT
+              Energy: {(realMegatons || asteroidData?.energy || 0).toFixed(2)}{" "}
+              MT TNT
             </div>
             <div className="text-gray-300">
-              Location: {((impactPoint.y / height) * 180 - 90).toFixed(1)}°,{" "}
-              {((impactPoint.x / width) * 360 - 180).toFixed(1)}°
+              Location: {currentImpactCoords.lat.toFixed(2)}°,{" "}
+              {currentImpactCoords.lng.toFixed(2)}°
             </div>
+            {realTerrainInfo && (
+              <>
+                <div className="text-gray-300">
+                  Terrain: {realTerrainInfo.landCoverType}
+                </div>
+                <div className="text-gray-300">
+                  Elevation: {realTerrainInfo.elevation}m
+                </div>
+                {realTerrainInfo.nearestCity && (
+                  <div className="text-gray-300">
+                    Near: {realTerrainInfo.nearestCity.name},{" "}
+                    {realTerrainInfo.countryName}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
-      </div>
-
-      <div className="mt-2 text-xs text-gray-500">
-        Procedurally generated terrain with realistic biomes, elevation, and
-        population distribution. Supports WebGL acceleration when available.
       </div>
     </div>
   );
