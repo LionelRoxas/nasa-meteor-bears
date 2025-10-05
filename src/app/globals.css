@@ -1,24 +1,23 @@
 @import "tailwindcss";
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 
 :root {
-  /* Modern Design Tokens */
-  --background: #000000;
+  /* NASA-Inspired Design Tokens */
+  --background: #0a0a0a;
   --foreground: #ffffff;
-  --primary: #ff6b35;
-  --primary-hover: #e55a2b;
-  --secondary: #4a90e2;
-  --accent: #87ceeb;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --error: #ef4444;
-  --surface: rgba(0, 0, 0, 0.95);
-  --surface-elevated: rgba(0, 0, 0, 0.98);
-  --border: rgba(55, 65, 81, 0.5);
-  --border-elevated: rgba(55, 65, 81, 0.8);
+  --primary: #0066cc; /* NASA Blue */
+  --primary-hover: #004499;
+  --secondary: #ffffff; /* NASA White */
+  --accent: #87ceeb; /* Sky Blue */
+  --success: #00ff88; /* NASA Green */
+  --warning: #ffaa00; /* NASA Orange */
+  --error: #ff4444; /* NASA Red */
+  --surface: rgba(10, 10, 10, 0.95);
+  --surface-elevated: rgba(20, 20, 30, 0.98);
+  --border: rgba(0, 102, 204, 0.3);
+  --border-elevated: rgba(0, 102, 204, 0.6);
   --text-primary: #ffffff;
-  --text-secondary: #d1d5db;
-  --text-muted: #9ca3af;
+  --text-secondary: #b3d9ff;
+  --text-muted: #6b9bd2;
 
   /* Spacing */
   --space-xs: 0.25rem;

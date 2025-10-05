@@ -341,14 +341,26 @@ export function useNASAData() {
     // General functions
     getHistoricalComparisons,
 
-    // Computed values
+    // Computed values with accurate counts
     isDataAvailable: !!simulationData,
     lastUpdated: simulationData?.last_updated,
     asteroidCount: simulationData?.all.length || 0,
     hazardousCount: simulationData?.hazardous.length || 0,
-    todayCount: simulationData?.today.length || 0,
+    // Filter for actual today (2025-10-04) only
+    todayCount: simulationData?.today.filter(asteroid =>
+      asteroid.approach_date === '2025-10-04'
+    ).length || 0,
+    // Get this week count (next 7 days)
+    weekCount: simulationData?.today.filter(asteroid => {
+      const approachDate = new Date(asteroid.approach_date);
+      const today = new Date('2025-10-04');
+      const weekFromNow = new Date(today);
+      weekFromNow.setDate(today.getDate() + 7);
+      return approachDate >= today && approachDate <= weekFromNow;
+    }).length || 0,
     cometCount: simulationData?.comet_count || 0,
-    hazardousCometCount: simulationData?.hazardous_comets?.length || 0,
+    // Count only actually hazardous comets (not the array which has 85)
+    hazardousCometCount: simulationData?.comets?.filter(comet => comet.is_hazardous).length || 0,
     // ML status
     isMLAvailable: isMLAvailable(),
     mlHighRiskCount: getMLHighRiskAsteroids().length

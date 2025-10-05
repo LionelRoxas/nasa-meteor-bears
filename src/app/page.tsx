@@ -72,42 +72,61 @@ export default function Home() {
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Create Earth
+    // Create Earth with more realistic appearance
     const earthGroup = new THREE.Group();
-    const earthGeometry = new THREE.SphereGeometry(6371, 64, 64);
+    const earthGeometry = new THREE.SphereGeometry(6371, 128, 128);
     const earthMaterial = new THREE.MeshPhongMaterial({
       color: 0x4a90e2,
-      shininess: 50,
+      shininess: 100,
+      specular: 0x222222,
     });
     const earth = new THREE.Mesh(earthGeometry, earthMaterial);
     earth.castShadow = true;
     earth.receiveShadow = true;
     earthGroup.add(earth);
 
-    // Add atmosphere
-    const atmosphereGeometry = new THREE.SphereGeometry(6471, 32, 32);
+    // Add enhanced atmosphere
+    const atmosphereGeometry = new THREE.SphereGeometry(6471, 64, 64);
     const atmosphereMaterial = new THREE.MeshBasicMaterial({
       color: 0x87ceeb,
       transparent: true,
-      opacity: 0.1,
+      opacity: 0.15,
+      side: THREE.BackSide,
     });
     const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
     earthGroup.add(atmosphere);
 
-    // Add simple continents
-    for (let i = 0; i < 8; i++) {
-      const continentGeometry = new THREE.SphereGeometry(6372, 16, 16);
+    // Add cloud layer
+    const cloudGeometry = new THREE.SphereGeometry(6375, 64, 64);
+    const cloudMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.08,
+    });
+    const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+    clouds.name = "clouds"; // Add name for reference
+    earthGroup.add(clouds);
+
+    // Add more realistic continents with varied colors and shapes
+    const continentColors = [0x2d5016, 0x1e3a0f, 0x3d6b1a, 0x4a7c1f, 0x5a8c2a];
+    for (let i = 0; i < 15; i++) {
+      const continentGeometry = new THREE.SphereGeometry(6372, 32, 32);
       const continentMaterial = new THREE.MeshPhongMaterial({
-        color: 0x228b22,
+        color: continentColors[i % continentColors.length],
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.6,
+        shininess: 20,
       });
       const continent = new THREE.Mesh(continentGeometry, continentMaterial);
-      continent.scale.set(0.3, 0.2, 0.3);
+      continent.scale.set(
+        0.2 + Math.random() * 0.3,
+        0.1 + Math.random() * 0.2,
+        0.2 + Math.random() * 0.3
+      );
       continent.position.set(
-        Math.random() * 4000 - 2000,
-        Math.random() * 4000 - 2000,
-        Math.random() * 4000 - 2000
+        Math.random() * 6000 - 3000,
+        Math.random() * 6000 - 3000,
+        Math.random() * 6000 - 3000
       );
       continent.lookAt(0, 0, 0);
       earthGroup.add(continent);
@@ -280,9 +299,15 @@ export default function Home() {
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
 
-      // Rotate Earth (much slower, more realistic)
+      // Rotate Earth (very slow, more realistic)
       if (earthRef.current) {
-        earthRef.current.rotation.y += 0.0001;
+        earthRef.current.rotation.y += 0.0005;
+
+        // Rotate clouds slightly faster for atmospheric effect
+        const clouds = earthRef.current.getObjectByName("clouds");
+        if (clouds) {
+          clouds.rotation.y += 0.000008; // Clouds move slightly faster than Earth
+        }
       }
 
       // Rotate Moon
@@ -296,7 +321,9 @@ export default function Home() {
         const direction = new THREE.Vector3(0, 0, 0)
           .sub(asteroidRef.current.position)
           .normalize();
-        const speed = asteroidParams.velocity * simulationSpeed * 10;
+        // Make speed difference more dramatic and noticeable
+        const baseSpeed = asteroidParams.velocity * 15;
+        const speed = baseSpeed * simulationSpeed * simulationSpeed; // Square the speed for more dramatic effect
         asteroidRef.current.position.add(direction.multiplyScalar(speed));
 
         // Create trail
@@ -599,26 +626,26 @@ export default function Home() {
         <div className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-white">
-              <span className="text-[#ff6b35]">NASA</span> Impact Simulator
+              <span className="text-[#0066cc]">NASA</span> Impact Simulator
             </h1>
             <div className="flex gap-2">
               <button
                 onClick={() => setView("orbital")}
                 className="px-3 py-1.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
               >
-                🌍 Orbital
+                Orbital
               </button>
               <button
                 onClick={() => setView("surface")}
                 className="px-3 py-1.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
               >
-                🗺️ Surface
+                Surface
               </button>
               <button
                 onClick={() => setView("impact")}
                 className="px-3 py-1.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
               >
-                💥 Impact
+                Impact
               </button>
             </div>
           </div>
@@ -632,7 +659,7 @@ export default function Home() {
                   : "bg-gray-700 text-white hover:bg-gray-600"
               }`}
             >
-              {showNASAPanel ? "🛰️ Hide NASA Data" : "🛰️ Show NASA Data"}
+              {showNASAPanel ? "Hide NASA Data" : "Show NASA Data"}
             </button>
             {selectedNASAAsteroid && (
               <div className="flex items-center gap-2 px-3 py-2 bg-blue-900/50 border border-blue-800 rounded-md">
@@ -654,7 +681,7 @@ export default function Home() {
         <div className="w-80 bg-black/90 backdrop-blur-sm border-r border-gray-800 p-6 overflow-y-auto">
           {/* Mission Control */}
           <section className="mb-8">
-            <h2 className="text-xl font-bold text-[#ff6b35] mb-4">
+            <h2 className="text-xl font-bold text-[#0066cc] mb-4">
               Mission Control
             </h2>
 
@@ -662,7 +689,7 @@ export default function Home() {
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Asteroid Diameter:{" "}
-                  <span className="text-[#ff6b35] font-bold">
+                  <span className="text-[#0066cc] font-bold">
                     {asteroidParams.diameter}m
                   </span>
                 </label>
@@ -684,7 +711,7 @@ export default function Home() {
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Velocity:{" "}
-                  <span className="text-[#ff6b35] font-bold">
+                  <span className="text-[#0066cc] font-bold">
                     {asteroidParams.velocity} km/s
                   </span>
                 </label>
@@ -706,7 +733,7 @@ export default function Home() {
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Entry Angle:{" "}
-                  <span className="text-[#ff6b35] font-bold">
+                  <span className="text-[#0066cc] font-bold">
                     {asteroidParams.angle}°
                   </span>
                 </label>
@@ -728,7 +755,7 @@ export default function Home() {
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Distance:{" "}
-                  <span className="text-[#ff6b35] font-bold">
+                  <span className="text-[#0066cc] font-bold">
                     {asteroidParams.distance} km
                   </span>
                 </label>
@@ -753,15 +780,15 @@ export default function Home() {
               <div className="flex gap-2">
                 <button
                   onClick={handleStartImpact}
-                  className="flex-1 px-4 py-2.5 bg-[#ff6b35] text-white rounded-md hover:bg-[#e55a2b] transition-colors text-sm font-medium"
+                  className="flex-1 px-4 py-2.5 bg-[#0066cc] text-white rounded-md hover:bg-[#004499] transition-colors text-sm font-medium"
                 >
-                  {isSimulating ? "⏸️ Pause" : "🚀 Start Impact"}
+                  {isSimulating ? "Pause" : "Start Impact"}
                 </button>
                 <button
                   onClick={handleReset}
                   className="flex-1 px-4 py-2.5 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
                 >
-                  🔄 Reset
+                  Reset
                 </button>
               </div>
 
@@ -773,62 +800,83 @@ export default function Home() {
                     : "bg-orange-600 text-white hover:bg-orange-500"
                 }`}
               >
-                {deflectionApplied ? "✅ Deflected" : "🛡️ Deflect"}
+                {deflectionApplied ? "Deflected" : "Deflect"}
               </button>
 
-              {/* Speed Controls */}
-              <div className="flex gap-2">
-                {[0.5, 1, 2].map((speed) => (
-                  <button
-                    key={speed}
-                    onClick={() => setSimulationSpeed(speed)}
-                    className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      simulationSpeed === speed
-                        ? "bg-green-600 text-white"
-                        : "bg-gray-700 text-white hover:bg-gray-600"
+              {/* Speed Controls - Work during active simulation */}
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-center">
+                  <span className="text-gray-400">Simulation Speed:</span>{" "}
+                  <span
+                    className={`${
+                      isSimulating ? "text-green-400 font-bold" : "text-white"
                     }`}
                   >
-                    {speed}x
-                  </button>
-                ))}
+                    {simulationSpeed}x {isSimulating ? "" : ""}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  {[0.25, 0.5, 1, 2, 4, 8].map((speed) => (
+                    <button
+                      key={speed}
+                      onClick={() => setSimulationSpeed(speed)}
+                      className={`flex-1 px-2 py-2 rounded-md text-xs font-medium transition-all duration-200 ${
+                        simulationSpeed === speed
+                          ? "bg-green-600 text-white shadow-lg scale-105"
+                          : "bg-gray-700 text-white hover:bg-gray-600 hover:scale-102"
+                      } ${
+                        isSimulating && simulationSpeed === speed
+                          ? "animate-pulse"
+                          : ""
+                      }`}
+                    >
+                      {speed}x
+                    </button>
+                  ))}
+                </div>
+                {isSimulating && (
+                  <div className="text-xs text-center text-green-400 pt-2">
+                    Change speed anytime during simulation!
+                  </div>
+                )}
               </div>
             </div>
           </section>
 
           {/* Impact Analysis */}
           <section>
-            <h2 className="text-xl font-bold text-[#ff6b35] mb-4">
+            <h2 className="text-xl font-bold text-[#0066cc] mb-4">
               Impact Analysis
               {selectedNASAAsteroid && (
-                <span className="text-blue-400 text-sm ml-2">🛰️ NASA</span>
+                <span className="text-blue-400 text-sm ml-2">NASA</span>
               )}
             </h2>
 
             <div className="bg-gray-900/50 rounded-lg p-4 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-gray-300 text-sm">Kinetic Energy</span>
-                <span className="text-[#ff6b35] font-bold text-sm">
+                <span className="text-[#0066cc] font-bold text-sm">
                   {impactData.energy.toFixed(2)} MT TNT
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
                 <span className="text-gray-300 text-sm">Crater Diameter</span>
-                <span className="text-[#ff6b35] font-bold text-sm">
+                <span className="text-[#0066cc] font-bold text-sm">
                   {impactData.crater.toFixed(2)} km
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
                 <span className="text-gray-300 text-sm">Affected Radius</span>
-                <span className="text-[#ff6b35] font-bold text-sm">
+                <span className="text-[#0066cc] font-bold text-sm">
                   {impactData.radius.toFixed(1)} km
                 </span>
               </div>
 
               <div className="flex justify-between items-center">
                 <span className="text-gray-300 text-sm">Time to Impact</span>
-                <span className="text-[#ff6b35] font-bold text-sm">
+                <span className="text-[#0066cc] font-bold text-sm">
                   {impactData.timeToImpact}
                 </span>
               </div>
@@ -847,11 +895,10 @@ export default function Home() {
                         : "text-green-500"
                     }`}
                   >
-                    {impactData.threatLevel === "GLOBAL" && "⚠️ GLOBAL THREAT"}
-                    {impactData.threatLevel === "REGIONAL" &&
-                      "⚠️ REGIONAL THREAT"}
-                    {impactData.threatLevel === "LOCAL" && "⚠️ LOCAL THREAT"}
-                    {impactData.threatLevel === "MINIMAL" && "✓ MINIMAL THREAT"}
+                    {impactData.threatLevel === "GLOBAL" && "GLOBAL THREAT"}
+                    {impactData.threatLevel === "REGIONAL" && "REGIONAL THREAT"}
+                    {impactData.threatLevel === "LOCAL" && "LOCAL THREAT"}
+                    {impactData.threatLevel === "MINIMAL" && "MINIMAL THREAT"}
                   </span>
                 </div>
               </div>
@@ -860,11 +907,13 @@ export default function Home() {
         </div>
 
         {/* Main 3D View */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative flex items-center justify-center">
           {/* NASA Data Panel Overlay */}
           {showNASAPanel && (
-            <div className="absolute top-4 right-4 z-10 max-w-md">
-              <NASADataPanel onSelectAsteroid={loadNASAAsteroid} />
+            <div className="absolute top-4 right-4 bottom-4 z-10 flex flex-col">
+              <div className="flex-1 overflow-y-auto">
+                <NASADataPanel onSelectAsteroid={loadNASAAsteroid} />
+              </div>
             </div>
           )}
         </div>
