@@ -16,6 +16,8 @@
  * - USGS Earthquake API - Real seismic data validation
  */
 
+import { detectOceanImpactSync } from './oceanDetectionService';
+
 // Physical constants
 const EARTH_GRAVITY = 9.81; // m/s²
 const MEGATON_TO_JOULES = 4.184e15; // Joules per megaton
@@ -722,30 +724,20 @@ export class ImpactPhysicsCalculator {
 
   /**
    * Helper: Determine if impact location is ocean
+   * Uses accurate ocean detection service with precise boundaries
    */
   private static isOceanImpact(latitude: number, longitude: number): boolean {
-    // Simplified ocean detection
-    // ~71% of Earth is ocean, so this checks major ocean regions
+    const result = detectOceanImpactSync(latitude, longitude);
 
-    // Pacific Ocean
-    if (
-      (longitude > 120 && longitude < 180) ||
-      (longitude > -180 && longitude < -100)
-    ) {
-      return true;
-    }
+    // Log detection for debugging
+    console.log(`Ocean detection for (${latitude}, ${longitude}):`, {
+      isOcean: result.isOcean,
+      oceanName: result.oceanName,
+      confidence: result.confidence,
+      method: result.method
+    });
 
-    // Atlantic Ocean
-    if (longitude > -70 && longitude < -10 && latitude > -60 && latitude < 70) {
-      return true;
-    }
-
-    // Indian Ocean
-    if (longitude > 40 && longitude < 120 && latitude > -60 && latitude < 30) {
-      return true;
-    }
-
-    return false;
+    return result.isOcean;
   }
 
   /**
