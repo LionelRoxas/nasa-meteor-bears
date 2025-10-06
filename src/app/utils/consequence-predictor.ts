@@ -765,7 +765,11 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
     // Estimate population density at impact location
     const populationDensity =
       trajectory.impact_location.population_density || 100; // people per km²
-    const earthquakeZoneArea = Math.PI * Math.pow(affectedRadius, 2);
+
+    // Calculate earthquake felt radius based on magnitude (empirical formula)
+    // For M7: ~200km, M6: ~100km, M5: ~50km, M4: ~20km
+    const earthquakeFeltRadius = Math.pow(10, 0.43 * earthquakeMagnitude - 0.83); // km
+    const earthquakeZoneArea = Math.PI * Math.pow(earthquakeFeltRadius, 2);
 
     // Calculate casualties for each effect type
     const casualties = this.calculateCasualties(
@@ -1237,26 +1241,8 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         enhancedRiskAssessment
       );
 
-      const mitigationStrategies = await this.generateMitigationStrategies({
-        impactPhysics: {
-          energy,
-          craterDiameter,
-          earthquakeMagnitude:
-            usgsAssessment?.expectedEarthquakeMagnitude || earthquakeMagnitude,
-          affectedRadius,
-          tsunamiHeight: usgsAssessment?.expectedTsunamiHeight || tsunamiHeight,
-          megatonsEquivalent,
-        },
-        populationAtRisk: Math.round(populationAtRisk),
-        economicDamage: Math.round(economicDamage / 1000),
-        threatLevel,
-        trajectory,
-        fullResponse,
-        quickAnalysis,
-        usgsData: usgsAssessment,
-      });
-
-      const result = {
+      // Build the base result object first
+      const baseResult = {
         comprehensiveImpact, // NEW: Include comprehensive impact results
         impactPhysics: {
           energy,
@@ -1265,6 +1251,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
           earthquakeMagnitude:
             usgsAssessment?.expectedEarthquakeMagnitude || earthquakeMagnitude, // Use USGS calculated value if available
           affectedRadius,
+          earthquakeFeltRadius, // NEW: How far the earthquake is felt
           tsunamiHeight: usgsAssessment?.expectedTsunamiHeight || tsunamiHeight, // Use USGS value if available
           megatonsEquivalent,
           fireballRadius,
@@ -1323,8 +1310,16 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         trajectory,
         fullResponse,
         quickAnalysis,
-        mitigationStrategies,
         usgsData: usgsAssessment, // CRITICAL: Include USGS assessment data
+      };
+
+      // Generate mitigation strategies with the complete result object
+      const mitigationStrategies = await this.generateMitigationStrategies(baseResult);
+
+      // Add mitigation strategies to the final result
+      const result = {
+        ...baseResult,
+        mitigationStrategies,
       };
 
       console.log(
@@ -1360,6 +1355,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
           craterDepth,
           earthquakeMagnitude,
           affectedRadius,
+          earthquakeFeltRadius,
           tsunamiHeight,
           megatonsEquivalent,
           fireballRadius,

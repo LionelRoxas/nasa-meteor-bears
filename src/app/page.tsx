@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import MapboxMap from "@/components/MapboxMap3";
 import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar2y";
 import Navbar from "@/components/Navbar";
 import ImpactRadiusTogglePanel from "@/components/ImpactRadiusTogglePanel";
+import ImpactResultsPanel from "@/components/ImpactResultsPanel";
 
 // Define the NASA asteroid data type
 interface NASAAsteroidData {
@@ -230,9 +231,9 @@ export default function MapboxSimPage() {
     }
   };
 
-  const handleSimulationUpdate = (simulation: any) => {
+  const handleSimulationUpdate = useCallback((simulation: any) => {
     setCurrentSimulation(simulation);
-  };
+  }, []);
 
   const handleReset = () => {
     console.log("🔄 handleReset called");
@@ -241,12 +242,13 @@ export default function MapboxSimPage() {
     setIsSidebarCollapsed(false);
     setShowNASAPanel(wasNASAPanelOpen);
     setCurrentSimulation(null); // Clear simulation data
+    // Keep enhancedPrediction so it can be used for next simulation
     if (mapboxRef.current?.resetSimulation) {
       mapboxRef.current.resetSimulation();
     }
   };
 
-  const handleMapControlsChange = (controls: {
+  const handleMapControlsChange = useCallback((controls: {
     show3DBuildings: boolean;
     streetViewMode: boolean;
     enhancedBuildings: boolean;
@@ -254,18 +256,18 @@ export default function MapboxSimPage() {
     setShow3DBuildings(controls.show3DBuildings);
     setStreetViewMode(controls.streetViewMode);
     setEnhancedBuildings(controls.enhancedBuildings);
-  };
+  }, []);
 
-  const handleRunSimulation = () => {
+  const handleRunSimulation = useCallback(() => {
     // This will be called when the impact simulation is triggered from the sidebar
     if (mapboxRef.current?.runImpactAnimation) {
       mapboxRef.current.runImpactAnimation();
     }
-  };
+  }, []);
 
-  const handleLocationClick = (location: any) => {
+  const handleLocationClick = useCallback((location: any) => {
     setImpactLocation(location);
-  };
+  }, []);
 
   const handleImpact = () => {
     console.log("💥 Impact detected!");
@@ -380,8 +382,15 @@ export default function MapboxSimPage() {
               </div>
             )}
 
-            {/* Impact Radius Toggle Panel - Show after impact */}
-            {!isSimulating && currentSimulation && enhancedPrediction?.consequencePrediction && !showNASAPanel && (
+            {/* Impact Results Panel - Show after impact on LEFT */}
+            {hasImpacted && enhancedPrediction?.consequencePrediction && !showNASAPanel && (
+              <ImpactResultsPanel
+                consequencePrediction={enhancedPrediction.consequencePrediction}
+              />
+            )}
+
+            {/* Impact Radius Toggle Panel - Show after impact on RIGHT */}
+            {hasImpacted && enhancedPrediction?.consequencePrediction && !showNASAPanel && (
               <ImpactRadiusTogglePanel
                 consequencePrediction={enhancedPrediction.consequencePrediction}
                 visibleRadii={visibleRadii}
