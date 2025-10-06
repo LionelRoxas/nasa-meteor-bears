@@ -60,6 +60,8 @@ interface LeftSidebarProps {
   onRemovePin?: () => void;
   onToggleLocationMode?: () => void;
   hasImpactOccurred?: boolean; // Flag to indicate if impact has finished
+  // Panel control
+  onClosePanels?: () => void; // New prop to close NASA/Mitigation panels
 }
 
 export default function LeftSidebar({
@@ -90,6 +92,7 @@ export default function LeftSidebar({
   onRemovePin: parentOnRemovePin,
   onToggleLocationMode,
   hasImpactOccurred = false,
+  onClosePanels, // New prop
 }: LeftSidebarProps) {
   const [viewMode, setViewMode] = useState<"parameters" | "simulator">(
     "parameters"
@@ -114,18 +117,18 @@ export default function LeftSidebar({
     stage: string;
     message: string;
   }>({ stage: "", message: "" });
-  const [canContinue, setCanContinue] = useState(true); // Default true for custom asteroids
+  const [isLoadingPrediction, setIsLoadingPrediction] = useState(false);
 
   // Reset state when NASA asteroid changes
   useEffect(() => {
     if (selectedNASAAsteroid?.id) {
       // NASA asteroid selected - will fetch on button press
       setEnhancedPrediction(null);
-      setCanContinue(true);
+      setIsLoadingPrediction(false);
     } else {
       // Custom asteroid - no prediction needed
       setEnhancedPrediction(null);
-      setCanContinue(true);
+      setIsLoadingPrediction(false);
     }
   }, [selectedNASAAsteroid?.id]);
 
@@ -142,7 +145,7 @@ export default function LeftSidebar({
       console.log(
         "🚀 Continue button pressed - fetching enhanced prediction for NASA asteroid..."
       );
-      setCanContinue(false); // Disable button while loading
+      setIsLoadingPrediction(true);
 
       try {
         // Progress: Calculating trajectory
@@ -156,16 +159,72 @@ export default function LeftSidebar({
         if (prediction) {
           console.log("✅ Enhanced prediction loaded:", prediction);
 
+          // Progress: Generating mitigation strategies
+          setPredictionProgress({
+            stage: "mitigation",
+            message: "Generating mitigation strategies...",
+          });
+
+          // Generate mitigation strategies using our new API
+          try {
+            console.log("🛡️ Generating mitigation strategies for NASA asteroid...");
+            
+            const mitigationResponse = await fetch('/api/mitigation-strategies', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                threatLevel: prediction.threatLevel || 'MODERATE',
+                impactEnergy: prediction.impact_physics?.megatonsEquivalent || asteroidParams.energy,
+                craterDiameter: prediction.impact_physics?.craterDiameter || asteroidParams.craterSize,
+                earthquakeMagnitude: prediction.impact_physics?.earthquakeMagnitude || 5.0,
+                affectedRadius: prediction.impact_physics?.affectedRadius || asteroidParams.affectedRadius,
+                populationAtRisk: prediction.populationAtRisk || 50000,
+                impactLocation: {
+                  type: prediction.impact_location?.type || 'land',
+                  latitude: prediction.impact_location?.latitude || impactLocation.latitude,
+                  longitude: prediction.impact_location?.longitude || impactLocation.longitude,
+                },
+                tsunamiHeight: prediction.impact_physics?.tsunamiHeight,
+                timeToImpact: prediction.trajectory?.time_to_impact || 86400
+              })
+            });
+
+            if (mitigationResponse.ok) {
+              const mitigationResult = await mitigationResponse.json();
+              if (mitigationResult.success && mitigationResult.mitigationStrategies) {
+                console.log("✅ Mitigation strategies generated:", mitigationResult.mitigationStrategies.substring(0, 100) + "...");
+                
+                // Add mitigation strategies to the prediction
+                const enhancedPredictionWithStrategies = {
+                  ...prediction,
+                  mitigationStrategies: mitigationResult.mitigationStrategies
+                };
+                
+                setEnhancedPrediction(enhancedPredictionWithStrategies);
+                onPredictionLoaded?.(enhancedPredictionWithStrategies);
+              } else {
+                console.warn("⚠️ Mitigation strategies API returned invalid response");
+                setEnhancedPrediction(prediction);
+                onPredictionLoaded?.(prediction);
+              }
+            } else {
+              console.warn("⚠️ Mitigation strategies API failed:", mitigationResponse.status);
+              setEnhancedPrediction(prediction);
+              onPredictionLoaded?.(prediction);
+            }
+          } catch (mitigationError) {
+            console.error("❌ Error generating mitigation strategies:", mitigationError);
+            setEnhancedPrediction(prediction);
+            onPredictionLoaded?.(prediction);
+          }
+
           // Progress: Complete
           setPredictionProgress({
             stage: "complete",
-            message: "Complete! ✓",
+            message: "Prediction Complete!",
           });
-
-          setEnhancedPrediction(prediction);
-
-          // Notify parent component
-          onPredictionLoaded?.(prediction);
 
           // Clear progress message after 1 second and continue
           setTimeout(() => {
@@ -184,8 +243,8 @@ export default function LeftSidebar({
 
             setFinalizedAsteroid(finalAsteroid);
             setViewMode("simulator");
-            setCanContinue(true);
-          }, 1000);
+            setIsLoadingPrediction(false);
+          }, 1500); // Slightly longer to show completion
         }
       } catch (error) {
         console.error("❌ Failed to fetch prediction:", error);
@@ -193,10 +252,12 @@ export default function LeftSidebar({
           stage: "error",
           message: "Failed to load prediction",
         });
-        setCanContinue(true); // Re-enable for retry
+        setIsLoadingPrediction(false);
       }
     } else {
       // Custom asteroid - no prediction needed, proceed immediately
+      onClosePanels?.(); // Close panels for custom asteroids too
+      
       const finalAsteroid = {
         id: "custom",
         name: `Custom Asteroid (${asteroidParams.diameter}m)`,
@@ -273,7 +334,7 @@ export default function LeftSidebar({
   if (isCollapsed) return null;
 
   return (
-    <div className="absolute top-4 left-4 z-10 w-[380px] h-[720px] bg-black/70 backdrop-blur-lg rounded-lg border border-white/10 overflow-hidden flex flex-col shadow-2xl">
+    <div className="absolute top-4 left-4 z-10 w-[380px] h-[700px] bg-black/70 backdrop-blur-lg rounded-lg border border-white/10 overflow-hidden flex flex-col shadow-2xl">
       {/* Header */}
       <div className="bg-black/50 backdrop-blur-sm border-b border-white/10">
         <div className="px-5 py-3">
@@ -286,9 +347,9 @@ export default function LeftSidebar({
             {viewMode !== "simulator" && (
               <button
                 onClick={onReset}
-                className="px-2 py-0.5 bg-white/10 hover:bg-white/20 backdrop-blur rounded-sm transition-colors"
+                className="px-2 py-1 bg-red-900/40 hover:bg-red-800/50 backdrop-blur rounded-sm transition-colors"
               >
-                <span className="text-[10px] font-light text-white/80 uppercase tracking-wider">
+                <span className="text-[10px] font-bold text-white uppercase tracking-wider flex items-center justify-center">
                   Reset
                 </span>
               </button>
@@ -296,10 +357,10 @@ export default function LeftSidebar({
             {viewMode === "simulator" && (
               <button
                 onClick={handleBackToParameters}
-                className="px-2 py-0.5 bg-white/10 hover:bg-white/20 backdrop-blur rounded-sm transition-colors"
+                className="px-2 py-1 bg-red-900/40 hover:bg-red-800/50 backdrop-blur rounded-sm transition-colors"
               >
-                <span className="text-[10px] font-light text-white/80 uppercase tracking-wider">
-                  Back
+                <span className="text-[10px] font-bold text-white uppercase tracking-wider flex items-center justify-center">
+                  Reset
                 </span>
               </button>
             )}
@@ -330,7 +391,7 @@ export default function LeftSidebar({
                 </div>
                 <input
                   type="range"
-                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
+                  className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
                   min="50"
                   max="10000"
                   value={asteroidParams.diameter}
@@ -359,7 +420,7 @@ export default function LeftSidebar({
                 </div>
                 <input
                   type="range"
-                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
+                  className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
                   min="5"
                   max="72"
                   value={asteroidParams.velocity}
@@ -388,7 +449,7 @@ export default function LeftSidebar({
                 </div>
                 <input
                   type="range"
-                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
+                  className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
                   min="15"
                   max="90"
                   value={asteroidParams.angle}
@@ -417,7 +478,7 @@ export default function LeftSidebar({
                 </div>
                 <input
                   type="range"
-                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
+                  className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider"
                   min="10000"
                   max="500000"
                   value={asteroidParams.distance}
@@ -449,22 +510,25 @@ export default function LeftSidebar({
               {/* Main Button */}
               <button
                 onClick={handleContinueToSimulator}
-                disabled={!canContinue || predictionLoading}
+                disabled={isLoadingPrediction || predictionLoading}
                 className={`w-full px-4 py-3 rounded text-xs font-light transition-all uppercase tracking-wider ${
-                  predictionLoading
-                    ? "bg-blue-500/20 border border-blue-500/30 text-white/90"
-                    : canContinue
-                    ? "bg-white text-black hover:bg-white/90"
-                    : "bg-white/30 text-white/50 cursor-not-allowed"
+                  isLoadingPrediction || predictionLoading
+                    ? "bg-blue-500/20 border border-blue-500/30 text-white/90 cursor-not-allowed"
+                    : "bg-white text-black hover:bg-white/90"
                 }`}
               >
-                {predictionLoading ? (
+                {isLoadingPrediction || predictionLoading ? (
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                    <span>{predictionProgress.message || "Loading..."}</span>
+                    <span>
+                      {predictionProgress.message || 
+                       (selectedNASAAsteroid?.id 
+                         ? "Analyzing NASA asteroid data..." 
+                         : "Processing...")}
+                    </span>
                   </div>
                 ) : predictionError ? (
-                  "Retry →"
+                  "Retry Analysis →"
                 ) : (
                   "Continue to Impact Controls →"
                 )}
@@ -503,32 +567,61 @@ export default function LeftSidebar({
       </div>
 
       <style jsx>{`
+        .slider {
+          background: linear-gradient(to right, #ffffff20, #ffffff20);
+          border-radius: 4px;
+        }
+
         .slider::-webkit-slider-thumb {
           appearance: none;
-          width: 10px;
-          height: 10px;
+          width: 14px;
+          height: 14px;
           background: white;
           cursor: pointer;
           border-radius: 50%;
-          opacity: 0.8;
+          opacity: 0.9;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .slider::-moz-range-thumb {
-          width: 10px;
-          height: 10px;
+          width: 14px;
+          height: 14px;
           background: white;
           cursor: pointer;
           border-radius: 50%;
           border: none;
-          opacity: 0.8;
+          opacity: 0.9;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .slider::-webkit-slider-track {
+          background: linear-gradient(to right, #ffffff40, #ffffff40);
+          height: 4px;
+          border-radius: 2px;
+        }
+
+        .slider::-moz-range-track {
+          background: linear-gradient(to right, #ffffff40, #ffffff40);
+          height: 4px;
+          border-radius: 2px;
         }
 
         .slider:hover::-webkit-slider-thumb {
           opacity: 1;
+          transform: scale(1.1);
         }
 
         .slider:hover::-moz-range-thumb {
           opacity: 1;
+          transform: scale(1.1);
+        }
+
+        .slider:hover::-webkit-slider-track {
+          background: linear-gradient(to right, #ffffff60, #ffffff60);
+        }
+
+        .slider:hover::-moz-range-track {
+          background: linear-gradient(to right, #ffffff60, #ffffff60);
         }
       `}</style>
     </div>

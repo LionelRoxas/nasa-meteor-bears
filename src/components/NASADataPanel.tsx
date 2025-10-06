@@ -213,10 +213,10 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
   };
 
   const getThreatLevelColor = (asteroid: NASAAsteroidData) => {
-    if (asteroid.is_sentry_object) return "border-amber-600/50 bg-amber-950/20";
-    if (asteroid.is_hazardous) return "border-red-600/50 bg-red-950/20";
-    if (asteroid.diameter > 500) return "border-orange-600/50 bg-orange-950/20";
-    return "border-white/10 bg-black/20";
+    if (asteroid.is_sentry_object) return "border-amber-600/50 bg-amber-950/10";
+    if (asteroid.is_hazardous) return "border-red-600/50 bg-red-950/10";
+    if (asteroid.diameter > 500) return "border-orange-600/50 bg-orange-950/10";
+    return "border-white/10 bg-white/5";
   };
 
   const getThreatBadge = (asteroid: NASAAsteroidData) => {
@@ -277,60 +277,19 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
     }
   };
 
-  // Get threat color based on enhanced prediction
-  const getEnhancedThreatColor = (prediction: EnhancedPrediction) => {
-    switch (prediction.threat_category) {
-      case "CRITICAL":
-        return "border-red-500 bg-red-950/30";
-      case "HIGH":
-        return "border-orange-500 bg-orange-950/30";
-      case "MEDIUM":
-        return "border-yellow-500 bg-yellow-950/30";
-      default:
-        return "border-green-500 bg-green-950/30";
-    }
-  };
-
-  // Generate user-friendly 1-sentence analysis
-  const generateQuickAnalysis = (
-    asteroid: NASAAsteroidData,
-    prediction: EnhancedPrediction
-  ): string => {
-    const { threat_category, risk_score, correlation_context } = prediction;
-    const { top_similar_earthquakes } = correlation_context;
-    const size =
-      asteroid.diameter > 1000
-        ? "massive"
-        : asteroid.diameter > 500
-        ? "large"
-        : asteroid.diameter > 100
-        ? "medium"
-        : "small";
-
-    if (threat_category === "CRITICAL") {
-      return `This ${size} asteroid poses extreme danger with ${risk_score}% risk based on ${top_similar_earthquakes} similar earthquake patterns - immediate monitoring required.`;
-    } else if (threat_category === "HIGH") {
-      return `Analysis of ${top_similar_earthquakes} comparable earthquakes indicates ${risk_score}% risk of significant regional impact from this ${size} asteroid.`;
-    } else if (threat_category === "MEDIUM") {
-      return `Based on ${top_similar_earthquakes} earthquake correlations, this ${size} asteroid shows ${risk_score}% risk of localized damage if impact occurs.`;
-    } else {
-      return `Historical data from ${top_similar_earthquakes} similar events suggests this ${size} asteroid has minimal impact risk (${risk_score}%) with limited consequences.`;
-    }
-  };
-
   return (
-    <div className="w-[420px] bg-black/70 backdrop-blur-lg rounded-lg border border-white/10 overflow-hidden flex flex-col h-[85vh] shadow-2xl">
+    <div className="w-[420px] h-[700px] bg-black/70 backdrop-blur-lg rounded-lg border border-white/10 overflow-hidden flex flex-col h-[85vh] shadow-2xl">
       {/* Mode Selection */}
       {dataMode === "selection" && (
         <div className="flex-1 p-6 space-y-6">
-          <div className="mb-8">
-            <h4 className="text-lg font-light text-white/90 mb-2">
-              Data Source Selection
+            <div className="mb-8">
+            <h4 className="text-xl font-light text-white/90 mb-3 tracking-wide">
+              NASA NEO Database
             </h4>
-            <p className="text-sm text-white/50">
-              Choose your preferred method to access asteroid data
+            <p className="text-sm text-white/60 leading-relaxed">
+              Access Near-Earth Object data from NASA&apos;s APIs.
             </p>
-          </div>
+            </div>
 
           <button
             onClick={() => {
@@ -563,7 +522,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
       )}
 
       {/* Results Area */}
-      <div className="flex-1 overflow-y-auto bg-black/30 backdrop-blur-sm p-4">
+      <div className="flex-1 overflow-y-auto p-4">
         {loading && (
           <div className="flex items-center justify-center py-12">
             <div className="text-white/50 text-sm">Processing request...</div>
@@ -721,7 +680,7 @@ export default function NASADataPanel({ onSelectAsteroid }: Props) {
 
       {/* Status Bar */}
       {asteroids.length > 0 && !loading && (
-        <div className="px-4 py-2 border-t border-white/10 bg-black/50 backdrop-blur-sm">
+        <div className="px-4 py-2 border-t border-white/10 bg-black/30 backdrop-blur-sm">
           <div className="flex justify-between items-center">
             <span className="text-[10px] text-white/50 uppercase tracking-wider">
               {asteroids.length} Object{asteroids.length !== 1 ? "s" : ""}{" "}

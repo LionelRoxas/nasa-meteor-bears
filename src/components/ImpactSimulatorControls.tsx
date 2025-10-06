@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // components/ImpactSimulatorControls.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
 import type { EnhancedPrediction } from "@/hooks/useEnhancedPredictions";
+import AutoResetButton from "./AutoResetButton";
 
 interface ImpactLocation {
   longitude: number;
@@ -107,10 +109,36 @@ export default function ImpactSimulatorControls({
           country: "",
         };
         setPredictedLocation(newLocation);
-        console.log("📍 Predicted impact location:", newLocation);
       }
     }
   }, [enhancedPrediction]);
+
+  // Auto-start pin placement when component loads and conditions are right
+  useEffect(() => {
+    // Add a small delay to ensure everything is initialized
+    const timer = setTimeout(() => {
+      if (
+        onStartPinPlacement &&
+        !predictedLocation && // No predicted location available
+        !impactPin && // No pin already placed
+        !isPlacingPin && // Not already placing a pin
+        !isAnimating && // Not animating
+        !hasImpactOccurred // Impact hasn't occurred yet
+      ) {
+        console.log("🎯 Auto-starting pin placement");
+        onStartPinPlacement();
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [
+    onStartPinPlacement,
+    predictedLocation,
+    impactPin,
+    isPlacingPin,
+    isAnimating,
+    hasImpactOccurred,
+  ]);
   const formatNumber = (num: number, decimals = 2) => {
     if (!num || isNaN(num)) return "0";
     if (num >= 1000000) return `${(num / 1000000).toFixed(decimals)}M`;
@@ -158,21 +186,11 @@ export default function ImpactSimulatorControls({
                 </span>
               </div>
             )}
-            {finalizedAsteroid.threatLevel && (
+            {finalizedAsteroid.angle && (
               <div>
-                <span className="text-white/40">Threat:</span>{" "}
-                <span
-                  className={`${
-                    finalizedAsteroid.threatLevel === "GLOBAL"
-                      ? "text-red-400"
-                      : finalizedAsteroid.threatLevel === "REGIONAL"
-                      ? "text-orange-400"
-                      : finalizedAsteroid.threatLevel === "LOCAL"
-                      ? "text-yellow-400"
-                      : "text-green-400"
-                  }`}
-                >
-                  {finalizedAsteroid.threatLevel}
+                <span className="text-white/40">Angle:</span>{" "}
+                <span className="text-white/70">
+                  {finalizedAsteroid.angle}°
                 </span>
               </div>
             )}
@@ -200,9 +218,13 @@ export default function ImpactSimulatorControls({
                 </span>
                 <button
                   onClick={onToggleLocationMode}
-                  disabled={isAnimating}
+                  disabled={isAnimating || hasImpactOccurred}
                   className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${
-                    usePredictedLocation ? "bg-blue-500/30" : "bg-orange-500/30"
+                    hasImpactOccurred
+                      ? "bg-gray-500/20"
+                      : usePredictedLocation
+                      ? "bg-blue-500/30"
+                      : "bg-orange-500/30"
                   }`}
                 >
                   <span
@@ -220,87 +242,68 @@ export default function ImpactSimulatorControls({
             </div>
           )}
 
-        {/* Location Display */}
-        <div className="p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded mb-3">
-          <div className="text-white/90 text-xs font-light">
-            {/* Show predicted location if available and using predicted mode */}
-            {predictedLocation && usePredictedLocation !== false
-              ? predictedLocation.city
-              : /* Show pin placement states for custom mode or no prediction */
-              isPlacingPin
-              ? "🎯 Placing Pin..."
-              : impactPin
-              ? impactPin.city
-              : "No pin placed"}
-          </div>
-          <div className="text-white/50 text-[10px] mt-1">
-            {/* Show predicted coordinates if available and using predicted mode */}
-            {predictedLocation && usePredictedLocation !== false
-              ? `${predictedLocation.latitude.toFixed(
-                  4
-                )}°, ${predictedLocation.longitude.toFixed(4)}°`
-              : /* Show pin placement states for custom mode or no prediction */
-              isPlacingPin
-              ? "Click anywhere on the map to place your pin"
-              : impactPin
-              ? `${impactPin.latitude.toFixed(
-                  4
-                )}°, ${impactPin.longitude.toFixed(4)}°`
-              : "Place a pin on the map"}
-          </div>
-          {predictedLocation && usePredictedLocation !== false && (
-            <div className="text-[9px] text-blue-400/60 mt-2">
-              Location calculated from trajectory analysis
+        {/* Location Display - Only show if there's a location */}
+        {((predictedLocation && usePredictedLocation !== false) ||
+          impactPin) && (
+          <div className="p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded mb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <div className="text-white/50 text-[10px]">
+                  {/* Show predicted coordinates if available and using predicted mode */}
+                  {predictedLocation && usePredictedLocation !== false
+                    ? `${predictedLocation.latitude.toFixed(
+                        4
+                      )}°, ${predictedLocation.longitude.toFixed(4)}°`
+                    : /* Show pin coordinates if available */
+                    impactPin
+                    ? `${impactPin.latitude.toFixed(
+                        4
+                      )}°, ${impactPin.longitude.toFixed(4)}°`
+                    : null}
+                </div>
+                {predictedLocation && usePredictedLocation !== false && (
+                  <div className="text-[9px] text-blue-400/60 mt-2">
+                    Location calculated from trajectory analysis
+                  </div>
+                )}
+              </div>
+
+              {/* Remove Pin Button - Show for custom pins only */}
+              {impactPin &&
+                usePredictedLocation === false &&
+                !hasImpactOccurred &&
+                onRemovePin && (
+                  <button
+                    onClick={onRemovePin}
+                    disabled={isAnimating}
+                    className="ml-3 px-2 py-1 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded text-[10px] font-light transition-all disabled:cursor-not-allowed uppercase tracking-wider"
+                  >
+                    Remove Pin
+                  </button>
+                )}
             </div>
-          )}
-          {!predictedLocation && (
-            <div className="text-[9px] text-white/40 mt-2">
-              Place a pin to set custom impact location
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Pin Controls - Show when: no prediction OR in custom pin mode */}
         {(!predictedLocation || usePredictedLocation === false) &&
           !currentSimulation &&
           onStartPinPlacement &&
-          onRemovePin && (
+          !impactPin && (
             <div className="space-y-2">
-              {!impactPin ? (
-                <button
-                  onClick={onStartPinPlacement}
-                  disabled={isAnimating}
-                  className={`w-full px-4 py-2 rounded text-xs font-light transition-all disabled:cursor-not-allowed uppercase tracking-wider ${
-                    isPlacingPin
-                      ? "bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white animate-pulse"
-                      : "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white"
-                  }`}
-                >
-                  {isPlacingPin
-                    ? "🎯 Click on Map to Place Pin..."
-                    : "📍 Place Pin on Map"}
-                </button>
-              ) : (
-                <button
-                  onClick={onRemovePin}
-                  disabled={isAnimating}
-                  className="w-full px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded text-xs font-light transition-all disabled:cursor-not-allowed uppercase tracking-wider"
-                >
-                  🗑️ Remove Pin
-                </button>
-              )}
-
-              {/* Pin placement status */}
-              {isPlacingPin && (
-                <div className="p-2 bg-red-500/20 border border-red-500/30 rounded">
-                  <div className="text-red-400 text-[10px] font-light text-center">
-                    🎯 Pin Placement Mode Active
-                  </div>
-                  <div className="text-red-300 text-[9px] text-center mt-1">
-                    Click anywhere on the map to place your impact pin
-                  </div>
-                </div>
-              )}
+              <button
+                onClick={onStartPinPlacement}
+                disabled={isAnimating}
+                className={`w-full px-4 py-2 rounded text-xs font-light transition-all disabled:cursor-not-allowed uppercase tracking-wider ${
+                  isPlacingPin
+                    ? "bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white animate-pulse"
+                    : "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white"
+                }`}
+              >
+                {isPlacingPin
+                  ? "Click on Map to Place Pin..."
+                  : "Place Pin on Map"}
+              </button>
             </div>
           )}
       </div>
@@ -378,271 +381,36 @@ export default function ImpactSimulatorControls({
         </div>
       </div>
 
-      {/* Enhanced Prediction Impact Analysis */}
-      {cachedPrediction?.consequencePrediction?.comprehensiveImpact && (
-        <div>
-          <label className="block text-[10px] font-light text-white/60 uppercase tracking-wider mb-2">
-            Impact Analysis
-          </label>
-          <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded space-y-3">
-            {/* Energy */}
-            {cachedPrediction.consequencePrediction.comprehensiveImpact.energy && (
-              <div>
-                <div className="text-[10px] font-light text-purple-300 uppercase tracking-wider mb-1">
-                  Energy
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <span className="text-white/40">Gigatons TNT:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.energy.toFixed(2)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Comparison:</span>{" "}
-                    <span className="text-white/90 text-[9px]">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.energyComparison}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Crater */}
-            {cachedPrediction.consequencePrediction.comprehensiveImpact.crater && (
-              <div>
-                <div className="text-[10px] font-light text-blue-300 uppercase tracking-wider mb-1">
-                  Crater
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <span className="text-white/40">Diameter:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.crater.diameter.toFixed(2)} km
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Depth:</span>{" "}
-                    <span className="text-white/90">
-                      {(cachedPrediction.consequencePrediction.comprehensiveImpact.crater.depthOnLand ||
-                        cachedPrediction.consequencePrediction.comprehensiveImpact.crater.depthOnSeafloor || 0).toFixed(2)} mi
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Volume:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.crater.volume.toFixed(1)} km³
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Fireball */}
-            {cachedPrediction.consequencePrediction.comprehensiveImpact.fireball && (
-              <div>
-                <div className="text-[10px] font-light text-orange-300 uppercase tracking-wider mb-1">
-                  Fireball
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <span className="text-white/40">Radius:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.fireball.radiusKm.toFixed(2)} km
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Diameter:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.fireball.diameter.toFixed(2)} km
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Shockwave */}
-            {cachedPrediction.consequencePrediction.comprehensiveImpact.shockWave && (
-              <div>
-                <div className="text-[10px] font-light text-yellow-300 uppercase tracking-wider mb-1">
-                  Shockwave
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <span className="text-white/40">Decibels:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.shockWave.decibels.toFixed(0)} dB
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Buildings Collapse:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.shockWave.damageZones.buildingsCollapse.toFixed(1)} mi
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Wind Blast */}
-            {cachedPrediction.consequencePrediction.comprehensiveImpact.windBlast && (
-              <div>
-                <div className="text-[10px] font-light text-green-300 uppercase tracking-wider mb-1">
-                  Wind Blast
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <span className="text-white/40">Peak Speed:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.windBlast.peakSpeed.toFixed(0)} mph
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Trees Knocked:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.windBlast.damageZones.treesKnockedDown.toFixed(1)} mi
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Earthquake */}
-            {cachedPrediction.consequencePrediction.comprehensiveImpact.earthquake && (
-              <div>
-                <div className="text-[10px] font-light text-red-300 uppercase tracking-wider mb-1">
-                  Earthquake
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <span className="text-white/40">Magnitude:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.earthquake.magnitude.toFixed(1)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Felt Radius:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.earthquake.feltRadius.toFixed(0)} mi
-                    </span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-white/40">Equivalent:</span>{" "}
-                    <span className="text-white/90 text-[9px]">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.earthquake.equivalentEvent}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Tsunami (if ocean impact) */}
-            {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami && (
-              <div>
-                <div className="text-[10px] font-light text-cyan-300 uppercase tracking-wider mb-1">
-                  Tsunami
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <span className="text-white/40">Wave Height:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami.height.toFixed(1)} m
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Arrival:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami.arrivalTime.toFixed(0)} min
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Wave Speed:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami.waveSpeed.toFixed(0)} km/h
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-white/40">Coastline:</span>{" "}
-                    <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami.affectedCoastlineDistance.toFixed(0)} km
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Frequency */}
-            {cachedPrediction.consequencePrediction.comprehensiveImpact.frequency && (
-              <div>
-                <div className="text-[10px] font-light text-gray-300 uppercase tracking-wider mb-1">
-                  Frequency
-                </div>
-                <div className="text-[10px]">
-                  <span className="text-white/40">Average Interval:</span>{" "}
-                  <span className="text-white/90">
-                    {cachedPrediction.consequencePrediction.comprehensiveImpact.frequency.averageInterval.toLocaleString()} years
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Prediction Data Ready Indicator */}
-      {cachedPrediction && !cachedPrediction.consequencePrediction && (
-        <div className="p-2 bg-green-500/10 border border-green-500/30 rounded">
-          <div className="flex items-center gap-2">
-            <span className="text-green-400 text-xs">✓</span>
-            <span className="text-[10px] text-green-300">
-              Impact data preloaded and ready
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Action Buttons */}
       <div className="space-y-2">
-        {/* Dynamic Action Button - Changes from Simulate to Reset based on impact state */}
-        {!currentSimulation && (usePredictedLocation || impactPin) && (
-          <button
-            onClick={
-              hasImpactOccurred
-                ? () => {
-                    console.log("Reset button clicked - refreshing page");
-                    window.location.reload();
-                  }
-                : onRunImpact
-            }
-            disabled={isAnimating}
-            className={`w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider ${
-              isAnimating
-                ? "bg-white/10 text-white/50 cursor-not-allowed"
-                : hasImpactOccurred
-                ? "bg-red-600 text-white hover:bg-red-700"
-                : "bg-white text-black backdrop-blur-sm hover:bg-white/90"
-            }`}
-          >
-            {isAnimating ? (
-              <div className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-3 w-3 border-b border-white mr-2"></div>
-                Simulating...
-              </div>
-            ) : hasImpactOccurred ? (
-              "🔄 Reset Simulation"
-            ) : (
-              "🚀 Simulate Impact"
-            )}
-          </button>
-        )}
+        {/* Simulate Impact Button - Only available before simulation */}
+        {!currentSimulation &&
+          !hasImpactOccurred &&
+          (usePredictedLocation || impactPin) && (
+            <button
+              onClick={onRunImpact}
+              disabled={isAnimating}
+              className={`w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider ${
+                isAnimating
+                  ? "bg-white/10 text-white/50 cursor-not-allowed"
+                  : "bg-white text-black backdrop-blur-sm hover:bg-white/90"
+              }`}
+            >
+              {isAnimating ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b border-white mr-2"></div>
+                  Simulating...
+                </div>
+              ) : (
+                "Simulate Impact"
+              )}
+            </button>
+          )}
 
-        {/* Status Display */}
-        <div className="p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded">
-          <div className="text-[10px] text-white/60 uppercase tracking-wider mb-1">
-            Status
-          </div>
-          <div className="text-xs text-white/90 font-light">{status}</div>
-        </div>
+        {/* Reset Button - Show after simulation is complete */}
+        {hasImpactOccurred && (
+          <AutoResetButton onReset={onReset} countdownSeconds={60} />
+        )}
       </div>
     </div>
   );

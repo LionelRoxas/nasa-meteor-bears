@@ -2,12 +2,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import MapboxMap from "@/components/MapboxMap2";
+import MapboxMap from "@/components/MapboxMapMain";
 import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar";
 import Navbar from "@/components/Navbar";
 import ImpactRadiusTogglePanel from "@/components/ImpactRadiusTogglePanel";
+import MitigationStrategiesPanel from "@/components/MitigationStrategiesPanel";
+import type { ConsequencePrediction } from "./utils/consequence-predictor";
 
 // Define the NASA asteroid data type
 interface NASAAsteroidData {
@@ -36,16 +37,15 @@ const defaultImpactLocation = {
 };
 
 export default function MapboxSimPage() {
-  const router = useRouter();
-
   // Simulation state
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasImpacted, setHasImpacted] = useState(false);
 
   // UI state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [showNASAPanel, setShowNASAPanel] = useState(false);
+  const [showNASAPanel, setShowNASAPanel] = useState(true);
   const [wasNASAPanelOpen, setWasNASAPanelOpen] = useState(false);
+  const [showMitigationPanel, setShowMitigationPanel] = useState(false);
 
   // Map view controls
   const [show3DBuildings, setShow3DBuildings] = useState(true);
@@ -84,6 +84,8 @@ export default function MapboxSimPage() {
     undefined
   );
   const [enhancedPrediction, setEnhancedPrediction] = useState<any>(null);
+  const [consequencePrediction, setConsequencePrediction] =
+    useState<ConsequencePrediction | null>(null);
 
   // Pin placement state (declare before useEffects that use it)
   const [usePredictedLocation, setUsePredictedLocation] = useState(true);
@@ -241,6 +243,14 @@ export default function MapboxSimPage() {
       setWasNASAPanelOpen(showNASAPanel);
       setIsSidebarCollapsed(true);
       setShowNASAPanel(false);
+      setShowMitigationPanel(false); // Close mitigation panel too
+      
+      // Clear enhanced prediction if using manual pin
+      if (!usePredictedLocation && impactPin) {
+        console.log("🎯 Impact starting with manual pin - clearing enhanced prediction");
+        setEnhancedPrediction(null);
+      }
+      
       setIsSimulating(true);
       // Trigger impact animation immediately
       if (mapboxRef.current?.runImpactAnimation) {
@@ -262,26 +272,7 @@ export default function MapboxSimPage() {
   }, []);
 
   const handleReset = () => {
-    console.log("🔄 handleReset called");
-
-    // Use router refresh to completely reset the page state
-    router.refresh();
-
-    // Also reset local state for immediate UI feedback
-    setIsSimulating(false);
-    setHasImpacted(false);
-    setIsSidebarCollapsed(false);
-    setShowNASAPanel(wasNASAPanelOpen);
-    setCurrentSimulation(null); // Clear simulation data
-    setEnhancedPrediction(null); // Clear prediction data
-    setImpactLocation(defaultImpactLocation); // Reset to default location
-    // Reset pin placement state
-    setImpactPin(null);
-    setIsPlacingPin(false);
-    setUsePredictedLocation(true);
-    if (mapboxRef.current?.resetSimulation) {
-      mapboxRef.current.resetSimulation();
-    }
+    window.location.reload();
   };
 
   // Pin placement handlers
@@ -360,16 +351,59 @@ export default function MapboxSimPage() {
     console.log("💥 Impact detected!");
     setHasImpacted(true);
     setIsSimulating(false);
-
-    // Auto-reset after 30 seconds
-    setTimeout(() => {
-      handleReset();
-    }, 30000);
+    // Remove the duplicate timer - we'll handle this in handleImpactOccurred
   };
 
   const handleImpactOccurred = (hasImpactOccurred: boolean) => {
     setHasImpacted(hasImpactOccurred);
+
+    // Turn on the left sidebar after impact
+    if (hasImpactOccurred) {
+      setIsSidebarCollapsed(false);
+      console.log("💥 Impact occurred - showing left sidebar");
+    }
   };
+
+  // Add some debugging for mitigation strategies
+  useEffect(() => {
+    console.log("🔍 Prediction Debug:", {
+      hasEnhancedPrediction: !!enhancedPrediction,
+      hasConsequencePrediction: !!consequencePrediction,
+      enhancedMitigationStrategies: !!enhancedPrediction?.mitigationStrategies,
+      consequenceMitigationStrategies:
+        !!consequencePrediction?.mitigationStrategies,
+      consequenceThreatLevel: consequencePrediction?.threatLevel,
+      hasImpacted,
+      selectedAsteroid: selectedNASAAsteroid?.name,
+    });
+  }, [
+    enhancedPrediction,
+    consequencePrediction,
+    hasImpacted,
+    selectedNASAAsteroid,
+  ]);
+
+  // Auto-show mitigation panel when strategies first become available
+  const [hasShownMitigation, setHasShownMitigation] = useState(false);
+  
+  useEffect(() => {
+    const hasMitigationStrategies = !!(
+      consequencePrediction?.mitigationStrategies ||
+      enhancedPrediction?.mitigationStrategies
+    );
+
+    // Only auto-show once when strategies first become available
+    if (hasMitigationStrategies && !hasShownMitigation) {
+      console.log("🛡️ Mitigation strategies available - auto-showing panel");
+      setShowMitigationPanel(true);
+      setShowNASAPanel(false);
+      setHasShownMitigation(true); // Mark as shown so it won't auto-show again
+    }
+  }, [
+    consequencePrediction?.mitigationStrategies,
+    enhancedPrediction?.mitigationStrategies,
+    hasShownMitigation,
+  ]);
 
   // Reset when simulation stops
   useEffect(() => {
@@ -377,6 +411,90 @@ export default function MapboxSimPage() {
       setCurrentDistance(undefined);
     }
   }, [isSimulating]);
+
+  // Function to generate mitigation strategies after impact
+  const generateMitigationStrategies = useCallback(async () => {
+    if (!selectedNASAAsteroid) return;
+
+    try {
+      console.log(
+        "🛡️ Generating mitigation strategies for:",
+        selectedNASAAsteroid.name
+      );
+
+      // Convert NASA asteroid to ConsequencePredictor format
+      const asteroidData = {
+        id: selectedNASAAsteroid.id,
+        name: selectedNASAAsteroid.name,
+        diameter_meters: selectedNASAAsteroid.diameter || 100,
+        velocity_km_s: selectedNASAAsteroid.velocity || 20,
+        is_hazardous: selectedNASAAsteroid.is_hazardous || false,
+      };
+
+      // Call the server-side API endpoint
+      const response = await fetch("/api/mitigation-strategies", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ asteroidData }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API call failed: ${response.status}`);
+      }
+
+      const prediction = await response.json();
+      setConsequencePrediction(prediction);
+
+      console.log("✅ Mitigation strategies generated:", {
+        threatLevel: prediction.threatLevel,
+        hasMitigationStrategies: !!prediction.mitigationStrategies,
+        strategiesLength: prediction.mitigationStrategies?.length || 0,
+      });
+    } catch (error) {
+      console.error("❌ Error generating mitigation strategies:", error);
+    }
+  }, [selectedNASAAsteroid]);
+
+  // Trigger mitigation strategies generation after impact
+  useEffect(() => {
+    if (hasImpacted && selectedNASAAsteroid && !consequencePrediction) {
+      console.log("🎯 Impact detected, generating mitigation strategies...");
+      console.log("Debug info:", {
+        hasImpacted,
+        selectedNASAAsteroid: selectedNASAAsteroid?.name,
+        hasConsequencePrediction: !!consequencePrediction,
+        asteroidDiameter: selectedNASAAsteroid?.diameter,
+        asteroidVelocity: selectedNASAAsteroid?.velocity,
+      });
+      generateMitigationStrategies();
+    }
+  }, [
+    hasImpacted,
+    selectedNASAAsteroid,
+    consequencePrediction,
+    generateMitigationStrategies,
+  ]);
+
+  // Also add a 2-second delay trigger as backup
+  useEffect(() => {
+    if (hasImpacted && selectedNASAAsteroid && !consequencePrediction) {
+      const timer = setTimeout(() => {
+        console.log(
+          "🔄 Backup trigger: Generating mitigation strategies after delay..."
+        );
+        generateMitigationStrategies();
+      }, 2000); // 2 second delay after impact
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    hasImpacted,
+    selectedNASAAsteroid,
+    consequencePrediction,
+    generateMitigationStrategies,
+  ]);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black">
@@ -432,11 +550,25 @@ export default function MapboxSimPage() {
             isSidebarCollapsed={isSidebarCollapsed}
             toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             showNASAPanel={showNASAPanel}
-            toggleNASAPanel={() => setShowNASAPanel(!showNASAPanel)}
-            selectedNASAAsteroid={selectedNASAAsteroid}
-            isSimulating={isSimulating}
-            currentDistance={currentDistance}
-            hasImpacted={hasImpacted}
+            toggleNASAPanel={() => {
+              setShowNASAPanel(!showNASAPanel);
+              if (!showNASAPanel) {
+                setShowMitigationPanel(false);
+              }
+            }}
+            showMitigationPanel={showMitigationPanel}
+            toggleMitigationPanel={() => {
+              setShowMitigationPanel(!showMitigationPanel);
+              if (!showMitigationPanel) {
+                setShowNASAPanel(false);
+              }
+            }}
+            hasMitigationStrategies={
+              !!(
+                consequencePrediction?.mitigationStrategies ||
+                enhancedPrediction?.mitigationStrategies
+              )
+            }
           />
         </div>
 
@@ -472,6 +604,11 @@ export default function MapboxSimPage() {
               onRemovePin={handleRemovePin}
               onToggleLocationMode={handleToggleLocationMode}
               hasImpactOccurred={hasImpacted}
+              // Panel control callback
+              onClosePanels={() => {
+                setShowNASAPanel(false);
+                setShowMitigationPanel(false);
+              }}
             />
           </div>
 
@@ -489,19 +626,60 @@ export default function MapboxSimPage() {
               </div>
             )}
 
-            {/* Impact Radius Toggle Panel - Show after impact on RIGHT */}
+            {/* Mitigation Strategies Panel Overlay */}
+            {showMitigationPanel && (
+              <div
+                className="absolute top-4 right-4 bottom-4 flex flex-col pointer-events-auto"
+                style={{ zIndex: 45 }}
+              >
+                <div className="flex-1 overflow-y-auto">
+                  <MitigationStrategiesPanel
+                    mitigationStrategies={
+                      consequencePrediction?.mitigationStrategies ||
+                      enhancedPrediction?.mitigationStrategies
+                    }
+                    threatLevel={
+                      consequencePrediction?.threatLevel ||
+                      enhancedPrediction?.threatLevel
+                    }
+                    enhancedPrediction={enhancedPrediction}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Impact Radius Toggle Panel - Show after impact in top-right */}
             {hasImpacted &&
-              enhancedPrediction?.consequencePrediction &&
-              !showNASAPanel && (
-                <ImpactRadiusTogglePanel
-                  consequencePrediction={
-                    enhancedPrediction.consequencePrediction
-                  }
-                  visibleRadii={visibleRadii}
-                  onToggleRadius={handleToggleRadius}
-                  onShowAll={handleShowAllRadii}
-                  onHideAll={handleHideAllRadii}
-                />
+              (enhancedPrediction?.consequencePrediction || currentSimulation) &&
+              !showNASAPanel &&
+              !showMitigationPanel && (
+                <div className="absolute top-4 right-4 z-50 pointer-events-auto">
+                  <ImpactRadiusTogglePanel
+                    consequencePrediction={
+                      enhancedPrediction?.consequencePrediction || {
+                        // Fallback data for custom pin impacts
+                        impactPhysics: {
+                          craterDiameter: currentSimulation?.craterDiameter || 0,
+                          megatonsEquivalent: currentSimulation?.impactEnergy || 0,
+                          earthquakeMagnitude: 5.0,
+                          affectedRadius: currentSimulation?.damageRadius || 0,
+                          tsunamiHeight: 0,
+                        }
+                      }
+                    }
+                    visibleRadii={visibleRadii}
+                    onToggleRadius={handleToggleRadius}
+                    onShowAll={handleShowAllRadii}
+                    onHideAll={handleHideAllRadii}
+                    // Pass actual impact location context
+                    actualImpactLocation={impactLocation}
+                    isUsingCustomPin={!usePredictedLocation}
+                    realTerrainData={{
+                      isWater: false, // TODO: Add real terrain detection
+                      isOcean: false, // TODO: Add real terrain detection
+                    }}
+                  />
+                </div>
               )}
           </div>
         </div>

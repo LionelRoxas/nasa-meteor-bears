@@ -212,6 +212,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
     // Use refs to track prop values for event handlers
     const isPlacingPinRef = useRef(isPlacingPin);
     const currentSimulationRef = useRef<ImpactSimulation | null>(null);
+    const impactMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
     // Default predicted location (New York)
     const predictedLocation = useMemo<ImpactLocation>(
@@ -295,7 +296,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
               effectiveImpactLocation.longitude,
               effectiveImpactLocation.latitude,
             ],
-            zoom: 3,
+            zoom: 1.5, // Much further away from Earth for space view
             projection: { name: "globe" },
             attributionControl: false,
             preserveDrawingBuffer: true,
@@ -984,6 +985,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
         "damage-zones",
         "impact-point",
         "impact-pin", // Add pin cleanup
+        "prediction-marker", // Add prediction marker cleanup
         "crater-interior",
         "crater-rim",
         "vaporization-zone",
@@ -1001,7 +1003,12 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
 
       layersToRemove.forEach((id) => {
         try {
-          if (mapInstance.getLayer(id)) mapInstance.removeLayer(id);
+          if (mapInstance.getLayer(id)) {
+            mapInstance.removeLayer(id);
+            if (id === "prediction-marker") {
+              console.log("🗑️ Cleanup: Removed prediction marker");
+            }
+          }
           if (mapInstance.getSource(id)) mapInstance.removeSource(id);
         } catch {
           // Continue if layer doesn't exist
@@ -1289,6 +1296,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
             trail.visible = false;
             aura.visible = false;
             setHasImpactOccurred(true);
+            onImpactOccurred?.(true); // Notify parent that impact occurred
             console.log("Asteroid hidden at impact moment - progress 100%");
           }
 
@@ -1325,6 +1333,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
 
         // SIMPLE SOLUTION - Just hide the asteroid on impact
         setHasImpactOccurred(true); // Set flag to hide asteroid
+        onImpactOccurred?.(true); // Ensure parent is notified of impact
 
         if (asteroidMeshRef.current && sceneRef.current) {
           // Remove asteroid and trail immediately on impact
@@ -1616,15 +1625,42 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       }
     }, [shouldRunAnimation, isAnimating, runImpactAnimation]);
 
+    // Clean up prediction marker when custom pin is used
+    useEffect(() => {
+      if (!map || !mapLoaded) return;
+
+      // If we're not using predicted location (custom pin mode), remove prediction marker
+      if (!usePredictedLocation) {
+        try {
+          if (map.getLayer("prediction-marker")) {
+            map.removeLayer("prediction-marker");
+            console.log("🗑️ Removed prediction marker - using custom pin");
+          }
+          if (map.getSource("prediction-marker")) {
+            map.removeSource("prediction-marker");
+          }
+        } catch (error) {
+          console.error("Error removing prediction marker:", error);
+        }
+      }
+    }, [map, mapLoaded, usePredictedLocation]);
+
     // Show predicted impact location when enhanced prediction loads
     useEffect(() => {
       if (!map || !mapLoaded || !enhancedPrediction?.impact_location) return;
+      
+      // Don't show prediction marker if we're using a custom pin
+      if (!usePredictedLocation) {
+        console.log("🚫 Not showing prediction marker - using custom pin");
+        return;
+      }
 
       const { latitude, longitude } = enhancedPrediction.impact_location;
 
       console.log("📍 Showing predicted impact location on map:", {
         latitude,
         longitude,
+        usePredictedLocation,
       });
 
       // Pan map to predicted location
@@ -1672,7 +1708,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       } catch (error) {
         console.error("❌ Error adding prediction marker:", error);
       }
-    }, [map, mapLoaded, enhancedPrediction]);
+    }, [map, mapLoaded, enhancedPrediction, usePredictedLocation]);
 
     return (
       <div className={`relative w-full h-full ${className}`}>

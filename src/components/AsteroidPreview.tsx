@@ -55,11 +55,11 @@ export default function AsteroidPreview({ diameter }: AsteroidPreviewProps) {
       antialias: true,
     });
 
-    renderer.setSize(200, 200);
+    renderer.setSize(370, 190);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    camera.position.z = 5;
+    camera.position.z = 10;
 
     // Create asteroid using shared utils - pass THREE as first parameter
     const asteroid = createAsteroidMesh(THREE, { diameter });
@@ -115,8 +115,8 @@ export default function AsteroidPreview({ diameter }: AsteroidPreviewProps) {
   // Update asteroid scale based on diameter - simple fixed scale
   React.useEffect(() => {
     if (sceneRef.current?.asteroid && sceneRef.current?.baseScale) {
-      // Simple fixed scale that works for all sizes
-      const fixedScale = 0.08;
+      // Increased fixed scale to make asteroids appear bigger
+      const fixedScale = 0.2;
 
       // Calculate display ratio
       const displayRatio = Math.round(diameter / fixedScale);

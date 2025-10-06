@@ -14,6 +14,12 @@ import {
 let groq: Groq | null = null;
 
 function getGroqClient(): Groq | null {
+  // Always return null on client side to force server-side API usage
+  if (typeof window !== 'undefined') {
+    console.warn("⚠️ GROQ client should not be used on client side - using server API instead");
+    return null;
+  }
+
   if (groq) return groq;
 
   const apiKey = process.env.GROQ_API_KEY;
@@ -1484,73 +1490,66 @@ Return ONLY the JSON object for 2D terrain visualization.`;
       impactPhysics.tsunamiHeight &&
       impactPhysics.tsunamiHeight > 5;
 
-    // Try to get LLM-enhanced mitigation recommendations
+    // Use server-side API for mitigation strategies generation
     try {
-      const groqClient = getGroqClient();
-
-      if (groqClient) {
-        const mitigationPrompt = `
-Generate a single comprehensive paragraph of mitigation strategies for an asteroid impact scenario with these parameters:
-
-THREAT LEVEL: ${threatLevel}
-IMPACT ENERGY: ${impactPhysics.megatonsEquivalent.toExponential(
-          2
-        )} MT TNT equivalent
-CRATER DIAMETER: ${impactPhysics.craterDiameter.toFixed(2)} km
-EARTHQUAKE MAGNITUDE: M${impactPhysics.earthquakeMagnitude.toFixed(1)}
-AFFECTED RADIUS: ${impactPhysics.affectedRadius.toFixed(1)} km
-POPULATION AT RISK: ${populationAtRisk.toLocaleString()}
-IMPACT LOCATION: ${
-          impactLocation.geographic_type
-        } at ${impactLocation.latitude.toFixed(
-          2
-        )}°, ${impactLocation.longitude.toFixed(2)}°
-${
-  hasTsunamiRisk
-    ? `TSUNAMI HEIGHT: ${impactPhysics.tsunamiHeight?.toFixed(1)} meters`
-    : ""
-}
-
-Provide ONLY a single paragraph (no lists, no formatting) with actionable mitigation strategies prioritized by effectiveness. Focus on: immediate evacuation protocols, structural preparedness, emergency response coordination, long-term deflection options if applicable, and post-impact recovery measures. Be specific and realistic based on the threat level.`;
-
-        const messages: ChatMessage[] = [
-          {
-            role: "system",
-            content:
-              "You are a planetary defense expert specializing in disaster mitigation. Provide a single comprehensive paragraph with actionable strategies.",
+      console.log("🛡️ Calling server-side mitigation strategies API...");
+      
+      const response = await fetch('/api/mitigation-strategies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          threatLevel,
+          impactEnergy: impactPhysics.megatonsEquivalent,
+          craterDiameter: impactPhysics.craterDiameter,
+          earthquakeMagnitude: impactPhysics.earthquakeMagnitude,
+          affectedRadius: impactPhysics.affectedRadius,
+          populationAtRisk,
+          impactLocation: {
+            type: impactLocation.geographic_type,
+            latitude: impactLocation.latitude,
+            longitude: impactLocation.longitude,
           },
-          {
-            role: "user",
-            content: mitigationPrompt,
-          },
-        ];
+          tsunamiHeight: impactPhysics.tsunamiHeight,
+          timeToImpact: trajectory.time_to_impact
+        })
+      });
 
-        const response = await groqClient.chat.completions.create({
-          model: "openai/gpt-oss-120b",
-          messages: convertToGroqMessages(messages),
-          temperature: 0.3,
-          max_tokens: 500,
-        });
-
-        const llmResponse = response.choices[0].message.content?.trim();
-        if (llmResponse && llmResponse.length > 50) {
-          console.log("LLM-generated mitigation strategies received");
-          return llmResponse;
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.mitigationStrategies) {
+          console.log("✅ Server-side mitigation strategies received");
+          return result.mitigationStrategies;
         }
+      } else {
+        console.warn("⚠️ Mitigation strategies API failed:", response.status);
       }
     } catch (error) {
-      console.warn(
-        "Could not generate LLM mitigation strategies, using fallback:",
-        error
-      );
+      console.error("❌ Error calling mitigation strategies API:", error);
     }
 
-    // Fallback: Physics-based mitigation strategies
-    let strategies = "";
+    // Fallback: Generate simple physics-based strategies
+    console.log("🔄 Using fallback mitigation strategies");
+    return this.generateFallbackMitigationStrategies(prediction);
+  }
+
+  // Fallback mitigation strategies generation
+  private generateFallbackMitigationStrategies(
+    prediction: ConsequencePrediction
+  ): string {
+    const { threatLevel, impactPhysics, populationAtRisk, trajectory } =
+      prediction;
+
+    const impactLocation = trajectory.impact_location;
+    const hasTsunamiRisk =
+      impactLocation.geographic_type === "ocean" &&
+      impactPhysics.tsunamiHeight &&
+      impactPhysics.tsunamiHeight > 5;
 
     switch (threatLevel) {
       case "CATASTROPHIC":
-        strategies = `For this catastrophic ${impactPhysics.megatonsEquivalent.toFixed(
+        return `For this catastrophic ${impactPhysics.megatonsEquivalent.toFixed(
           0
         )} MT impact scenario, immediate global coordination is essential: evacuate all populations within ${Math.round(
           impactPhysics.affectedRadius * 2
@@ -1567,10 +1566,9 @@ Provide ONLY a single paragraph (no lists, no formatting) with actionable mitiga
               )}m wave heights`
             : ""
         }, and prepare for long-term agricultural disruption from atmospheric dust causing potential global cooling effects.`;
-        break;
 
       case "HIGH":
-        strategies = `To mitigate this high-threat ${impactPhysics.megatonsEquivalent.toFixed(
+        return `To mitigate this high-threat ${impactPhysics.megatonsEquivalent.toFixed(
           1
         )} MT impact affecting ${populationAtRisk.toLocaleString()} people, establish mandatory evacuation zones within ${Math.round(
           impactPhysics.affectedRadius
@@ -1591,10 +1589,9 @@ Provide ONLY a single paragraph (no lists, no formatting) with actionable mitiga
               )}m waves with safe zones above 30m elevation`
             : ""
         }, consider last-resort deflection attempts using available spacecraft if lead time permits, establish emergency communication networks and backup power systems, and coordinate regional disaster response across national boundaries for optimal resource allocation.`;
-        break;
 
       case "MODERATE":
-        strategies = `For this moderate ${impactPhysics.megatonsEquivalent.toFixed(
+        return `For this moderate ${impactPhysics.megatonsEquivalent.toFixed(
           2
         )} MT threat affecting an estimated ${populationAtRisk.toLocaleString()} people, implement precautionary evacuations within ${Math.round(
           impactPhysics.affectedRadius * 0.5
@@ -1615,11 +1612,10 @@ Provide ONLY a single paragraph (no lists, no formatting) with actionable mitiga
             ? `, issue tsunami advisories for coastal regions with evacuation recommendations for low-lying areas`
             : ""
         }, stockpile emergency supplies including water, food, and first aid equipment, and coordinate with local authorities to ensure public awareness and preparedness through clear communication channels.`;
-        break;
 
       case "LOW":
       default:
-        strategies = `Despite the relatively low ${impactPhysics.megatonsEquivalent.toFixed(
+        return `Despite the relatively low ${impactPhysics.megatonsEquivalent.toFixed(
           3
         )} MT energy of this impact, prudent preparedness measures should include monitoring the final trajectory during the ${Math.ceil(
           prediction.trajectory.time_to_impact / 3600
@@ -1635,9 +1631,6 @@ Provide ONLY a single paragraph (no lists, no formatting) with actionable mitiga
           1
         )} seismic activity and possible localized power outages, positioning emergency services on standby to respond to any structural damage or injuries, documenting the event for scientific research and future threat assessment, and using this as an opportunity to test and improve planetary defense coordination protocols for future higher-risk scenarios.`;
     }
-
-    console.log("Physics-based mitigation strategies generated");
-    return strategies;
   }
 }
 

@@ -10,10 +10,9 @@ interface NavbarProps {
   toggleSidebar: () => void;
   showNASAPanel: boolean;
   toggleNASAPanel: () => void;
-  selectedNASAAsteroid: any | null;
-  isSimulating: boolean;
-  currentDistance?: number;
-  hasImpacted?: boolean; // Add this prop to track impact state
+  showMitigationPanel?: boolean;
+  toggleMitigationPanel?: () => void;
+  hasMitigationStrategies?: boolean; // To know if strategies are available
 }
 
 export default function Navbar({
@@ -21,89 +20,10 @@ export default function Navbar({
   toggleSidebar,
   showNASAPanel,
   toggleNASAPanel,
-  selectedNASAAsteroid,
-  isSimulating,
-  currentDistance,
-  hasImpacted,
+  showMitigationPanel = false,
+  toggleMitigationPanel,
+  hasMitigationStrategies = false,
 }: NavbarProps) {
-  // Format distance for display
-  const formatDistance = (distance: number) => {
-    // Treat 0 or very small numbers as impact
-    if (distance <= 0 || distance < 1) return "0 km";
-
-    // If distance is very large, show in thousands of km
-    if (distance >= 10000) {
-      return `${(distance / 1000).toFixed(0)}k km`;
-    }
-    // If distance is moderate, show with one decimal
-    else if (distance >= 1000) {
-      return `${(distance / 1000).toFixed(1)}k km`;
-    }
-    // If getting close, show exact km
-    else if (distance >= 100) {
-      return `${distance.toFixed(0)} km`;
-    }
-    // Very close - show with decimal
-    else {
-      return `${distance.toFixed(1)} km`;
-    }
-  };
-
-  // Determine what distance to show
-  const getDistanceDisplay = () => {
-    // If impacted, always show 0 km
-    if (hasImpacted) {
-      return "Distance: 0 km";
-    }
-
-    // If we have a current distance from the simulation, use it
-    if (currentDistance !== undefined) {
-      // If impact is imminent (distance < 10000), show 0 km
-      if (currentDistance < 10000) {
-        return "Distance: 0 km";
-      }
-      return `Distance: ${formatDistance(currentDistance)}`;
-    }
-
-    // Otherwise, if we have a selected asteroid, show its initial distance
-    if (selectedNASAAsteroid?.approachDistance) {
-      return `Distance: ${formatDistance(
-        selectedNASAAsteroid.approachDistance
-      )}`;
-    }
-
-    return "INITIALIZING...";
-  };
-
-  // Determine status indicators
-  const getStatusIndicators = () => {
-    // If impacted, show impact status
-    if (hasImpacted) {
-      return (
-        <span className="text-red-500 text-xs font-bold animate-pulse">
-          • IMPACT OCCURRED
-        </span>
-      );
-    }
-
-    // Otherwise show approach warnings based on distance
-    if (currentDistance !== undefined && !hasImpacted) {
-      if (currentDistance < 10000) {
-        return (
-          <span className="text-red-500 text-xs font-bold animate-pulse">
-            • IMPACT IMMINENT
-          </span>
-        );
-      } else if (currentDistance < 50000) {
-        return (
-          <span className="text-orange-400 text-xs">• APPROACHING FAST</span>
-        );
-      }
-    }
-
-    return null;
-  };
-
   return (
     <header className="absolute top-0 left-0 right-0 z-20">
       <nav className="bg-black/40 backdrop-blur-md">
@@ -143,40 +63,13 @@ export default function Navbar({
             {/* Title */}
             <div className="flex items-center gap-2">
               <h1 className="text-white font-light tracking-wide text-sm">
-                NASA IMPACT SIMULATOR
+                NEO IMPACT SIMULATOR - NASA SPACE APPS 2025
               </h1>
-              {(isSimulating || hasImpacted) && (
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      hasImpacted ? "bg-red-500" : "bg-orange-500 animate-pulse"
-                    }`}
-                  />
-                  <span
-                    className={`text-xs font-light ${
-                      hasImpacted ? "text-red-500" : "text-orange-500"
-                    }`}
-                  >
-                    {getDistanceDisplay()}
-                  </span>
-                  {getStatusIndicators()}
-                </div>
-              )}
             </div>
           </div>
 
           {/* Right Section */}
           <div className="flex items-center gap-4">
-            {/* Asteroid Info */}
-            {selectedNASAAsteroid && (
-              <div className="hidden md:flex items-center gap-2 px-3 h-8 bg-white/5 rounded">
-                <span className="text-white/50 text-xs">LOADED:</span>
-                <span className="text-white/90 text-xs font-light">
-                  {selectedNASAAsteroid.name}
-                </span>
-              </div>
-            )}
-
             {/* Game Link */}
             <Link
               href="/game"
@@ -209,6 +102,20 @@ export default function Navbar({
             >
               NASA DATA
             </button>
+
+            {/* Mitigation Strategies Toggle */}
+            {hasMitigationStrategies && toggleMitigationPanel && (
+              <button
+                onClick={toggleMitigationPanel}
+                className={`px-4 h-8 rounded text-xs font-light transition-all ${
+                  showMitigationPanel
+                    ? "bg-white text-black"
+                    : "bg-white/10 text-white hover:bg-white/20"
+                }`}
+              >
+                Mitigation
+              </button>
+            )}
           </div>
         </div>
       </nav>
