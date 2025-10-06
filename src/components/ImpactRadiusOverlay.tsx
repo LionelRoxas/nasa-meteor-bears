@@ -74,7 +74,7 @@ export default function ImpactRadiusOverlay({
   visibleRadii,
   map,
 }: ImpactRadiusOverlayProps) {
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | null>(null);
 
   // Parse CSS rgba/ rgb string into numeric channels
   const parseRgba = (color: string) => {
