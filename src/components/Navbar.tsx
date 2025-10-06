@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // components/Navbar.tsx
 "use client";
@@ -13,7 +12,6 @@ interface NavbarProps {
   toggleNASAPanel: () => void;
   selectedNASAAsteroid: any | null;
   isSimulating: boolean;
-  countdown: number | null;
   currentDistance?: number;
   hasImpacted?: boolean; // Add this prop to track impact state
 }
@@ -25,7 +23,6 @@ export default function Navbar({
   toggleNASAPanel,
   selectedNASAAsteroid,
   isSimulating,
-  countdown,
   currentDistance,
   hasImpacted,
 }: NavbarProps) {

@@ -13,6 +13,7 @@ export default function AsteroidPreview({ diameter }: AsteroidPreviewProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const sceneRef = React.useRef<any>(null);
   const [threeLoaded, setThreeLoaded] = React.useState(false);
+  const [scaleFactor, setScaleFactor] = React.useState(0);
 
   // Load Three.js if not already loaded
   React.useEffect(() => {
@@ -111,21 +112,19 @@ export default function AsteroidPreview({ diameter }: AsteroidPreviewProps) {
     };
   }, [threeLoaded, diameter]);
 
-  // Update asteroid scale based on diameter
+  // Update asteroid scale based on diameter - simple fixed scale
   React.useEffect(() => {
     if (sceneRef.current?.asteroid && sceneRef.current?.baseScale) {
-      const minDiameter = 50;
-      const maxDiameter = 1000;
-      const minScale = 2.0;
-      const maxScale = 4.5;
+      // Simple fixed scale that works for all sizes
+      const fixedScale = 0.08;
 
-      const normalizedDiameter =
-        (diameter - minDiameter) / (maxDiameter - minDiameter);
-      const scaleFactor = minScale + normalizedDiameter * (maxScale - minScale);
+      // Calculate display ratio
+      const displayRatio = Math.round(diameter / fixedScale);
+      setScaleFactor(displayRatio);
 
-      // Apply scale while preserving the original random proportions
+      // Apply scale
       sceneRef.current.asteroid.scale.copy(sceneRef.current.baseScale);
-      sceneRef.current.asteroid.scale.multiplyScalar(scaleFactor);
+      sceneRef.current.asteroid.scale.multiplyScalar(fixedScale);
     }
   }, [diameter]);
 
@@ -133,6 +132,16 @@ export default function AsteroidPreview({ diameter }: AsteroidPreviewProps) {
     if (!num || isNaN(num)) return "0";
     if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
     return num.toFixed(0);
+  };
+
+  const formatScaleRatio = (ratio: number) => {
+    if (ratio === 0) return "Calculating...";
+    if (ratio >= 1000000) {
+      return `1:${(ratio / 1000000).toFixed(1)}M`;
+    } else if (ratio >= 1000) {
+      return `1:${(ratio / 1000).toFixed(1)}K`;
+    }
+    return `1:${ratio}`;
   };
 
   return (
@@ -149,10 +158,16 @@ export default function AsteroidPreview({ diameter }: AsteroidPreviewProps) {
           </div>
         )}
       </div>
-      <div className="mt-3 px-3 py-1 bg-black/60 backdrop-blur-sm rounded border border-white/20">
-        <span className="text-[11px] font-light text-white/80">
-          {formatNumber(diameter)}m diameter
-        </span>
+      <div className="flex flex-col items-center gap-1">
+        <div className="bg-black/60 backdrop-blur-sm rounded border-white/20">
+          <div className="flex flex-col items-center">
+            {scaleFactor > 0 && (
+              <span className="text-[10px] font-light text-blue-300">
+                Scale: {formatScaleRatio(scaleFactor)}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
