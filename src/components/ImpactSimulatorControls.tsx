@@ -49,6 +49,7 @@ interface ImpactSimulatorControlsProps {
   currentSimulation: ImpactSimulation | null;
   // Enhanced prediction support
   enhancedPrediction?: EnhancedPrediction | null;
+  hasImpactOccurred: boolean; // Flag to indicate if impact has finished
   // Pin placement controls
   usePredictedLocation?: boolean;
   onToggleLocationMode?: () => void;
@@ -74,6 +75,7 @@ export default function ImpactSimulatorControls({
   currentSimulation,
   // Enhanced prediction
   enhancedPrediction,
+  hasImpactOccurred,
   // Pin placement controls
   usePredictedLocation,
   onToggleLocationMode,
@@ -83,13 +85,17 @@ export default function ImpactSimulatorControls({
   onRemovePin,
 }: ImpactSimulatorControlsProps) {
   // Cache the enhanced prediction data for post-impact display
-  const [cachedPrediction, setCachedPrediction] = useState<EnhancedPrediction | null>(null);
-  const [predictedLocation, setPredictedLocation] = useState<ImpactLocation | null>(null);
+  const [cachedPrediction, setCachedPrediction] =
+    useState<EnhancedPrediction | null>(null);
+  const [predictedLocation, setPredictedLocation] =
+    useState<ImpactLocation | null>(null);
 
   // Update cached prediction and location when enhanced prediction loads
   useEffect(() => {
     if (enhancedPrediction) {
-      console.log("📦 Caching enhanced prediction data for post-impact display");
+      console.log(
+        "📦 Caching enhanced prediction data for post-impact display"
+      );
       setCachedPrediction(enhancedPrediction);
 
       // Extract predicted impact location
@@ -177,38 +183,42 @@ export default function ImpactSimulatorControls({
       {/* Impact Location */}
       <div>
         <label className="block text-[10px] font-light text-white/60 uppercase tracking-wider mb-2">
-          Impact Location {predictedLocation && <span className="text-blue-400">(Predicted)</span>}
+          Impact Location{" "}
+          {predictedLocation && (
+            <span className="text-blue-400">(Predicted)</span>
+          )}
         </label>
 
         {/* If we have prediction support AND pin placement support, show mode toggle */}
-        {predictedLocation && onToggleLocationMode && usePredictedLocation !== undefined && (
-          <div className="mb-3 p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/90 font-light">
-                {usePredictedLocation ? "Predicted Location" : "Custom Pin"}
-              </span>
-              <button
-                onClick={onToggleLocationMode}
-                disabled={isAnimating}
-                className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${
-                  usePredictedLocation ? "bg-blue-500/30" : "bg-orange-500/30"
-                }`}
-              >
-                <span
-                  className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-                    usePredictedLocation ? "translate-x-1" : "translate-x-6"
+        {predictedLocation &&
+          onToggleLocationMode &&
+          usePredictedLocation !== undefined && (
+            <div className="mb-3 p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-white/90 font-light">
+                  {usePredictedLocation ? "Predicted Location" : "Custom Pin"}
+                </span>
+                <button
+                  onClick={onToggleLocationMode}
+                  disabled={isAnimating}
+                  className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${
+                    usePredictedLocation ? "bg-blue-500/30" : "bg-orange-500/30"
                   }`}
-                />
-              </button>
+                >
+                  <span
+                    className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                      usePredictedLocation ? "translate-x-1" : "translate-x-6"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="text-[10px] text-white/50">
+                {usePredictedLocation
+                  ? "Using trajectory-predicted location"
+                  : "Using custom pin placement"}
+              </div>
             </div>
-            <div className="text-[10px] text-white/50">
-              {usePredictedLocation
-                ? "Using trajectory-predicted location"
-                : "Using custom pin placement"
-              }
-            </div>
-          </div>
-        )}
+          )}
 
         {/* Location Display */}
         <div className="p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded mb-3">
@@ -217,24 +227,26 @@ export default function ImpactSimulatorControls({
             {predictedLocation && usePredictedLocation !== false
               ? predictedLocation.city
               : /* Show pin placement states for custom mode or no prediction */
-                isPlacingPin
-                ? "🎯 Placing Pin..."
-                : impactPin
-                  ? impactPin.city
-                  : "No pin placed"
-            }
+              isPlacingPin
+              ? "🎯 Placing Pin..."
+              : impactPin
+              ? impactPin.city
+              : "No pin placed"}
           </div>
           <div className="text-white/50 text-[10px] mt-1">
             {/* Show predicted coordinates if available and using predicted mode */}
             {predictedLocation && usePredictedLocation !== false
-              ? `${predictedLocation.latitude.toFixed(4)}°, ${predictedLocation.longitude.toFixed(4)}°`
+              ? `${predictedLocation.latitude.toFixed(
+                  4
+                )}°, ${predictedLocation.longitude.toFixed(4)}°`
               : /* Show pin placement states for custom mode or no prediction */
-                isPlacingPin
-                ? "Click anywhere on the map to place your pin"
-                : impactPin
-                  ? `${impactPin.latitude.toFixed(4)}°, ${impactPin.longitude.toFixed(4)}°`
-                  : "Place a pin on the map"
-            }
+              isPlacingPin
+              ? "Click anywhere on the map to place your pin"
+              : impactPin
+              ? `${impactPin.latitude.toFixed(
+                  4
+                )}°, ${impactPin.longitude.toFixed(4)}°`
+              : "Place a pin on the map"}
           </div>
           {predictedLocation && usePredictedLocation !== false && (
             <div className="text-[9px] text-blue-400/60 mt-2">
@@ -249,43 +261,48 @@ export default function ImpactSimulatorControls({
         </div>
 
         {/* Pin Controls - Show when: no prediction OR in custom pin mode */}
-        {(!predictedLocation || usePredictedLocation === false) && !currentSimulation && onStartPinPlacement && onRemovePin && (
-          <div className="space-y-2">
-            {!impactPin ? (
-              <button
-                onClick={onStartPinPlacement}
-                disabled={isAnimating}
-                className={`w-full px-4 py-2 rounded text-xs font-light transition-all disabled:cursor-not-allowed uppercase tracking-wider ${
-                  isPlacingPin
-                    ? "bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white animate-pulse"
-                    : "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white"
-                }`}
-              >
-                {isPlacingPin ? '🎯 Click on Map to Place Pin...' : '📍 Place Pin on Map'}
-              </button>
-            ) : (
-              <button
-                onClick={onRemovePin}
-                disabled={isAnimating}
-                className="w-full px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded text-xs font-light transition-all disabled:cursor-not-allowed uppercase tracking-wider"
-              >
-                🗑️ Remove Pin
-              </button>
-            )}
+        {(!predictedLocation || usePredictedLocation === false) &&
+          !currentSimulation &&
+          onStartPinPlacement &&
+          onRemovePin && (
+            <div className="space-y-2">
+              {!impactPin ? (
+                <button
+                  onClick={onStartPinPlacement}
+                  disabled={isAnimating}
+                  className={`w-full px-4 py-2 rounded text-xs font-light transition-all disabled:cursor-not-allowed uppercase tracking-wider ${
+                    isPlacingPin
+                      ? "bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white animate-pulse"
+                      : "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white"
+                  }`}
+                >
+                  {isPlacingPin
+                    ? "🎯 Click on Map to Place Pin..."
+                    : "📍 Place Pin on Map"}
+                </button>
+              ) : (
+                <button
+                  onClick={onRemovePin}
+                  disabled={isAnimating}
+                  className="w-full px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded text-xs font-light transition-all disabled:cursor-not-allowed uppercase tracking-wider"
+                >
+                  🗑️ Remove Pin
+                </button>
+              )}
 
-            {/* Pin placement status */}
-            {isPlacingPin && (
-              <div className="p-2 bg-red-500/20 border border-red-500/30 rounded">
-                <div className="text-red-400 text-[10px] font-light text-center">
-                  🎯 Pin Placement Mode Active
+              {/* Pin placement status */}
+              {isPlacingPin && (
+                <div className="p-2 bg-red-500/20 border border-red-500/30 rounded">
+                  <div className="text-red-400 text-[10px] font-light text-center">
+                    🎯 Pin Placement Mode Active
+                  </div>
+                  <div className="text-red-300 text-[9px] text-center mt-1">
+                    Click anywhere on the map to place your impact pin
+                  </div>
                 </div>
-                <div className="text-red-300 text-[9px] text-center mt-1">
-                  Click anywhere on the map to place your impact pin
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
       </div>
 
       {/* View Controls */}
@@ -378,13 +395,20 @@ export default function ImpactSimulatorControls({
                   <div>
                     <span className="text-white/40">Diameter:</span>{" "}
                     <span className="text-white/90">
-                      {(cachedPrediction.consequencePrediction.crater.diameter / 1000).toFixed(2)} km
+                      {(
+                        cachedPrediction.consequencePrediction.crater.diameter /
+                        1000
+                      ).toFixed(2)}{" "}
+                      km
                     </span>
                   </div>
                   <div>
                     <span className="text-white/40">Depth:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.crater.depth.toFixed(0)} m
+                      {cachedPrediction.consequencePrediction.crater.depth.toFixed(
+                        0
+                      )}{" "}
+                      m
                     </span>
                   </div>
                 </div>
@@ -401,13 +425,20 @@ export default function ImpactSimulatorControls({
                   <div>
                     <span className="text-white/40">Radius:</span>{" "}
                     <span className="text-white/90">
-                      {(cachedPrediction.consequencePrediction.fireball.radius / 1000).toFixed(2)} km
+                      {(
+                        cachedPrediction.consequencePrediction.fireball.radius /
+                        1000
+                      ).toFixed(2)}{" "}
+                      km
                     </span>
                   </div>
                   <div>
                     <span className="text-white/40">Thermal:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.fireball.thermal_radiation.toFixed(0)} kJ/m²
+                      {cachedPrediction.consequencePrediction.fireball.thermal_radiation.toFixed(
+                        0
+                      )}{" "}
+                      kJ/m²
                     </span>
                   </div>
                 </div>
@@ -424,13 +455,19 @@ export default function ImpactSimulatorControls({
                   <div>
                     <span className="text-white/40">Overpressure:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.shockwave.overpressure.toFixed(1)} kPa
+                      {cachedPrediction.consequencePrediction.shockwave.overpressure.toFixed(
+                        1
+                      )}{" "}
+                      kPa
                     </span>
                   </div>
                   <div>
                     <span className="text-white/40">Arrival:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.shockwave.arrival_time.toFixed(0)} s
+                      {cachedPrediction.consequencePrediction.shockwave.arrival_time.toFixed(
+                        0
+                      )}{" "}
+                      s
                     </span>
                   </div>
                 </div>
@@ -447,13 +484,19 @@ export default function ImpactSimulatorControls({
                   <div>
                     <span className="text-white/40">Magnitude:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.seismic.richter_magnitude.toFixed(1)}
+                      {cachedPrediction.consequencePrediction.seismic.richter_magnitude.toFixed(
+                        1
+                      )}
                     </span>
                   </div>
                   <div>
                     <span className="text-white/40">Felt:</span>{" "}
                     <span className="text-white/90">
-                      {(cachedPrediction.consequencePrediction.seismic.felt_radius / 1000).toFixed(0)} km
+                      {(
+                        cachedPrediction.consequencePrediction.seismic
+                          .felt_radius / 1000
+                      ).toFixed(0)}{" "}
+                      km
                     </span>
                   </div>
                 </div>
@@ -470,13 +513,20 @@ export default function ImpactSimulatorControls({
                   <div>
                     <span className="text-white/40">Wave Height:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.tsunami.wave_height.toFixed(1)} m
+                      {cachedPrediction.consequencePrediction.tsunami.wave_height.toFixed(
+                        1
+                      )}{" "}
+                      m
                     </span>
                   </div>
                   <div>
                     <span className="text-white/40">Radius:</span>{" "}
                     <span className="text-white/90">
-                      {(cachedPrediction.consequencePrediction.tsunami.affected_radius / 1000).toFixed(0)} km
+                      {(
+                        cachedPrediction.consequencePrediction.tsunami
+                          .affected_radius / 1000
+                      ).toFixed(0)}{" "}
+                      km
                     </span>
                   </div>
                 </div>
@@ -500,14 +550,23 @@ export default function ImpactSimulatorControls({
 
       {/* Action Buttons */}
       <div className="space-y-2">
-        {/* Simulate Button - Always show when no current simulation */}
-        {!currentSimulation && (
+        {/* Dynamic Action Button - Changes from Simulate to Reset based on impact state */}
+        {!currentSimulation && (usePredictedLocation || impactPin) && (
           <button
-            onClick={onRunImpact}
+            onClick={
+              hasImpactOccurred
+                ? () => {
+                    console.log("Reset button clicked - refreshing page");
+                    window.location.reload();
+                  }
+                : onRunImpact
+            }
             disabled={isAnimating}
             className={`w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider ${
               isAnimating
                 ? "bg-white/10 text-white/50 cursor-not-allowed"
+                : hasImpactOccurred
+                ? "bg-red-600 text-white hover:bg-red-700"
                 : "bg-white text-black backdrop-blur-sm hover:bg-white/90"
             }`}
           >
@@ -516,26 +575,19 @@ export default function ImpactSimulatorControls({
                 <div className="animate-spin rounded-full h-3 w-3 border-b border-white mr-2"></div>
                 Simulating...
               </div>
+            ) : hasImpactOccurred ? (
+              "🔄 Reset Simulation"
             ) : (
               "🚀 Simulate Impact"
             )}
           </button>
         )}
 
-        {/* Reset Button - Show when simulation exists */}
-        {currentSimulation && (
-          <button
-            onClick={onReset}
-            disabled={isAnimating}
-            className="w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider bg-gray-600 text-white hover:bg-gray-700 disabled:bg-white/10 disabled:text-white/50 disabled:cursor-not-allowed"
-          >
-            🔄 Reset Simulation
-          </button>
-        )}
-
         {/* Status Display */}
         <div className="p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded">
-          <div className="text-[10px] text-white/60 uppercase tracking-wider mb-1">Status</div>
+          <div className="text-[10px] text-white/60 uppercase tracking-wider mb-1">
+            Status
+          </div>
           <div className="text-xs text-white/90 font-light">{status}</div>
         </div>
       </div>
