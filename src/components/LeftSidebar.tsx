@@ -45,6 +45,13 @@ interface LeftSidebarProps {
   simulationStatus?: string;
   currentSimulation?: any;
   impactLocation?: any;
+  usePredictedLocation: boolean;
+  impactPin: any | null;
+  isPlacingPin: boolean;
+  // Pin placement communication with parent
+  onStartPinPlacement?: () => void;
+  onRemovePin?: () => void;
+  onToggleLocationMode?: () => void;
 }
 
 export default function LeftSidebar({
@@ -67,6 +74,12 @@ export default function LeftSidebar({
     city: "New York",
     country: "USA",
   },
+  usePredictedLocation,
+  impactPin,
+  isPlacingPin,
+  onStartPinPlacement: parentOnStartPinPlacement,
+  onRemovePin: parentOnRemovePin,
+  onToggleLocationMode,
 }: LeftSidebarProps) {
   const [viewMode, setViewMode] = useState<"parameters" | "simulator">(
     "parameters"
@@ -139,6 +152,19 @@ export default function LeftSidebar({
       streetViewMode,
       enhancedBuildings: newValue,
     });
+  };
+
+  const handleToggleLocationMode = () => {
+    onToggleLocationMode?.();
+  };
+
+  const handleStartPinPlacement = () => {
+    parentOnStartPinPlacement?.();
+  };
+
+  const handleRemovePin = () => {
+    // Communicate with parent to remove pin from the map
+    parentOnRemovePin?.();
   };
 
   const handleRunImpact = () => {
@@ -342,6 +368,13 @@ export default function LeftSidebar({
             onRunImpact={handleRunImpact}
             onReset={onReset}
             currentSimulation={currentSimulation}
+            // Pin placement props
+            usePredictedLocation={usePredictedLocation}
+            onToggleLocationMode={handleToggleLocationMode}
+            impactPin={impactPin}
+            isPlacingPin={isPlacingPin}
+            onStartPinPlacement={handleStartPinPlacement}
+            onRemovePin={handleRemovePin}
           />
         )}
       </div>
