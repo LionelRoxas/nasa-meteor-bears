@@ -406,66 +406,39 @@ export default function LeftSidebar({
               </div>
             </div>
 
-            {/* Progress Indicator */}
-            {predictionProgress.message && (
-              <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded">
-                <div className="flex items-center gap-2">
-                  {predictionProgress.stage === "complete" ? (
-                    <span className="text-green-400 text-sm">✓</span>
-                  ) : predictionProgress.stage === "error" ? (
-                    <span className="text-red-400 text-sm">✗</span>
-                  ) : (
-                    <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                  )}
-                  <span className="text-xs text-white/90">
-                    {predictionProgress.message}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Error with Retry Button */}
-            {predictionError && (
-              <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded">
-                <p className="text-xs text-red-300 mb-2">
-                  Failed to load prediction data
-                </p>
-                <button
-                  onClick={() => {
-                    if (selectedNASAAsteroid?.id) {
-                      setCanContinue(false);
-                      getEnhancedPrediction(selectedNASAAsteroid.id).then(
-                        (prediction) => {
-                          if (prediction) {
-                            setEnhancedPrediction(prediction);
-                            setCanContinue(true);
-                            onPredictionLoaded?.(prediction);
-                          }
-                        }
-                      );
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-red-500/30 hover:bg-red-500/50 rounded text-xs text-white transition-colors"
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-
             {/* Controls */}
             <div className="space-y-2">
+              {/* Error Message - Only show if there's an error */}
+              {predictionError && !predictionLoading && (
+                <div className="p-2 bg-red-500/20 border border-red-500/30 rounded">
+                  <p className="text-[10px] text-red-300">
+                    Failed to load prediction data
+                  </p>
+                </div>
+              )}
+
+              {/* Main Button */}
               <button
                 onClick={handleContinueToSimulator}
                 disabled={!canContinue || predictionLoading}
-                className={`w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider ${
-                  canContinue && !predictionLoading
+                className={`w-full px-4 py-3 rounded text-xs font-light transition-all uppercase tracking-wider ${
+                  predictionLoading
+                    ? "bg-blue-500/20 border border-blue-500/30 text-white/90"
+                    : canContinue
                     ? "bg-white text-black hover:bg-white/90"
                     : "bg-white/30 text-white/50 cursor-not-allowed"
                 }`}
               >
-                {predictionLoading
-                  ? "Loading..."
-                  : "Continue to Impact Controls →"}
+                {predictionLoading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                    <span>{predictionProgress.message || "Loading..."}</span>
+                  </div>
+                ) : predictionError ? (
+                  "Retry →"
+                ) : (
+                  "Continue to Impact Controls →"
+                )}
               </button>
             </div>
           </>

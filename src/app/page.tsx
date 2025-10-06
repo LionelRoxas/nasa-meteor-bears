@@ -6,6 +6,7 @@ import MapboxMap from "@/components/MapboxMap3";
 import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar2y";
 import Navbar from "@/components/Navbar";
+import ImpactRadiusTogglePanel from "@/components/ImpactRadiusTogglePanel";
 
 // Define the NASA asteroid data type
 interface NASAAsteroidData {
@@ -77,9 +78,58 @@ export default function MapboxSimPage() {
   const [currentDistance, setCurrentDistance] = useState<number | undefined>(
     undefined
   );
+  const [enhancedPrediction, setEnhancedPrediction] = useState<any>(null);
+
+  // Debug: Log when enhanced prediction changes
+  useEffect(() => {
+    console.log("🔮 Enhanced prediction updated:", {
+      hasEnhancedPrediction: !!enhancedPrediction,
+      hasConsequencePrediction: !!enhancedPrediction?.consequencePrediction,
+      consequencePrediction: enhancedPrediction?.consequencePrediction,
+    });
+  }, [enhancedPrediction]);
 
   // MapboxMap reference
   const mapboxRef = useRef<any>(null);
+
+  // Radius visibility state for ImpactRadiusOverlay
+  const [visibleRadii, setVisibleRadii] = useState({
+    crater: true,
+    fireball: false,
+    windBlast: false,
+    earthquake: false,
+    tsunami: false,
+    shockwave: false,
+  });
+
+  const handleToggleRadius = (radiusType: keyof typeof visibleRadii) => {
+    setVisibleRadii(prev => ({
+      ...prev,
+      [radiusType]: !prev[radiusType],
+    }));
+  };
+
+  const handleShowAllRadii = () => {
+    setVisibleRadii({
+      crater: true,
+      fireball: true,
+      windBlast: true,
+      earthquake: true,
+      tsunami: true,
+      shockwave: true,
+    });
+  };
+
+  const handleHideAllRadii = () => {
+    setVisibleRadii({
+      crater: false,
+      fireball: false,
+      windBlast: false,
+      earthquake: false,
+      tsunami: false,
+      shockwave: false,
+    });
+  };
 
   // Calculate impact data whenever params change
   useEffect(() => {
@@ -253,6 +303,8 @@ export default function MapboxSimPage() {
           show3DBuildings={show3DBuildings}
           streetViewMode={streetViewMode}
           enhancedBuildings={enhancedBuildings}
+          enhancedPrediction={enhancedPrediction}
+          visibleRadii={visibleRadii}
         />
       </div>
 
@@ -310,6 +362,7 @@ export default function MapboxSimPage() {
               simulationStatus={simulationStatus}
               currentSimulation={currentSimulation}
               impactLocation={impactLocation}
+              onPredictionLoaded={setEnhancedPrediction}
             />
           </div>
 
@@ -325,6 +378,17 @@ export default function MapboxSimPage() {
                   <NASADataPanel onSelectAsteroid={loadNASAAsteroid} />
                 </div>
               </div>
+            )}
+
+            {/* Impact Radius Toggle Panel - Show after impact */}
+            {!isSimulating && currentSimulation && enhancedPrediction?.consequencePrediction && !showNASAPanel && (
+              <ImpactRadiusTogglePanel
+                consequencePrediction={enhancedPrediction.consequencePrediction}
+                visibleRadii={visibleRadii}
+                onToggleRadius={handleToggleRadius}
+                onShowAll={handleShowAllRadii}
+                onHideAll={handleHideAllRadii}
+              />
             )}
           </div>
         </div>

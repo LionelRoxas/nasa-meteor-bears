@@ -70,6 +70,7 @@ export default function ImpactSimulatorControls({
   const [cachedPrediction, setCachedPrediction] = useState<EnhancedPrediction | null>(null);
   const [predictedLocation, setPredictedLocation] = useState<ImpactLocation | null>(null);
 
+
   // Update cached prediction and location when enhanced prediction loads
   useEffect(() => {
     if (enhancedPrediction) {

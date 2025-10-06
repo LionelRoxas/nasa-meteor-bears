@@ -12,6 +12,7 @@ import {
 } from "react";
 import mapboxgl from "mapbox-gl";
 import type { EnhancedPrediction } from "@/hooks/useEnhancedPredictions";
+import ImpactRadiusOverlay from "./ImpactRadiusOverlay";
 
 // Types
 interface ImpactLocation {
@@ -57,6 +58,14 @@ interface MapboxMapProps {
   enhancedBuildings?: boolean;
   shouldRunAnimation?: boolean;
   enhancedPrediction?: EnhancedPrediction | null;
+  visibleRadii?: {
+    crater: boolean;
+    fireball: boolean;
+    windBlast: boolean;
+    earthquake: boolean;
+    tsunami: boolean;
+    shockwave: boolean;
+  };
 }
 
 export interface MapboxMapRef {
@@ -155,6 +164,14 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       enhancedBuildings = true,
       shouldRunAnimation = false,
       enhancedPrediction,
+      visibleRadii = {
+        crater: true,
+        fireball: false,
+        windBlast: false,
+        earthquake: false,
+        tsunami: false,
+        shockwave: false,
+      },
     },
     ref
   ) => {
@@ -950,6 +967,26 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
             {impactLocation.longitude.toFixed(3)}°
           </div>
         )}
+
+        {/* Impact Radius Overlay - Show after simulation completes */}
+        {(() => {
+          const shouldShow = mapLoaded && !isAnimating && currentSimulation && enhancedPrediction?.consequencePrediction;
+          console.log("🗺️ ImpactRadiusOverlay render check:", {
+            mapLoaded,
+            isAnimating,
+            hasCurrentSimulation: !!currentSimulation,
+            hasEnhancedPrediction: !!enhancedPrediction,
+            hasConsequencePrediction: !!enhancedPrediction?.consequencePrediction,
+            shouldShow,
+          });
+          return shouldShow ? (
+            <ImpactRadiusOverlay
+              consequencePrediction={enhancedPrediction.consequencePrediction}
+              visibleRadii={visibleRadii}
+              map={map}
+            />
+          ) : null;
+        })()}
       </div>
     );
   }
