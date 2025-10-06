@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import MapboxMap from "@/components/MapboxMap2";
 import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar";
@@ -34,6 +35,8 @@ const defaultImpactLocation = {
 };
 
 export default function MapboxSimPage() {
+  const router = useRouter();
+  
   // Simulation state
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasImpacted, setHasImpacted] = useState(false);
@@ -193,6 +196,11 @@ export default function MapboxSimPage() {
 
   const handleReset = () => {
     console.log("🔄 handleReset called");
+    
+    // Use router refresh to completely reset the page state
+    router.refresh();
+    
+    // Also reset local state for immediate UI feedback
     setIsSimulating(false);
     setHasImpacted(false);
     setIsSidebarCollapsed(false);

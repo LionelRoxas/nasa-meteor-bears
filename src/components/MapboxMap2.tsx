@@ -512,6 +512,177 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       };
     }, [map, mapLoaded]);
 
+    // Add damage zones and crater visualization when simulation is set
+    useEffect(() => {
+      if (!map || !mapLoaded || !currentSimulation) return;
+
+      console.log('Adding damage zones for simulation:', currentSimulation);
+      const currentMap = map; // Store reference to avoid null checks
+
+      // Clean up existing layers before adding new ones
+      cleanupMapLayers(currentMap);
+
+      // Add impact point
+      currentMap.addSource('impact-point', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [currentSimulation.location.longitude, currentSimulation.location.latitude]
+          },
+          properties: {}
+        }
+      });
+
+      currentMap.addLayer({
+        id: 'impact-point',
+        type: 'circle',
+        source: 'impact-point',
+        paint: {
+          'circle-radius': 15,
+          'circle-color': '#ff0000',
+          'circle-stroke-width': 4,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': 0.9
+        }
+      });
+
+      // Add damage zones
+      const damageZones = getDamageZones(currentSimulation);
+      console.log('Damage zones to add:', damageZones);
+      
+      damageZones.forEach((zone, index) => {
+        const sourceId = `damage-zone-${index}`;
+        const layerId = `damage-zone-layer-${index}`;
+        
+        console.log(`Adding damage zone ${index}: ${zone.type} with radius ${zone.radius}km`);
+        
+        try {
+          // Create circle for damage zone
+          const coordinates = [];
+          const radius = zone.radius * 1000; // Convert km to meters
+          const center = [currentSimulation.location.longitude, currentSimulation.location.latitude];
+          
+          for (let i = 0; i <= 64; i++) {
+            const angle = (i * 360) / 64;
+            const radians = (angle * Math.PI) / 180;
+            
+            // Fixed coordinate calculation for proper centering
+            const deltaLat = (radius * Math.cos(radians)) / 111320;
+            const deltaLng = (radius * Math.sin(radians)) / (111320 * Math.cos(center[1] * Math.PI / 180));
+            
+            coordinates.push([center[0] + deltaLng, center[1] + deltaLat]);
+          }
+          coordinates.push(coordinates[0]); // Close the polygon
+
+          currentMap.addSource(sourceId, {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              geometry: {
+                type: 'Polygon',
+                coordinates: [coordinates]
+              },
+              properties: {}
+            }
+          });
+
+          currentMap.addLayer({
+            id: layerId,
+            type: 'fill',
+            source: sourceId,
+            paint: {
+              'fill-color': zone.color,
+              'fill-opacity': 0.3
+            }
+          });
+
+          // Add outline
+          currentMap.addLayer({
+            id: `${layerId}-outline`,
+            type: 'line',
+            source: sourceId,
+            paint: {
+              'line-color': zone.color,
+              'line-width': 2,
+              'line-opacity': 0.8
+            }
+          });
+        } catch (e) {
+          console.error('Error adding damage zone:', e);
+        }
+      });
+
+      // Add crater visualization
+      try {
+        // Clean up existing crater layers first
+        if (currentMap.getLayer('crater-visualization')) {
+          currentMap.removeLayer('crater-visualization');
+        }
+        if (currentMap.getLayer('crater-outline')) {
+          currentMap.removeLayer('crater-outline');
+        }
+        if (currentMap.getSource('crater-visualization')) {
+          currentMap.removeSource('crater-visualization');
+        }
+
+        // Simple crater visualization without complex cleanup
+        const craterRadius = currentSimulation.craterDiameter / 2;
+        const center = [currentSimulation.location.longitude, currentSimulation.location.latitude];
+        
+        // Create crater visualization
+        const coordinates = [];
+        for (let i = 0; i <= 64; i++) {
+          const angle = (i * 360) / 64;
+          const radians = (angle * Math.PI) / 180;
+          const deltaLat = (craterRadius * Math.cos(radians)) / 111320;
+          const deltaLng = (craterRadius * Math.sin(radians)) / (111320 * Math.cos(center[1] * Math.PI / 180));
+          coordinates.push([center[0] + deltaLng, center[1] + deltaLat]);
+        }
+        coordinates.push(coordinates[0]); // Close the polygon
+
+        // Add crater source and layer
+        if (!currentMap.getSource('crater-visualization')) {
+          currentMap.addSource('crater-visualization', {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              geometry: {
+                type: 'Polygon',
+                coordinates: [coordinates]
+              },
+              properties: {}
+            }
+          });
+
+          currentMap.addLayer({
+            id: 'crater-visualization',
+            type: 'fill',
+            source: 'crater-visualization',
+            paint: {
+              'fill-color': '#8B4513',
+              'fill-opacity': 0.6
+            }
+          });
+
+          currentMap.addLayer({
+            id: 'crater-outline',
+            type: 'line',
+            source: 'crater-visualization',
+            paint: {
+              'line-color': '#654321',
+              'line-width': 3,
+              'line-opacity': 0.9
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error adding crater visualization:', error);
+      }
+
+    }, [map, mapLoaded, currentSimulation]);
+
     // Update map cursor when pin placement state changes
     useEffect(() => {
       if (!map) return;
@@ -908,18 +1079,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
     );
 
     const runImpactAnimation = useCallback(async () => {
-      console.log('🚀 runImpactAnimation called');
-      console.log('map:', !!map);
-      console.log('effectiveImpactLocation:', effectiveImpactLocation);
-      console.log('isAnimating:', isAnimating);
-      console.log('sceneRef.current:', !!sceneRef.current);
-      console.log('rendererRef.current:', !!rendererRef.current);
-      console.log('cameraRef.current:', !!cameraRef.current);
-      
-      if (!map || !effectiveImpactLocation || isAnimating || !sceneRef.current || !rendererRef.current || !cameraRef.current) {
-        console.log('❌ Animation blocked - missing requirements');
-        return;
-      }
+      if (!map || !effectiveImpactLocation || isAnimating || !sceneRef.current || !rendererRef.current || !cameraRef.current) return;
       
       setIsAnimating(true);
       onStatusChange?.('Simulating impact...');
@@ -927,6 +1087,10 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       try {
         // Create simulation from effective impact location
         const simulation = simulateImpact(asteroidParams, effectiveImpactLocation);
+        
+        // Declare these variables so they can be accessed during cleanup
+        let trail: THREE.Mesh;
+        let aura: THREE.Mesh;
         
         // Start from space view to show asteroid approach
         await new Promise<void>((resolve) => {
@@ -964,7 +1128,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           opacity: 0.3,
           blending: THREE.AdditiveBlending
         });
-        const trail = new THREE.Mesh(trailGeometry, trailMaterial);
+        trail = new THREE.Mesh(trailGeometry, trailMaterial);
         
         // Create inner aura
         const auraGeometry = new THREE.SphereGeometry(scaleFactor * 1.2, 16, 16);
@@ -974,7 +1138,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           opacity: 0.5,
           blending: THREE.AdditiveBlending
         });
-        const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+        aura = new THREE.Mesh(auraGeometry, auraMaterial);
         
         // Screen-space path: start off to the right, impact at exact screen center
         const startPosition = new THREE.Vector3(40, 10, -35);
@@ -1033,6 +1197,37 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           await new Promise(r => setTimeout(r, 50));
         }
 
+        console.log('Asteroid reached center (impact). Creating impact effects...');
+
+        // IMMEDIATE impact effects - remove asteroid and show crater
+        if (asteroidMeshRef.current && sceneRef.current) {
+          // Remove asteroid and trail immediately on impact
+          sceneRef.current.remove(asteroidMeshRef.current);
+          sceneRef.current.remove(trail);
+          sceneRef.current.remove(aura);
+          
+          // Dispose of the geometries and materials to free memory
+          asteroidMeshRef.current.geometry.dispose();
+          if (asteroidMeshRef.current.material) {
+            if (Array.isArray(asteroidMeshRef.current.material)) {
+              asteroidMeshRef.current.material.forEach(material => material.dispose());
+            } else {
+              asteroidMeshRef.current.material.dispose();
+            }
+          }
+          trail.geometry.dispose();
+          (trail.material as THREE.MeshBasicMaterial).dispose();
+          aura.geometry.dispose();
+          (aura.material as THREE.MeshBasicMaterial).dispose();
+          
+          asteroidMeshRef.current = null;
+          console.log('Asteroid and trail removed from scene and disposed (impact moment)');
+
+          // Set simulation immediately to trigger crater visualization
+          setCurrentSimulation(simulation);
+          onStatusChange?.('Impact! Crater and damage zones appearing...');
+        }
+
         // Post-impact zoom
         await new Promise<void>(resolve => {
           map.flyTo({
@@ -1044,8 +1239,8 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           setTimeout(resolve, 900);
         });
         
-        // Create impact explosion
-        if (asteroidMeshRef.current) {
+        // Create impact explosion after asteroid is already gone
+        if (sceneRef.current) {
           const explosionGeometry = new THREE.SphereGeometry(2, 16, 16);
           const explosionMaterial = new THREE.MeshBasicMaterial({ 
             color: 0xff4500, 
@@ -1055,15 +1250,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
           explosion.position.copy(endPosition);
           sceneRef.current.add(explosion);
-          
-          // Remove asteroid and trail
-          sceneRef.current.remove(asteroidMeshRef.current);
-          sceneRef.current.remove(trail);
-          sceneRef.current.remove(aura);
-
-          // Set simulation and trigger damage zones
-          setCurrentSimulation(simulation);
-          onStatusChange?.('Impact! Calculating crater and damage zones...');
+          console.log('Explosion created at impact location:', endPosition);
 
           // Explosion animation
           for (let i = 0; i < 16; i++) {
@@ -1072,6 +1259,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
             await new Promise(resolve => setTimeout(resolve, 70));
           }
           sceneRef.current.remove(explosion);
+          console.log('Explosion animation complete');
         }
         
         // Final zoom to impact site
