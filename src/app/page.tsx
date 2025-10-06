@@ -285,6 +285,10 @@ export default function MapboxSimPage() {
     }, 30000);
   };
 
+  const handleImpactOccurred = (hasImpactOccurred: boolean) => {
+    setHasImpacted(hasImpactOccurred);
+  };
+
   // Reset when simulation stops
   useEffect(() => {
     if (!isSimulating) {
@@ -307,6 +311,7 @@ export default function MapboxSimPage() {
           onLocationClick={handleLocationClick}
           onStatusChange={setSimulationStatus}
           onSimulationUpdate={handleSimulationUpdate}
+          onImpactOccurred={handleImpactOccurred}
           show3DBuildings={show3DBuildings}
           streetViewMode={streetViewMode}
           enhancedBuildings={enhancedBuildings}
@@ -378,6 +383,7 @@ export default function MapboxSimPage() {
               onStartPinPlacement={handleStartPinPlacement}
               onRemovePin={handleRemovePin}
               onToggleLocationMode={handleToggleLocationMode}
+              hasImpactOccurred={hasImpacted}
             />
           </div>
 
