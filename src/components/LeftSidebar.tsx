@@ -3,9 +3,13 @@
 // components/LeftSidebar.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import AsteroidPreview from "./AsteroidPreview";
 import ImpactSimulatorControls from "./ImpactSimulatorControls";
+import {
+  useEnhancedPredictions,
+  type EnhancedPrediction,
+} from "@/hooks/useEnhancedPredictions";
 
 interface AsteroidParams {
   diameter: number;
@@ -45,9 +49,12 @@ interface LeftSidebarProps {
   simulationStatus?: string;
   currentSimulation?: any;
   impactLocation?: any;
-  usePredictedLocation: boolean;
-  impactPin: any | null;
-  isPlacingPin: boolean;
+  // Enhanced prediction callback
+  onPredictionLoaded?: (prediction: EnhancedPrediction) => void;
+  // Pin placement props
+  usePredictedLocation?: boolean;
+  impactPin?: any | null;
+  isPlacingPin?: boolean;
   // Pin placement communication with parent
   onStartPinPlacement?: () => void;
   onRemovePin?: () => void;
@@ -74,6 +81,7 @@ export default function LeftSidebar({
     city: "New York",
     country: "USA",
   },
+  onPredictionLoaded,
   usePredictedLocation,
   impactPin,
   isPlacingPin,
@@ -92,6 +100,33 @@ export default function LeftSidebar({
   const [enhancedBuildings, setEnhancedBuildings] = useState(true);
   const [isAnimating, setIsAnimating] = useState(false);
 
+  // Enhanced prediction state
+  const {
+    getEnhancedPrediction,
+    loading: predictionLoading,
+    error: predictionError,
+  } = useEnhancedPredictions();
+  const [enhancedPrediction, setEnhancedPrediction] =
+    useState<EnhancedPrediction | null>(null);
+  const [predictionProgress, setPredictionProgress] = useState<{
+    stage: string;
+    message: string;
+  }>({ stage: "", message: "" });
+  const [canContinue, setCanContinue] = useState(true); // Default true for custom asteroids
+
+  // Reset state when NASA asteroid changes
+  useEffect(() => {
+    if (selectedNASAAsteroid?.id) {
+      // NASA asteroid selected - will fetch on button press
+      setEnhancedPrediction(null);
+      setCanContinue(true);
+    } else {
+      // Custom asteroid - no prediction needed
+      setEnhancedPrediction(null);
+      setCanContinue(true);
+    }
+  }, [selectedNASAAsteroid?.id]);
+
   const formatNumber = (num: number, decimals = 2) => {
     if (!num || isNaN(num)) return "0";
     if (num >= 1000000) return `${(num / 1000000).toFixed(decimals)}M`;
@@ -99,23 +134,80 @@ export default function LeftSidebar({
     return num.toFixed(decimals);
   };
 
-  const handleContinueToSimulator = () => {
-    // Finalize the asteroid configuration before moving to simulator
-    const finalAsteroid = {
-      id: "custom",
-      name: selectedNASAAsteroid
-        ? selectedNASAAsteroid.name
-        : `Custom Asteroid (${asteroidParams.diameter}m)`,
-      diameter: asteroidParams.diameter,
-      velocity: asteroidParams.velocity,
-      angle: asteroidParams.angle,
-      distance: asteroidParams.distance,
-      ...impactData,
-    };
+  const handleContinueToSimulator = async () => {
+    // If NASA asteroid is selected, fetch prediction data first
+    if (selectedNASAAsteroid?.id) {
+      console.log(
+        "🚀 Continue button pressed - fetching enhanced prediction for NASA asteroid..."
+      );
+      setCanContinue(false); // Disable button while loading
 
-    setFinalizedAsteroid(finalAsteroid);
-    setViewMode("simulator");
-    // Don't start impact here - just transition to the simulator controls view
+      try {
+        // Progress: Calculating trajectory
+        setPredictionProgress({
+          stage: "trajectory",
+          message: "Calculating trajectory...",
+        });
+
+        const prediction = await getEnhancedPrediction(selectedNASAAsteroid.id);
+
+        if (prediction) {
+          console.log("✅ Enhanced prediction loaded:", prediction);
+
+          // Progress: Complete
+          setPredictionProgress({
+            stage: "complete",
+            message: "Complete! ✓",
+          });
+
+          setEnhancedPrediction(prediction);
+
+          // Notify parent component
+          onPredictionLoaded?.(prediction);
+
+          // Clear progress message after 1 second and continue
+          setTimeout(() => {
+            setPredictionProgress({ stage: "", message: "" });
+
+            // Finalize the asteroid configuration
+            const finalAsteroid = {
+              id: selectedNASAAsteroid.id,
+              name: selectedNASAAsteroid.name,
+              diameter: asteroidParams.diameter,
+              velocity: asteroidParams.velocity,
+              angle: asteroidParams.angle,
+              distance: asteroidParams.distance,
+              ...impactData,
+            };
+
+            setFinalizedAsteroid(finalAsteroid);
+            setViewMode("simulator");
+            setCanContinue(true);
+          }, 1000);
+        }
+      } catch (error) {
+        console.error("❌ Failed to fetch prediction:", error);
+        setPredictionProgress({
+          stage: "error",
+          message: "Failed to load prediction",
+        });
+        setCanContinue(true); // Re-enable for retry
+      }
+    } else {
+      // Custom asteroid - no prediction needed, proceed immediately
+      const finalAsteroid = {
+        id: "custom",
+        name: `Custom Asteroid (${asteroidParams.diameter}m)`,
+        diameter: asteroidParams.diameter,
+        velocity: asteroidParams.velocity,
+        angle: asteroidParams.angle,
+        distance: asteroidParams.distance,
+        ...impactData,
+      };
+
+      setFinalizedAsteroid(finalAsteroid);
+      setViewMode("simulator");
+    }
   };
 
   const handleBackToParameters = () => {
@@ -343,11 +435,37 @@ export default function LeftSidebar({
 
             {/* Controls */}
             <div className="space-y-2">
+              {/* Error Message - Only show if there's an error */}
+              {predictionError && !predictionLoading && (
+                <div className="p-2 bg-red-500/20 border border-red-500/30 rounded">
+                  <p className="text-[10px] text-red-300">
+                    Failed to load prediction data
+                  </p>
+                </div>
+              )}
+
+              {/* Main Button */}
               <button
                 onClick={handleContinueToSimulator}
-                className="w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider bg-white text-black hover:bg-white/90"
+                disabled={!canContinue || predictionLoading}
+                className={`w-full px-4 py-3 rounded text-xs font-light transition-all uppercase tracking-wider ${
+                  predictionLoading
+                    ? "bg-blue-500/20 border border-blue-500/30 text-white/90"
+                    : canContinue
+                    ? "bg-white text-black hover:bg-white/90"
+                    : "bg-white/30 text-white/50 cursor-not-allowed"
+                }`}
               >
-                Continue to Impact Controls →
+                {predictionLoading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                    <span>{predictionProgress.message || "Loading..."}</span>
+                  </div>
+                ) : predictionError ? (
+                  "Retry →"
+                ) : (
+                  "Continue to Impact Controls →"
+                )}
               </button>
             </div>
           </>
@@ -368,6 +486,8 @@ export default function LeftSidebar({
             onRunImpact={handleRunImpact}
             onReset={onReset}
             currentSimulation={currentSimulation}
+            // Enhanced prediction
+            enhancedPrediction={enhancedPrediction}
             // Pin placement props
             usePredictedLocation={usePredictedLocation}
             onToggleLocationMode={handleToggleLocationMode}

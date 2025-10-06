@@ -3,9 +3,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import MapboxMap from "@/components/MapboxMap3";
+import MapboxMap from "@/components/MapboxMap2";
 import NASADataPanel from "@/components/NASADataPanel";
-import LeftSidebar from "@/components/LeftSidebar2y";
+import LeftSidebar from "@/components/LeftSidebar";
 import Navbar from "@/components/Navbar";
 import ImpactRadiusTogglePanel from "@/components/ImpactRadiusTogglePanel";
 import ImpactResultsPanel from "@/components/ImpactResultsPanel";
@@ -266,24 +266,23 @@ export default function MapboxSimPage() {
     }
   };
 
-  // const handleMapControlsChange = useCallback((controls: {
-  // // Pin placement handlers
-  // const handleToggleLocationMode = () => {
-  //   setUsePredictedLocation((prev) => {
-  //     const next = !prev;
-  //     if (next) {
-  //       // Switching back to predicted location
-  //       setImpactPin(null);
-  //       setImpactLocation(defaultImpactLocation);
-  //       setIsPlacingPin(false);
-  //     } else {
-  //       // Switching to custom pin mode
-  //       setImpactPin(null);
-  //       setIsPlacingPin(false);
-  //     }
-  //     return next;
-  //   });
-  // };
+  // Pin placement handlers
+  const handleToggleLocationMode = () => {
+    setUsePredictedLocation((prev) => {
+      const next = !prev;
+      if (next) {
+        // Switching back to predicted location
+        setImpactPin(null);
+        setImpactLocation(defaultImpactLocation);
+        setIsPlacingPin(false);
+      } else {
+        // Switching to custom pin mode
+        setImpactPin(null);
+        setIsPlacingPin(false);
+      }
+      return next;
+    });
+  };
 
   const handleStartPinPlacement = () => {
     setUsePredictedLocation(false);
@@ -362,6 +361,7 @@ export default function MapboxSimPage() {
           show3DBuildings={show3DBuildings}
           streetViewMode={streetViewMode}
           enhancedBuildings={enhancedBuildings}
+          // Enhanced prediction support
           enhancedPrediction={enhancedPrediction}
           visibleRadii={visibleRadii}
           // Pin placement props
@@ -426,7 +426,9 @@ export default function MapboxSimPage() {
               simulationStatus={simulationStatus}
               currentSimulation={currentSimulation}
               impactLocation={impactLocation}
+              // Enhanced prediction callback
               onPredictionLoaded={setEnhancedPrediction}
+              // Pin placement props
               usePredictedLocation={usePredictedLocation}
               impactPin={impactPin}
               isPlacingPin={isPlacingPin}
