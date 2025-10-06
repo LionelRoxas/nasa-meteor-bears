@@ -37,6 +37,18 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     currentSimulationRef.current = currentSimulation;
   }, [currentSimulation]);
 
+  // Update map cursor when pin placement state changes
+  useEffect(() => {
+    if (!map) return;
+    
+    if (isPlacingPin) {
+      // Set a red crosshair cursor using CSS
+      map.getCanvas().style.cursor = 'url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 20 20\'%3E%3Cline x1=\'10\' y1=\'0\' x2=\'10\' y2=\'20\' stroke=\'%23ff0000\' stroke-width=\'2\'/%3E%3Cline x1=\'0\' y1=\'10\' x2=\'20\' y2=\'10\' stroke=\'%23ff0000\' stroke-width=\'2\'/%3E%3C/svg%3E") 10 10, crosshair';
+    } else {
+      map.getCanvas().style.cursor = '';
+    }
+  }, [map, isPlacingPin]);
+
   // Initialize map
   useEffect(() => {
     if (map) return;
@@ -266,7 +278,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
   // Add pin visualization when impact pin is placed
   useEffect(() => {
-    if (!map || !mapLoaded || !impactPin) return;
+    if (!map || !mapLoaded) return;
 
     const currentMap = map;
 
@@ -281,6 +293,9 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     } catch {
       // Pin might not exist, continue
     }
+
+    // If no impact pin, we're done (pin has been removed)
+    if (!impactPin) return;
 
     // Add red pin marker
     currentMap.addSource('impact-pin', {
@@ -822,7 +837,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       {/* Map Container - Full Screen */}
       <div 
         ref={mapContainer} 
-        className="absolute inset-0 w-full h-full"
+        className={`absolute inset-0 w-full h-full ${isPlacingPin ? 'cursor-crosshair' : ''}`}
         style={{ 
           minHeight: '100vh',
           backgroundColor: '#1a1a1a' // Fallback background
@@ -939,7 +954,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
                   disabled={isAnimating}
                   className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed"
                 >
-                  📍 Place Pin
+                  {isPlacingPin ? '📍 Pinning...' : '📍 Place Pin'}
                 </button>
               ) : (
                 <button
