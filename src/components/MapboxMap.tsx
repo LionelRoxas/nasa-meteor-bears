@@ -558,6 +558,100 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     return R * c;
   };
 
+  // Comprehensive cleanup function
+  const cleanupMapLayers = useCallback((mapInstance: mapboxgl.Map) => {
+    if (!mapInstance) return;
+
+    try {
+      // Remove existing impact-related layers and sources
+      const layerIds = ['damage-zones', 'impact-point'];
+      layerIds.forEach(id => {
+        try {
+          if (mapInstance.getLayer(id)) {
+            mapInstance.removeLayer(id);
+          }
+          if (mapInstance.getSource(id)) {
+            mapInstance.removeSource(id);
+          }
+        } catch {
+          // Layer might not exist, continue
+        }
+      });
+
+      // Remove all dynamically created damage zone layers and sources
+      for (let i = 0; i < 10; i++) { // Assuming max 10 damage zones
+        const sourceId = `damage-zone-${i}`;
+        const layerId = `damage-zone-layer-${i}`;
+        const outlineLayerId = `${layerId}-outline`;
+
+        try {
+          if (mapInstance.getLayer(outlineLayerId)) {
+            mapInstance.removeLayer(outlineLayerId);
+          }
+          if (mapInstance.getLayer(layerId)) {
+            mapInstance.removeLayer(layerId);
+          }
+          if (mapInstance.getSource(sourceId)) {
+            mapInstance.removeSource(sourceId);
+          }
+        } catch {
+          // Layer might not exist, continue
+        }
+      }
+
+      // Remove crater-related layers and sources
+      const craterIds = ['crater-interior', 'crater-rim', 'vaporization-zone'];
+      craterIds.forEach(id => {
+        try {
+          if (mapInstance.getLayer(id)) {
+            mapInstance.removeLayer(id);
+          }
+          if (mapInstance.getSource(id)) {
+            mapInstance.removeSource(id);
+          }
+        } catch {
+          // Layer might not exist, continue
+        }
+      });
+
+      // Remove asteroid layer if it exists
+      try {
+        if (mapInstance.getLayer('asteroid')) {
+          mapInstance.removeLayer('asteroid');
+        }
+        if (mapInstance.getSource('asteroid')) {
+          mapInstance.removeSource('asteroid');
+        }
+      } catch {
+        // Layer might not exist, continue
+      }
+    } catch (error) {
+      console.error('Error during map cleanup:', error);
+    }
+  }, []);
+
+  // Reset simulation function
+  const resetSimulation = useCallback(() => {
+    if (!map) return;
+
+    // Clear all map layers and sources
+    cleanupMapLayers(map);
+
+    // Reset simulation state
+    setCurrentSimulation(null);
+    setIsAnimating(false);
+    setStatus('Ready to simulate impact');
+
+    // Reset view to initial position
+    map.flyTo({
+      center: initialCenterRef.current,
+      zoom: 3,
+      pitch: 0,
+      bearing: 0,
+      duration: 1500
+    });
+  }, [map, cleanupMapLayers]);
+
   // Add damage zones to map
   useEffect(() => {
     if (!map || !mapLoaded || !currentSimulation) return;
@@ -565,20 +659,8 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
     const currentMap = map; // Store reference to avoid null checks
 
-    // Remove existing layers
-    const layerIds = ['damage-zones', 'impact-point'];
-    layerIds.forEach(id => {
-      try {
-        if (currentMap.getLayer(id)) {
-          currentMap.removeLayer(id);
-        }
-        if (currentMap.getSource(id)) {
-          currentMap.removeSource(id);
-        }
-      } catch {
-        // Layer might not exist, continue
-      }
-    });
+    // Clean up existing layers before adding new ones
+    cleanupMapLayers(currentMap);
 
     // Add impact point
     currentMap.addSource('impact-point', {
@@ -672,7 +754,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     // Create crater and alter buildings based on damage zones
     createCraterAndAlterBuildings(currentMap, currentSimulation);
 
-  }, [map, mapLoaded, currentSimulation, createCraterAndAlterBuildings]);
+  }, [map, mapLoaded, currentSimulation, createCraterAndAlterBuildings, cleanupMapLayers]);
 
   // Function to toggle street view mode
   const toggleStreetView = useCallback(() => {
@@ -877,11 +959,11 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       )}
 
       {/* Control Panel - Left Side */}
-      <div className="absolute top-6 left-6 w-80 bg-black/90 backdrop-blur-md text-white rounded-lg shadow-2xl overflow-hidden z-10">
+      <div className="absolute top-6 left-6 w-80 max-h-[calc(100vh-3rem)] bg-black/90 backdrop-blur-md text-white rounded-lg shadow-2xl overflow-y-auto overflow-x-hidden z-10">
         {/* Header with Navigation */}
         <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-purple-600">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">🌍 Impact Simulator</span>
+            <span className="text-sm font-medium">Impact Simulator</span>
             <div className="flex items-center">
               {!mapLoaded && <span className="animate-pulse">⏳</span>}
               {mapLoaded && <span className="text-green-400">✅</span>}
@@ -1065,6 +1147,17 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
               '🚀 Simulate Impact'
             )}
           </button>
+
+          {/* Reset Button */}
+          {currentSimulation && (
+            <button
+              onClick={resetSimulation}
+              disabled={isAnimating}
+              className="w-full px-4 py-3 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed shadow-lg"
+            >
+              🔄 Reset Simulation
+            </button>
+          )}
 
           {/* Instructions */}
           <div className="text-xs text-gray-400 space-y-1">
