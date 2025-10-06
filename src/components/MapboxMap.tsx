@@ -13,6 +13,7 @@ interface MapboxMapProps {
 
 export default function MapboxMap({ className = '' }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
+  const initialCenterRef = useRef<[number, number]>([-74.5, 40.7]);
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedComet, setSelectedComet] = useState<CometData>(TEST_COMETS[0]);
@@ -31,38 +32,85 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
   // Initialize map
   useEffect(() => {
+    if (map) return;
+
     let mapInstance: mapboxgl.Map | null = null;
 
     const initializeMap = async () => {
       try {
         setStatus('Loading Mapbox...');
         const mapboxgl = (await import('mapbox-gl')).default;
-        mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
         
-        if (!mapContainer.current) return;
+        // Check if access token is available
+        const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+        if (!accessToken) {
+          setStatus('⚠️ Mapbox access token not found. Please set NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN in .env.local');
+          console.error('Mapbox access token is missing. Please add NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to your .env.local file');
+          return;
+        }
+        
+        mapboxgl.accessToken = accessToken;
+        
+        if (!mapContainer.current) {
+          setStatus('Map container not found');
+          return;
+        }
         
         setStatus('Creating 3D globe...');
-        mapInstance = new mapboxgl.Map({
-          container: mapContainer.current,
-          style: 'mapbox://styles/mapbox/satellite-streets-v12',
-          center: [impactLocation.longitude, impactLocation.latitude],
-          zoom: 3,
-          projection: { name: 'globe' }
-        });
+        
+        // Try different map styles if satellite fails
+        const mapStyles = [
+          'mapbox://styles/mapbox/satellite-streets-v12',
+          'mapbox://styles/mapbox/satellite-v9',
+          'mapbox://styles/mapbox/streets-v12',
+          'mapbox://styles/mapbox/dark-v11'
+        ];
+        
+        const createMapWithStyle = (styleUrl: string) => {
+          console.log('Attempting to load map with style:', styleUrl);
+          
+          return new mapboxgl.Map({
+            container: mapContainer.current!,
+            style: styleUrl,
+            center: initialCenterRef.current,
+            zoom: 3,
+            projection: { name: 'globe' },
+            attributionControl: false,
+            preserveDrawingBuffer: true
+          });
+        };
+        
+        mapInstance = createMapWithStyle(mapStyles[0]);
+        
+        // Add a timeout to detect loading issues
+        const loadTimeout = setTimeout(() => {
+          if (!mapLoaded) {
+            console.warn('Map taking too long to load, this might indicate an issue');
+            setStatus('Map is taking longer than expected to load...');
+          }
+        }, 10000);
 
+        // Add load event listener
         mapInstance.on('load', () => {
+          console.log('Map loaded successfully');
           setStatus('Globe loaded successfully!');
           setMapLoaded(true);
           setMap(mapInstance);
+          clearTimeout(loadTimeout); // Clear the timeout when map loads
 
           // Add 3D terrain and atmosphere
-          mapInstance!.addSource('mapbox-dem', {
-            type: 'raster-dem',
-            url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
-            tileSize: 512,
-            maxzoom: 14
-          });
-          mapInstance!.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+          try {
+            mapInstance!.addSource('mapbox-dem', {
+              type: 'raster-dem',
+              url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+              tileSize: 512,
+              maxzoom: 14
+            });
+            mapInstance!.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+          } catch (terrainError) {
+            console.warn('Terrain loading failed:', terrainError);
+            // Continue without terrain
+          }
           
           // Add enhanced 3D buildings layer
           if (!mapInstance!.getLayer('building-3d')) {
@@ -76,6 +124,8 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
               paint: {
                 'fill-extrusion-color': [
                   'case',
+                  ['boolean', ['feature-state', 'vaporized'], false],
+                  '#000000', // Vaporized buildings - black/transparent
                   ['boolean', ['feature-state', 'destroyed'], false],
                   '#ff0000', // Destroyed buildings - red
                   ['boolean', ['feature-state', 'severely-damaged'], false],
@@ -101,10 +151,12 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
                   13, 0,
                   13.5, [
                     'case',
+                    ['boolean', ['feature-state', 'vaporized'], false],
+                    0, // Vaporized buildings are completely gone
                     ['boolean', ['feature-state', 'destroyed'], false],
-                    ['*', ['get', 'height'], 0.1], // Destroyed buildings are collapsed
+                    ['*', ['get', 'height'], 0.05], // Destroyed buildings are almost completely collapsed
                     ['boolean', ['feature-state', 'severely-damaged'], false],
-                    ['*', ['get', 'height'], 0.4], // Severely damaged are partially collapsed
+                    ['*', ['get', 'height'], 0.3], // Severely damaged are heavily collapsed
                     ['boolean', ['feature-state', 'moderately-damaged'], false],
                     ['*', ['get', 'height'], 0.7], // Moderately damaged lose some height
                     ['get', 'height'] // Normal height for undamaged buildings
@@ -165,12 +217,29 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           
           // Add fog/atmosphere earth border color
           mapInstance!.setFog({
-            color: '#003ef6ff',
-            'high-color': '#3849e1ff',
+            color: '#003ef6',
+            'high-color': '#3849e1',
             'horizon-blend': 0.02,
             'space-color': '#000000',
             'star-intensity': 0.8
           });
+        });
+
+        // Add style load event listener
+        mapInstance.on('styledata', () => {
+          console.log('Map style loaded');
+        });
+
+        // Add source data event listener
+        mapInstance.on('sourcedata', (e) => {
+          if (e.isSourceLoaded) {
+            console.log('Source data loaded:', e.sourceId);
+          }
+        });
+
+        // Add idle event listener
+        mapInstance.on('idle', () => {
+          console.log('Map is idle and ready');
         });
 
         // Handle clicks to set impact location
@@ -186,12 +255,13 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
         mapInstance.on('error', (e: { error: Error }) => {
           console.error('Map error:', e.error);
-          setStatus('Map error occurred');
+          setStatus(`Map error: ${e.error.message}`);
         });
 
       } catch (error) {
         console.error('Failed to initialize map:', error);
-        setStatus('Failed to initialize map');
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setStatus(`Failed to initialize map: ${errorMessage}`);
       }
     };
 
@@ -202,35 +272,41 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         mapInstance.remove();
       }
     };
-  }, [impactLocation.longitude, impactLocation.latitude]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps to prevent reinitialization
 
   // Update map center when impact location changes
   useEffect(() => {
-    if (map && mapLoaded) {
-      map.flyTo({
-        center: [impactLocation.longitude, impactLocation.latitude],
-        zoom: 6,
-        duration: 2000
-      });
-      
-      // Reset building colors when location changes
-      if (map.getLayer('building-3d')) {
-        const features = map.queryRenderedFeatures({ layers: ['building-3d'] });
-        features.forEach((feature) => {
-          if (feature.id) {
-            map.setFeatureState(
-              { source: 'composite', sourceLayer: 'building', id: feature.id },
-              { 
-                destroyed: false,
-                'severely-damaged': false,
-                'moderately-damaged': false,
-                'lightly-damaged': false
-              }
-            );
-          }
-        });
-      }
-    }
+    if (!map || !mapLoaded) return;
+
+    const currentMap = map;
+
+    currentMap.flyTo({
+      center: [impactLocation.longitude, impactLocation.latitude],
+      zoom: 6,
+      duration: 2000
+    });
+  if (!currentMap.isStyleLoaded()) return;
+
+  // Reset building colors when location changes
+  if (!currentMap.getLayer('building-3d')) return;
+
+    const features = currentMap.queryRenderedFeatures({ layers: ['building-3d'] });
+    features.forEach((feature) => {
+      if (!feature.id) return;
+
+      currentMap.setFeatureState(
+        { source: 'composite', sourceLayer: 'building', id: feature.id },
+        { 
+          destroyed: false,
+          'severely-damaged': false,
+          'moderately-damaged': false,
+          'lightly-damaged': false,
+          'vaporized': false,
+          'crater-zone': false
+        }
+      );
+    });
   }, [map, mapLoaded, impactLocation]);
 
   // Run simulation when comet or location changes
@@ -241,86 +317,233 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     }
   }, [selectedComet, impactLocation]);
 
-  // Function to color buildings based on damage zones with enhanced damage levels
-  const colorBuildingsInDamageZones = useCallback((mapInstance: mapboxgl.Map, simulation: ImpactSimulation) => {
-    if (!mapInstance.getLayer('building-3d')) return;
+  // Function to add crater visualization to the map
+  const addCraterVisualization = useCallback((mapInstance: mapboxgl.Map, simulation: ImpactSimulation) => {
+    const craterRadius = simulation.craterDiameter / 2; // Radius in meters
+    const center = [simulation.location.longitude, simulation.location.latitude];
 
-    // Query all building features in the viewport
-    const features = mapInstance.queryRenderedFeatures({ layers: ['building-3d'] });
-
-    features.forEach((feature) => {
-      if (feature.geometry.type === 'Polygon' && feature.geometry.coordinates[0]) {
-        // Calculate building center (simple approximation)
-        const coords = feature.geometry.coordinates[0] as number[][];
-        let totalLng = 0, totalLat = 0;
-        coords.forEach((coord: number[]) => {
-          const [lng, lat] = coord;
-          totalLng += lng;
-          totalLat += lat;
-        });
-        const buildingLng = totalLng / coords.length;
-        const buildingLat = totalLat / coords.length;
-
-        // Calculate distance from impact point to building
-        const distance = calculateDistance(
-          simulation.location.latitude,
-          simulation.location.longitude,
-          buildingLat,
-          buildingLng
-        );
-
-        // Reset all damage states first
-        if (feature.id) {
-          mapInstance.setFeatureState(
-            { source: 'composite', sourceLayer: 'building', id: feature.id },
-            { 
-              destroyed: false,
-              'severely-damaged': false,
-              'moderately-damaged': false,
-              'lightly-damaged': false
-            }
-          );
+    // Remove existing crater layers
+    ['crater-rim', 'crater-interior', 'vaporization-zone'].forEach(layerId => {
+      try {
+        if (mapInstance.getLayer(layerId)) {
+          mapInstance.removeLayer(layerId);
         }
-
-        // Determine damage level based on distance from impact
-        const craterRadius = simulation.craterDiameter / 2000; // Convert to km
-        
-        if (distance <= craterRadius) {
-          // Complete destruction zone
-          if (feature.id) {
-            mapInstance.setFeatureState(
-              { source: 'composite', sourceLayer: 'building', id: feature.id },
-              { destroyed: true }
-            );
-          }
-        } else if (distance <= craterRadius * 2) {
-          // Severe damage zone
-          if (feature.id) {
-            mapInstance.setFeatureState(
-              { source: 'composite', sourceLayer: 'building', id: feature.id },
-              { 'severely-damaged': true }
-            );
-          }
-        } else if (distance <= craterRadius * 4) {
-          // Moderate damage zone
-          if (feature.id) {
-            mapInstance.setFeatureState(
-              { source: 'composite', sourceLayer: 'building', id: feature.id },
-              { 'moderately-damaged': true }
-            );
-          }
-        } else if (distance <= simulation.damageRadius) {
-          // Light damage zone
-          if (feature.id) {
-            mapInstance.setFeatureState(
-              { source: 'composite', sourceLayer: 'building', id: feature.id },
-              { 'lightly-damaged': true }
-            );
-          }
+        if (mapInstance.getSource(layerId)) {
+          mapInstance.removeSource(layerId);
         }
+      } catch {
+        // Layer might not exist
       }
     });
+
+    // Create crater interior (dark depression)
+    const craterInteriorCoords = [];
+    for (let i = 0; i <= 64; i++) {
+      const angle = (i * 360) / 64;
+      const radians = (angle * Math.PI) / 180;
+      const deltaLat = (craterRadius * 0.8 * Math.cos(radians)) / 111320;
+      const deltaLng = (craterRadius * 0.8 * Math.sin(radians)) / (111320 * Math.cos(center[1] * Math.PI / 180));
+      craterInteriorCoords.push([center[0] + deltaLng, center[1] + deltaLat]);
+    }
+    craterInteriorCoords.push(craterInteriorCoords[0]);
+
+    mapInstance.addSource('crater-interior', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [craterInteriorCoords]
+        },
+        properties: {}
+      }
+    });
+
+    mapInstance.addLayer({
+      id: 'crater-interior',
+      type: 'fill',
+      source: 'crater-interior',
+      paint: {
+        'fill-color': '#2c1810',
+        'fill-opacity': 0.9
+      }
+    });
+
+    // Create crater rim (raised edge)
+    const craterRimCoords = [];
+    for (let i = 0; i <= 64; i++) {
+      const angle = (i * 360) / 64;
+      const radians = (angle * Math.PI) / 180;
+      const deltaLat = (craterRadius * Math.cos(radians)) / 111320;
+      const deltaLng = (craterRadius * Math.sin(radians)) / (111320 * Math.cos(center[1] * Math.PI / 180));
+      craterRimCoords.push([center[0] + deltaLng, center[1] + deltaLat]);
+    }
+    craterRimCoords.push(craterRimCoords[0]);
+
+    mapInstance.addSource('crater-rim', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [craterRimCoords]
+        },
+        properties: {}
+      }
+    });
+
+    mapInstance.addLayer({
+      id: 'crater-rim',
+      type: 'line',
+      source: 'crater-rim',
+      paint: {
+        'line-color': '#8B4513',
+        'line-width': 4,
+        'line-opacity': 0.8
+      }
+    });
+
+    // Create vaporization zone (innermost circle)
+    const vaporizeCoords = [];
+    for (let i = 0; i <= 64; i++) {
+      const angle = (i * 360) / 64;
+      const radians = (angle * Math.PI) / 180;
+      const deltaLat = (craterRadius * 0.3 * Math.cos(radians)) / 111320;
+      const deltaLng = (craterRadius * 0.3 * Math.sin(radians)) / (111320 * Math.cos(center[1] * Math.PI / 180));
+      vaporizeCoords.push([center[0] + deltaLng, center[1] + deltaLat]);
+    }
+    vaporizeCoords.push(vaporizeCoords[0]);
+
+    mapInstance.addSource('vaporization-zone', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [vaporizeCoords]
+        },
+        properties: {}
+      }
+    });
+
+    mapInstance.addLayer({
+      id: 'vaporization-zone',
+      type: 'fill',
+      source: 'vaporization-zone',
+      paint: {
+        'fill-color': '#000000',
+        'fill-opacity': 0.95
+      }
+    });
+
   }, []);
+
+  // Function to create crater and alter buildings based on impact
+  const createCraterAndAlterBuildings = useCallback((mapInstance: mapboxgl.Map, simulation: ImpactSimulation) => {
+    if (!mapInstance.getLayer('building-3d')) return;
+
+    try {
+      // Query all building features in the viewport
+      const features = mapInstance.queryRenderedFeatures({ layers: ['building-3d'] });
+
+      features.forEach((feature) => {
+        if (feature.geometry.type === 'Polygon' && feature.geometry.coordinates[0]) {
+          // Calculate building center (simple approximation)
+          const coords = feature.geometry.coordinates[0] as number[][];
+          let totalLng = 0, totalLat = 0;
+          coords.forEach((coord: number[]) => {
+            const [lng, lat] = coord;
+            totalLng += lng;
+            totalLat += lat;
+          });
+          const buildingLng = totalLng / coords.length;
+          const buildingLat = totalLat / coords.length;
+
+          // Calculate distance from impact point to building
+          const distance = calculateDistance(
+            simulation.location.latitude,
+            simulation.location.longitude,
+            buildingLat,
+            buildingLng
+          );
+
+          // Reset all damage states first
+          if (feature.id) {
+            mapInstance.setFeatureState(
+              { source: 'composite', sourceLayer: 'building', id: feature.id },
+              { 
+                destroyed: false,
+                'severely-damaged': false,
+                'moderately-damaged': false,
+                'lightly-damaged': false,
+                'vaporized': false,
+                'crater-zone': false
+              }
+            );
+          }
+
+          // Determine damage level based on distance from impact
+          const craterRadius = simulation.craterDiameter / 2000; // Convert to km
+          const vaporizeRadius = craterRadius * 0.3; // Inner crater zone - complete vaporization
+          const craterEdgeRadius = craterRadius * 0.8; // Crater edge - complete destruction
+          
+          if (distance <= vaporizeRadius) {
+            // Vaporization zone - buildings completely removed
+            if (feature.id) {
+              mapInstance.setFeatureState(
+                { source: 'composite', sourceLayer: 'building', id: feature.id },
+                { 
+                  vaporized: true,
+                  'crater-zone': true
+                }
+              );
+            }
+          } else if (distance <= craterEdgeRadius) {
+            // Crater zone - buildings destroyed and collapsed into crater
+            if (feature.id) {
+              mapInstance.setFeatureState(
+                { source: 'composite', sourceLayer: 'building', id: feature.id },
+                { 
+                  destroyed: true,
+                  'crater-zone': true
+                }
+              );
+            }
+          } else if (distance <= craterRadius * 1.5) {
+            // Crater rim - severe structural damage, buildings partially collapsed
+            if (feature.id) {
+              mapInstance.setFeatureState(
+                { source: 'composite', sourceLayer: 'building', id: feature.id },
+                { 'severely-damaged': true }
+              );
+            }
+          } else if (distance <= craterRadius * 3) {
+            // Moderate damage zone
+            if (feature.id) {
+              mapInstance.setFeatureState(
+                { source: 'composite', sourceLayer: 'building', id: feature.id },
+                { 'moderately-damaged': true }
+              );
+            }
+          } else if (distance <= simulation.damageRadius) {
+            // Light damage zone
+            if (feature.id) {
+              mapInstance.setFeatureState(
+                { source: 'composite', sourceLayer: 'building', id: feature.id },
+                { 'lightly-damaged': true }
+              );
+            }
+          }
+        }
+      });
+
+      // Add crater visualization
+      addCraterVisualization(mapInstance, simulation);
+
+    } catch (error) {
+      console.error('Error creating crater and altering buildings:', error);
+    }
+  }, [addCraterVisualization]);
 
   // Helper function to calculate distance between two points in km
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -338,16 +561,19 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   // Add damage zones to map
   useEffect(() => {
     if (!map || !mapLoaded || !currentSimulation) return;
+    if (!map.isStyleLoaded()) return;
+
+    const currentMap = map; // Store reference to avoid null checks
 
     // Remove existing layers
     const layerIds = ['damage-zones', 'impact-point'];
     layerIds.forEach(id => {
       try {
-        if (map.getLayer(id)) {
-          map.removeLayer(id);
+        if (currentMap.getLayer(id)) {
+          currentMap.removeLayer(id);
         }
-        if (map.getSource(id)) {
-          map.removeSource(id);
+        if (currentMap.getSource(id)) {
+          currentMap.removeSource(id);
         }
       } catch {
         // Layer might not exist, continue
@@ -355,7 +581,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     });
 
     // Add impact point
-    map.addSource('impact-point', {
+    currentMap.addSource('impact-point', {
       type: 'geojson',
       data: {
         type: 'Feature',
@@ -367,7 +593,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       }
     });
 
-    map.addLayer({
+    currentMap.addLayer({
       id: 'impact-point',
       type: 'circle',
       source: 'impact-point',
@@ -405,7 +631,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         }
         coordinates.push(coordinates[0]); // Close the polygon
 
-        map.addSource(sourceId, {
+        currentMap.addSource(sourceId, {
           type: 'geojson',
           data: {
             type: 'Feature',
@@ -417,7 +643,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           }
         });
 
-        map.addLayer({
+        currentMap.addLayer({
           id: layerId,
           type: 'fill',
           source: sourceId,
@@ -428,7 +654,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         });
 
         // Add outline
-        map.addLayer({
+        currentMap.addLayer({
           id: `${layerId}-outline`,
           type: 'line',
           source: sourceId,
@@ -443,10 +669,10 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       }
     });
 
-    // Color buildings based on damage zones
-    colorBuildingsInDamageZones(map, currentSimulation);
+    // Create crater and alter buildings based on damage zones
+    createCraterAndAlterBuildings(currentMap, currentSimulation);
 
-  }, [map, mapLoaded, currentSimulation, colorBuildingsInDamageZones]);
+  }, [map, mapLoaded, currentSimulation, createCraterAndAlterBuildings]);
 
   // Function to toggle street view mode
   const toggleStreetView = useCallback(() => {
@@ -613,19 +839,39 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   };
 
   return (
-    <div className={`relative w-full h-full ${className}`}>
+    <div className={`relative w-full h-screen bg-gray-900 ${className}`}>
       {/* Map Container - Full Screen */}
       <div 
         ref={mapContainer} 
-        className="w-full h-full bg-black"
+        className="absolute inset-0 w-full h-full"
+        style={{ 
+          minHeight: '100vh',
+          backgroundColor: '#1a1a1a' // Fallback background
+        }}
       />
       
-      {/* Loading Indicator */}
+      {/* Loading/Error Indicator */}
       {!mapLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-20">
-          <div className="text-white text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-            <div>Loading 3D Globe...</div>
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-20">
+          <div className="text-white text-center max-w-md p-6">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+            <div className="mb-2 text-lg">Loading 3D Globe...</div>
+            <div className="text-sm text-gray-300">{status}</div>
+            {status.includes('access token') && (
+              <div className="mt-4 p-4 bg-red-900/50 rounded-lg text-sm">
+                <div className="font-bold text-red-300 mb-2">Setup Required:</div>
+                <div className="text-left">
+                  1. Get a free Mapbox token from{' '}
+                  <a href="https://account.mapbox.com/" target="_blank" rel="noopener noreferrer" className="text-blue-300 underline">
+                    mapbox.com
+                  </a>
+                  <br />
+                  2. Create <code className="bg-gray-800 px-1 rounded">.env.local</code> in your project root
+                  <br />
+                  3. Add: <code className="bg-gray-800 px-1 rounded">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_token_here</code>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -766,31 +1012,38 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
               <h4 className="text-sm font-medium text-gray-200 mb-3">🏢 Building Damage Levels</h4>
               <div className="space-y-2">
                 <div className="flex items-center text-xs">
+                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#000000' }}></div>
+                  <div className="flex-1">
+                    <span className="text-gray-200">Vaporized</span>
+                    <span className="text-gray-500 ml-1">(0-0.15km)</span>
+                  </div>
+                </div>
+                <div className="flex items-center text-xs">
                   <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ff0000' }}></div>
                   <div className="flex-1">
                     <span className="text-gray-200">Destroyed</span>
-                    <span className="text-gray-500 ml-1">(0-0.5km)</span>
+                    <span className="text-gray-500 ml-1">(0.15-0.4km)</span>
                   </div>
                 </div>
                 <div className="flex items-center text-xs">
                   <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ff6600' }}></div>
                   <div className="flex-1">
                     <span className="text-gray-200">Severe Damage</span>
-                    <span className="text-gray-500 ml-1">(0.5-1km)</span>
+                    <span className="text-gray-500 ml-1">(0.4-0.75km)</span>
                   </div>
                 </div>
                 <div className="flex items-center text-xs">
                   <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ffaa00' }}></div>
                   <div className="flex-1">
                     <span className="text-gray-200">Moderate Damage</span>
-                    <span className="text-gray-500 ml-1">(1-2km)</span>
+                    <span className="text-gray-500 ml-1">(0.75-1.5km)</span>
                   </div>
                 </div>
                 <div className="flex items-center text-xs">
                   <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ffff00' }}></div>
                   <div className="flex-1">
                     <span className="text-gray-200">Light Damage</span>
-                    <span className="text-gray-500 ml-1">(2km+)</span>
+                    <span className="text-gray-500 ml-1">(1.5km+)</span>
                   </div>
                 </div>
               </div>
