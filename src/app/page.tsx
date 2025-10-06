@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import MapboxMap from "@/components/MapboxMap2";
 import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar";
@@ -26,7 +27,16 @@ interface NASAAsteroidData {
   raw_data?: Record<string, unknown>;
 }
 
+const defaultImpactLocation = {
+  longitude: -74.5,
+  latitude: 40.7,
+  city: "New York",
+  country: "USA",
+};
+
 export default function MapboxSimPage() {
+  const router = useRouter();
+  
   // Simulation state
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasImpacted, setHasImpacted] = useState(false);
@@ -42,12 +52,7 @@ export default function MapboxSimPage() {
   const [enhancedBuildings, setEnhancedBuildings] = useState(true);
 
   // Impact location state
-  const [impactLocation, setImpactLocation] = useState({
-    longitude: -74.5,
-    latitude: 40.7,
-    city: "New York",
-    country: "USA",
-  });
+  const [impactLocation, setImpactLocation] = useState(defaultImpactLocation);
   const [simulationStatus, setSimulationStatus] = useState("Ready to simulate");
   const [currentSimulation, setCurrentSimulation] = useState<any>(null);
 
@@ -80,6 +85,11 @@ export default function MapboxSimPage() {
 
   // MapboxMap reference
   const mapboxRef = useRef<any>(null);
+
+  // Pin placement state
+  const [usePredictedLocation, setUsePredictedLocation] = useState(true);
+  const [impactPin, setImpactPin] = useState<any>(null);
+  const [isPlacingPin, setIsPlacingPin] = useState(false);
 
   // Calculate impact data whenever params change
   useEffect(() => {
@@ -186,14 +196,61 @@ export default function MapboxSimPage() {
 
   const handleReset = () => {
     console.log("🔄 handleReset called");
+    
+    // Use router refresh to completely reset the page state
+    router.refresh();
+    
+    // Also reset local state for immediate UI feedback
     setIsSimulating(false);
     setHasImpacted(false);
     setIsSidebarCollapsed(false);
     setShowNASAPanel(wasNASAPanelOpen);
     setCurrentSimulation(null); // Clear simulation data
+    // Reset pin placement state
+    setImpactPin(null);
+    setIsPlacingPin(false);
+    setUsePredictedLocation(true);
     if (mapboxRef.current?.resetSimulation) {
       mapboxRef.current.resetSimulation();
     }
+  };
+
+  // Pin placement handlers
+  const handleToggleLocationMode = () => {
+    setUsePredictedLocation((prev) => {
+      const next = !prev;
+      if (next) {
+        // Switching back to predicted location
+        setImpactPin(null);
+        setImpactLocation(defaultImpactLocation);
+        setIsPlacingPin(false);
+      } else {
+        // Switching to custom pin mode
+        setImpactPin(null);
+        setIsPlacingPin(false);
+      }
+      return next;
+    });
+  };
+
+  const handleStartPinPlacement = () => {
+    setUsePredictedLocation(false);
+    setImpactPin(null);
+    setIsPlacingPin(true);
+    // This will be passed to MapboxMap2 to enable pin placement mode
+  };
+
+  const handleRemovePin = () => {
+    setImpactPin(null);
+    setIsPlacingPin(false);
+  };
+
+  const handlePinPlaced = (pin: any) => {
+    setImpactPin(pin);
+    setIsPlacingPin(false);
+    setUsePredictedLocation(false);
+    // Update the main impact location
+    setImpactLocation(pin);
   };
 
   const handleMapControlsChange = (controls: {
@@ -253,6 +310,11 @@ export default function MapboxSimPage() {
           show3DBuildings={show3DBuildings}
           streetViewMode={streetViewMode}
           enhancedBuildings={enhancedBuildings}
+          // Pin placement props
+          isPlacingPin={isPlacingPin}
+          onPinPlaced={handlePinPlaced}
+          usePredictedLocation={usePredictedLocation}
+          impactPinLocation={impactPin}
         />
       </div>
 
@@ -310,6 +372,12 @@ export default function MapboxSimPage() {
               simulationStatus={simulationStatus}
               currentSimulation={currentSimulation}
               impactLocation={impactLocation}
+              usePredictedLocation={usePredictedLocation}
+              impactPin={impactPin}
+              isPlacingPin={isPlacingPin}
+              onStartPinPlacement={handleStartPinPlacement}
+              onRemovePin={handleRemovePin}
+              onToggleLocationMode={handleToggleLocationMode}
             />
           </div>
 
