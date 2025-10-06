@@ -173,6 +173,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
     const [currentSimulation, setCurrentSimulation] =
       useState<ImpactSimulation | null>(null);
     const [isAnimating, setIsAnimating] = useState(false);
+    const [hasImpactOccurred, setHasImpactOccurred] = useState(false); // Flag to hide asteroid after impact
     const animationRequestRef = useRef<boolean>(false);
     const [hasUserSetLocation, setHasUserSetLocation] = useState(false);
 
@@ -1178,6 +1179,15 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           (trail.material as THREE.MeshBasicMaterial).opacity = 0.25 + progress * 0.55;
           (aura.material as THREE.MeshBasicMaterial).opacity = 0.4 + progress * 0.4;
 
+          // HIDE ASTEROID IMMEDIATELY AT IMPACT (when progress reaches 100%)
+          if (progress >= 1.0) {
+            asteroidMesh.visible = false;
+            trail.visible = false;
+            aura.visible = false;
+            setHasImpactOccurred(true);
+            console.log('Asteroid hidden at impact moment - progress 100%');
+          }
+
           // Camera/map behavior
           if (i <= centerLockFrame) {
             const t = i / centerLockFrame;
@@ -1197,9 +1207,11 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           await new Promise(r => setTimeout(r, 50));
         }
 
-        console.log('Asteroid reached center (impact). Creating impact effects...');
+        console.log('Asteroid reached center (impact). Hiding asteroid immediately...');
 
-        // IMMEDIATE impact effects - remove asteroid and show crater
+        // SIMPLE SOLUTION - Just hide the asteroid on impact
+        setHasImpactOccurred(true); // Set flag to hide asteroid
+        
         if (asteroidMeshRef.current && sceneRef.current) {
           // Remove asteroid and trail immediately on impact
           sceneRef.current.remove(asteroidMeshRef.current);
@@ -1221,11 +1233,11 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           (aura.material as THREE.MeshBasicMaterial).dispose();
           
           asteroidMeshRef.current = null;
-          console.log('Asteroid and trail removed from scene and disposed (impact moment)');
+          console.log('Asteroid hidden on impact - flag set to true');
 
           // Set simulation immediately to trigger crater visualization
           setCurrentSimulation(simulation);
-          onStatusChange?.('Impact! Crater and damage zones appearing...');
+          onStatusChange?.('Impact! Asteroid disappeared! Crater forming...');
         }
 
         // Post-impact zoom
@@ -1239,27 +1251,82 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           setTimeout(resolve, 900);
         });
         
-        // Create impact explosion after asteroid is already gone
+        // Create MASSIVE impact explosion after asteroid vaporization
         if (sceneRef.current) {
-          const explosionGeometry = new THREE.SphereGeometry(2, 16, 16);
-          const explosionMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xff4500, 
+          // Create multiple explosion layers for more dramatic effect
+          const explosions: THREE.Mesh[] = [];
+          
+          // Core explosion (white-hot)
+          const coreExplosionGeometry = new THREE.SphereGeometry(1, 16, 16);
+          const coreExplosionMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffffff, // White hot
             transparent: true, 
-            opacity: 0.8 
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending
           });
-          const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
-          explosion.position.copy(endPosition);
-          sceneRef.current.add(explosion);
-          console.log('Explosion created at impact location:', endPosition);
+          const coreExplosion = new THREE.Mesh(coreExplosionGeometry, coreExplosionMaterial);
+          coreExplosion.position.copy(endPosition);
+          sceneRef.current.add(coreExplosion);
+          explosions.push(coreExplosion);
+          
+          // Middle explosion (orange)
+          const midExplosionGeometry = new THREE.SphereGeometry(1.5, 16, 16);
+          const midExplosionMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xff4500, // Orange-red
+            transparent: true, 
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+          });
+          const midExplosion = new THREE.Mesh(midExplosionGeometry, midExplosionMaterial);
+          midExplosion.position.copy(endPosition);
+          sceneRef.current.add(midExplosion);
+          explosions.push(midExplosion);
+          
+          // Outer explosion (red)
+          const outerExplosionGeometry = new THREE.SphereGeometry(2, 16, 16);
+          const outerExplosionMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xff0000, // Red
+            transparent: true, 
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending
+          });
+          const outerExplosion = new THREE.Mesh(outerExplosionGeometry, outerExplosionMaterial);
+          outerExplosion.position.copy(endPosition);
+          sceneRef.current.add(outerExplosion);
+          explosions.push(outerExplosion);
+          
+          console.log('Multi-layered explosion created at impact location:', endPosition);
 
-          // Explosion animation
-          for (let i = 0; i < 16; i++) {
-            explosion.scale.multiplyScalar(1.22);
-            explosionMaterial.opacity *= 0.88;
-            await new Promise(resolve => setTimeout(resolve, 70));
+          // Massive explosion animation with shockwave effect
+          for (let i = 0; i < 20; i++) {
+            // Different scaling for each layer
+            coreExplosion.scale.multiplyScalar(1.3);
+            midExplosion.scale.multiplyScalar(1.25);
+            outerExplosion.scale.multiplyScalar(1.2);
+            
+            // Fade out at different rates
+            coreExplosionMaterial.opacity *= 0.85;
+            midExplosionMaterial.opacity *= 0.88;
+            outerExplosionMaterial.opacity *= 0.90;
+            
+            // Color shift from white to orange to red
+            if (i > 5) {
+              coreExplosionMaterial.color.setHex(0xffaa00); // Yellow-orange
+            }
+            if (i > 10) {
+              coreExplosionMaterial.color.setHex(0xff6600); // Orange
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 60));
           }
-          sceneRef.current.remove(explosion);
-          console.log('Explosion animation complete');
+          
+          // Remove all explosion effects
+          explosions.forEach(explosion => {
+            sceneRef.current!.remove(explosion);
+            explosion.geometry.dispose();
+            (explosion.material as THREE.MeshBasicMaterial).dispose();
+          });
+          console.log('Massive explosion animation complete - all layers disposed');
         }
         
         // Final zoom to impact site
@@ -1310,6 +1377,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       
       setCurrentSimulation(null);
       setIsAnimating(false);
+      setHasImpactOccurred(false); // Reset impact flag
       onStatusChange?.("Ready to simulate impact");
       onSimulationUpdate?.(null); // Clear simulation in parent
 
