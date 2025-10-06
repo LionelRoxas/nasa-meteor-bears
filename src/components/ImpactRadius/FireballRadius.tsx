@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { milesToPixels } from "@/utils/geoUtils";
 
 interface FireballRadiusProps {
   centerLat: number;
@@ -11,6 +12,9 @@ interface FireballRadiusProps {
     thirdDegreeBurns: number;
     secondDegreeBurns: number;
   };
+  zoom?: number; // Map zoom level (default: auto-calculate)
+  mapWidth?: number; // Container width (default: 300)
+  mapHeight?: number; // Container height (default: 300)
 }
 
 export default function FireballRadius({
@@ -18,6 +22,9 @@ export default function FireballRadius({
   centerLng,
   radiusMiles,
   casualties,
+  zoom,
+  mapWidth = 300,
+  mapHeight = 300,
 }: FireballRadiusProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -32,7 +39,10 @@ export default function FireballRadius({
     const height = canvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const radius = Math.min(width, height) * 0.45;
+
+    // Calculate actual geographic radius in pixels
+    const calculatedZoom = zoom ?? Math.max(0, 10 - Math.log2(radiusMiles));
+    const radius = milesToPixels(radiusMiles, centerLat, calculatedZoom);
 
     let animationId: number;
 
@@ -114,30 +124,6 @@ export default function FireballRadius({
       ctx.fill();
     }
 
-    // Rising heat plume
-    const plumeGradient = ctx.createLinearGradient(
-      centerX,
-      centerY - radius * 0.9,
-      centerX,
-      centerY - radius * 1.5
-    );
-    plumeGradient.addColorStop(0, "rgba(255, 200, 100, 0.5)");
-    plumeGradient.addColorStop(0.3, "rgba(255, 150, 50, 0.3)");
-    plumeGradient.addColorStop(0.6, "rgba(200, 100, 50, 0.2)");
-    plumeGradient.addColorStop(1, "rgba(150, 80, 40, 0)");
-
-    ctx.beginPath();
-    ctx.ellipse(
-      centerX,
-      centerY - radius * 1.2,
-      radius * 0.6,
-      radius * 0.3,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.fillStyle = plumeGradient;
-    ctx.fill();
 
     // Thermal radiation rings
     for (let i = 0; i < 3; i++) {
@@ -163,14 +149,14 @@ export default function FireballRadius({
     animate();
 
     return () => cancelAnimationFrame(animationId);
-  }, [centerLat, centerLng, radiusMiles, casualties]);
+  }, [centerLat, centerLng, radiusMiles, casualties, zoom]);
 
   return (
     <div className="relative">
       <canvas
         ref={canvasRef}
-        width={300}
-        height={300}
+        width={mapWidth}
+        height={mapHeight}
         className="w-full h-auto"
       />
       <div className="absolute bottom-2 left-2 bg-black/70 text-white px-3 py-1 rounded text-sm">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { milesToPixels } from "@/utils/geoUtils";
 
 interface ShockwaveRadiusProps {
   centerLat: number;
@@ -16,6 +17,9 @@ interface ShockwaveRadiusProps {
     buildingsCollapse: number; // miles
     homesCollapse: number; // miles
   };
+  zoom?: number;
+  mapWidth?: number;
+  mapHeight?: number;
 }
 
 export default function ShockwaveRadius({
@@ -25,6 +29,9 @@ export default function ShockwaveRadius({
   decibels,
   casualties,
   damageZones,
+  zoom,
+  mapWidth = 300,
+  mapHeight = 300,
 }: ShockwaveRadiusProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -39,7 +46,9 @@ export default function ShockwaveRadius({
     const height = canvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const maxRadius = Math.min(width, height) * 0.48;
+
+    const calculatedZoom = zoom ?? Math.max(0, 10 - Math.log2(radiusMiles));
+    const maxRadius = milesToPixels(radiusMiles, centerLat, calculatedZoom);
 
     let animationId: number;
 
@@ -51,42 +60,57 @@ export default function ShockwaveRadius({
       const time = Date.now() / 800;
       const waveOffset = (time % 3) / 3;
 
-    // Draw multiple expanding shockwave rings
-    for (let wave = 0; wave < 5; wave++) {
-      const wavePhase = (waveOffset + wave * 0.2) % 1;
-      const waveRadius = maxRadius * wavePhase;
-      const opacity = 1 - wavePhase;
+    // Draw atmospheric distortion base
+    const atmosphereGradient = ctx.createRadialGradient(
+      centerX,
+      centerY,
+      0,
+      centerX,
+      centerY,
+      maxRadius * 1.2
+    );
+    atmosphereGradient.addColorStop(0, "rgba(220, 230, 240, 0.3)");
+    atmosphereGradient.addColorStop(0.5, "rgba(200, 210, 230, 0.15)");
+    atmosphereGradient.addColorStop(1, "rgba(180, 190, 210, 0.05)");
 
-      // Compression wave (darker)
-      const compressionGradient = ctx.createRadialGradient(
-        centerX,
-        centerY,
-        Math.max(0, waveRadius - 10),
-        centerX,
-        centerY,
-        waveRadius + 10
-      );
-      compressionGradient.addColorStop(0, `rgba(100, 120, 180, ${opacity * 0.3})`);
-      compressionGradient.addColorStop(0.5, `rgba(150, 170, 220, ${opacity * 0.6})`);
-      compressionGradient.addColorStop(1, `rgba(100, 120, 180, ${opacity * 0.3})`);
+    ctx.fillStyle = atmosphereGradient;
+    ctx.fillRect(0, 0, width, height);
 
+    // Draw multiple expanding shockwave rings - more subtle
+    for (let wave = 0; wave < 4; wave++) {
+      const wavePhase = (waveOffset + wave * 0.25) % 1;
+      const waveRadius = maxRadius * wavePhase * 1.1;
+      const opacity = (1 - wavePhase) * 0.8;
+
+      // Main pressure wave - subtle distortion ring
       ctx.beginPath();
       ctx.arc(centerX, centerY, waveRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = compressionGradient.toString();
-      ctx.lineWidth = 15 * opacity;
+      ctx.strokeStyle = `rgba(180, 200, 220, ${opacity * 0.7})`;
+      ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Rarefaction wave (lighter, following behind)
-      if (waveRadius > 20) {
+      // Inner bright compression ring
+      if (waveRadius > 10) {
         ctx.beginPath();
-        ctx.arc(centerX, centerY, waveRadius - 20, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(180, 200, 255, ${opacity * 0.4})`;
-        ctx.lineWidth = 8 * opacity;
+        ctx.arc(centerX, centerY, waveRadius, 0, Math.PI * 2);
+        const gradient = ctx.createRadialGradient(
+          centerX,
+          centerY,
+          Math.max(0, waveRadius - 8),
+          centerX,
+          centerY,
+          waveRadius + 8
+        );
+        gradient.addColorStop(0, `rgba(255, 255, 255, ${opacity * 0.3})`);
+        gradient.addColorStop(0.5, `rgba(200, 220, 255, ${opacity * 0.5})`);
+        gradient.addColorStop(1, `rgba(150, 180, 220, ${opacity * 0.2})`);
+        ctx.strokeStyle = gradient.toString();
+        ctx.lineWidth = 12 * opacity;
         ctx.stroke();
       }
     }
 
-    // Damage zones - concentric circles
+    // Damage zones - subtle concentric circles
     // Buildings collapse zone (severe)
     const buildingsRadius =
       (damageZones.buildingsCollapse / radiusMiles) * maxRadius;
@@ -99,16 +123,18 @@ export default function ShockwaveRadius({
       buildingsRadius
     );
     buildingsGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-    buildingsGradient.addColorStop(0.7, "rgba(139, 0, 0, 0.25)");
-    buildingsGradient.addColorStop(1, "rgba(178, 34, 34, 0.35)");
+    buildingsGradient.addColorStop(0.7, "rgba(200, 210, 230, 0.15)");
+    buildingsGradient.addColorStop(1, "rgba(180, 200, 220, 0.25)");
 
     ctx.beginPath();
     ctx.arc(centerX, centerY, buildingsRadius, 0, Math.PI * 2);
     ctx.fillStyle = buildingsGradient;
     ctx.fill();
-    ctx.strokeStyle = "rgba(178, 34, 34, 0.7)";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(180, 200, 230, 0.4)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
     ctx.stroke();
+    ctx.setLineDash([]);
 
     // Homes collapse zone (moderate)
     const homesRadius = (damageZones.homesCollapse / radiusMiles) * maxRadius;
@@ -121,62 +147,64 @@ export default function ShockwaveRadius({
       homesRadius
     );
     homesGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-    homesGradient.addColorStop(0.7, "rgba(255, 140, 0, 0.2)");
-    homesGradient.addColorStop(1, "rgba(255, 165, 0, 0.3)");
+    homesGradient.addColorStop(0.7, "rgba(190, 210, 230, 0.1)");
+    homesGradient.addColorStop(1, "rgba(170, 190, 220, 0.2)");
 
     ctx.beginPath();
     ctx.arc(centerX, centerY, homesRadius, 0, Math.PI * 2);
     ctx.fillStyle = homesGradient;
     ctx.fill();
-    ctx.strokeStyle = "rgba(255, 165, 0, 0.7)";
+    ctx.strokeStyle = "rgba(170, 190, 220, 0.35)";
     ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
     ctx.stroke();
+    ctx.setLineDash([]);
 
-    // Overpressure visualization - distortion lines
-    for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2 + time * 0.5;
-      const distortPhase = Math.sin(time * 2 + i) * 0.1;
-
-      ctx.beginPath();
-      for (let r = 0; r < maxRadius; r += 10) {
-        const x =
-          centerX + Math.cos(angle) * r * (1 + distortPhase * (r / maxRadius));
-        const y =
-          centerY + Math.sin(angle) * r * (1 + distortPhase * (r / maxRadius));
-        if (r === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-      ctx.strokeStyle = `rgba(150, 170, 220, ${0.2 - (i % 3) * 0.05})`;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-
-    // Atmospheric disturbance indicator
-    const disturbanceGradient = ctx.createRadialGradient(
+    // Add pressure pulse at epicenter
+    const epicenterPulse = Math.sin(time * 3) * 0.15 + 0.85;
+    const epicenterGradient = ctx.createRadialGradient(
       centerX,
       centerY,
       0,
       centerX,
       centerY,
-      maxRadius
+      maxRadius * 0.2 * epicenterPulse
     );
-    disturbanceGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-    disturbanceGradient.addColorStop(0.5, "rgba(100, 120, 180, 0.05)");
-    disturbanceGradient.addColorStop(1, "rgba(150, 170, 220, 0.15)");
+    epicenterGradient.addColorStop(0, "rgba(255, 255, 255, 0.8)");
+    epicenterGradient.addColorStop(0.3, "rgba(240, 245, 255, 0.6)");
+    epicenterGradient.addColorStop(0.6, "rgba(200, 220, 250, 0.4)");
+    epicenterGradient.addColorStop(1, "rgba(180, 200, 230, 0.2)");
 
     ctx.beginPath();
-    ctx.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
-    ctx.fillStyle = disturbanceGradient;
+    ctx.arc(centerX, centerY, maxRadius * 0.2 * epicenterPulse, 0, Math.PI * 2);
+    ctx.fillStyle = epicenterGradient;
     ctx.fill();
 
-    // Outer border
+    // Add radial distortion lines (heat shimmer effect)
+    for (let i = 0; i < 16; i++) {
+      const angle = (i / 16) * Math.PI * 2;
+      const shimmer = Math.sin(time * 4 + i * 0.5) * 0.02;
+
+      ctx.save();
+      ctx.globalAlpha = 0.15;
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+
+      const endX = centerX + Math.cos(angle) * maxRadius * (1 + shimmer);
+      const endY = centerY + Math.sin(angle) * maxRadius * (1 + shimmer);
+      ctx.lineTo(endX, endY);
+
+      ctx.strokeStyle = "rgba(200, 220, 240, 0.4)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Outer border - atmospheric boundary
     ctx.beginPath();
     ctx.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(100, 120, 180, 0.8)";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(180, 200, 230, 0.7)";
+    ctx.lineWidth = 4;
     ctx.stroke();
 
       // Request next frame
@@ -186,14 +214,14 @@ export default function ShockwaveRadius({
     animate();
 
     return () => cancelAnimationFrame(animationId);
-  }, [centerLat, centerLng, radiusMiles, decibels, casualties, damageZones]);
+  }, [centerLat, centerLng, radiusMiles, decibels, casualties, damageZones, zoom]);
 
   return (
     <div className="relative">
       <canvas
         ref={canvasRef}
-        width={300}
-        height={300}
+        width={mapWidth}
+        height={mapHeight}
         className="w-full h-auto"
       />
       <div className="absolute bottom-2 left-2 bg-black/70 text-white px-3 py-1 rounded text-sm">

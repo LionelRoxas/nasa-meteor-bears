@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { kmToPixels } from "@/utils/geoUtils";
 
 interface TsunamiRadiusProps {
   centerLat: number;
@@ -9,6 +10,9 @@ interface TsunamiRadiusProps {
   waveSpeedKmh: number;
   arrivalTimeMinutes: number;
   affectedCoastlineKm: number;
+  zoom?: number;
+  mapWidth?: number;
+  mapHeight?: number;
 }
 
 export default function TsunamiRadius({
@@ -18,6 +22,9 @@ export default function TsunamiRadius({
   waveSpeedKmh,
   arrivalTimeMinutes,
   affectedCoastlineKm,
+  zoom,
+  mapWidth = 300,
+  mapHeight = 300,
 }: TsunamiRadiusProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -32,7 +39,11 @@ export default function TsunamiRadius({
     const height = canvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const maxRadius = Math.min(width, height) * 0.48;
+
+    // Use affected coastline distance as the visual radius
+    const radiusKm = affectedCoastlineKm / 2; // Approximate radius
+    const calculatedZoom = zoom ?? Math.max(0, 10 - Math.log2(radiusKm / 1.60934));
+    const maxRadius = kmToPixels(radiusKm, centerLat, calculatedZoom);
 
     let animationId: number;
 
@@ -44,7 +55,7 @@ export default function TsunamiRadius({
       const time = Date.now() / 800;
       const waveOffset = (time % 5) / 5;
 
-    // Draw ocean base
+    // Draw deep ocean base
     const oceanGradient = ctx.createRadialGradient(
       centerX,
       centerY,
@@ -53,9 +64,9 @@ export default function TsunamiRadius({
       centerY,
       maxRadius * 1.2
     );
-    oceanGradient.addColorStop(0, "rgba(0, 40, 80, 0.4)");
-    oceanGradient.addColorStop(0.5, "rgba(0, 60, 120, 0.3)");
-    oceanGradient.addColorStop(1, "rgba(0, 80, 140, 0.2)");
+    oceanGradient.addColorStop(0, "rgba(10, 50, 100, 0.7)");
+    oceanGradient.addColorStop(0.5, "rgba(15, 70, 130, 0.6)");
+    oceanGradient.addColorStop(1, "rgba(20, 90, 160, 0.5)");
 
     ctx.fillStyle = oceanGradient;
     ctx.fillRect(0, 0, width, height);
@@ -66,31 +77,43 @@ export default function TsunamiRadius({
       const waveRadius = maxRadius * 1.2 * wavePhase;
       const opacity = 1 - wavePhase;
 
-      // Main wave crest
+      // Main wave crest - bright turquoise/white foam
       const crestGradient = ctx.createRadialGradient(
         centerX,
         centerY,
-        Math.max(0, waveRadius - 15),
+        Math.max(0, waveRadius - 20),
         centerX,
         centerY,
-        waveRadius + 15
+        waveRadius + 20
       );
-      crestGradient.addColorStop(0, `rgba(255, 255, 255, ${opacity * 0.6})`);
-      crestGradient.addColorStop(0.5, `rgba(200, 230, 255, ${opacity * 0.8})`);
-      crestGradient.addColorStop(1, `rgba(100, 180, 255, ${opacity * 0.4})`);
+      crestGradient.addColorStop(0, `rgba(255, 255, 255, ${opacity * 0.9})`);
+      crestGradient.addColorStop(0.3, `rgba(180, 240, 255, ${opacity * 0.85})`);
+      crestGradient.addColorStop(0.6, `rgba(100, 200, 255, ${opacity * 0.7})`);
+      crestGradient.addColorStop(1, `rgba(40, 150, 220, ${opacity * 0.5})`);
 
       ctx.beginPath();
       ctx.arc(centerX, centerY, waveRadius, 0, Math.PI * 2);
       ctx.strokeStyle = crestGradient.toString();
-      ctx.lineWidth = 20 * opacity;
+      ctx.lineWidth = 25 * opacity;
       ctx.stroke();
 
-      // Wave trough (darker water)
-      if (waveRadius > 25) {
+      // Wave trough (darker deep blue water)
+      if (waveRadius > 30) {
+        const troughGradient = ctx.createRadialGradient(
+          centerX,
+          centerY,
+          Math.max(0, waveRadius - 35),
+          centerX,
+          centerY,
+          waveRadius - 30
+        );
+        troughGradient.addColorStop(0, `rgba(5, 40, 80, ${opacity * 0.7})`);
+        troughGradient.addColorStop(1, `rgba(10, 60, 110, ${opacity * 0.5})`);
+
         ctx.beginPath();
-        ctx.arc(centerX, centerY, waveRadius - 25, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(0, 50, 100, ${opacity * 0.5})`;
-        ctx.lineWidth = 10 * opacity;
+        ctx.arc(centerX, centerY, waveRadius - 30, 0, Math.PI * 2);
+        ctx.strokeStyle = troughGradient.toString();
+        ctx.lineWidth = 15 * opacity;
         ctx.stroke();
       }
 
@@ -110,7 +133,7 @@ export default function TsunamiRadius({
       }
     }
 
-    // Impact epicenter - underwater disturbance
+    // Impact epicenter - churning water
     const epicenterGradient = ctx.createRadialGradient(
       centerX,
       centerY,
@@ -119,17 +142,17 @@ export default function TsunamiRadius({
       centerY,
       maxRadius * 0.25
     );
-    epicenterGradient.addColorStop(0, "rgba(255, 255, 255, 0.8)");
-    epicenterGradient.addColorStop(0.2, "rgba(100, 180, 255, 0.6)");
-    epicenterGradient.addColorStop(0.5, "rgba(0, 100, 200, 0.4)");
-    epicenterGradient.addColorStop(1, "rgba(0, 60, 120, 0.2)");
+    epicenterGradient.addColorStop(0, "rgba(255, 255, 255, 0.9)");
+    epicenterGradient.addColorStop(0.2, "rgba(150, 220, 255, 0.8)");
+    epicenterGradient.addColorStop(0.5, "rgba(60, 150, 230, 0.6)");
+    epicenterGradient.addColorStop(1, "rgba(20, 100, 180, 0.4)");
 
     ctx.beginPath();
     ctx.arc(centerX, centerY, maxRadius * 0.25, 0, Math.PI * 2);
     ctx.fillStyle = epicenterGradient;
     ctx.fill();
 
-    // Cavity from impact (water displacement)
+    // Cavity from impact (water displacement) - dark void
     const cavityPulse = Math.sin(time * 2) * 0.1 + 1;
     const cavityGradient = ctx.createRadialGradient(
       centerX,
@@ -139,16 +162,16 @@ export default function TsunamiRadius({
       centerY,
       maxRadius * 0.15 * cavityPulse
     );
-    cavityGradient.addColorStop(0, "rgba(20, 20, 40, 0.8)");
-    cavityGradient.addColorStop(0.5, "rgba(40, 60, 100, 0.6)");
-    cavityGradient.addColorStop(1, "rgba(60, 100, 160, 0.3)");
+    cavityGradient.addColorStop(0, "rgba(5, 10, 30, 0.95)");
+    cavityGradient.addColorStop(0.5, "rgba(15, 40, 80, 0.8)");
+    cavityGradient.addColorStop(1, "rgba(30, 80, 140, 0.5)");
 
     ctx.beginPath();
     ctx.arc(centerX, centerY, maxRadius * 0.15 * cavityPulse, 0, Math.PI * 2);
     ctx.fillStyle = cavityGradient;
     ctx.fill();
 
-    // Wave height zones (danger levels)
+    // Wave height zones (danger levels) - subtle blue tones
     const waveHeightFeet = waveHeightMeters * 3.28084;
 
     // Extreme danger zone (close to impact) - scale with wave height
@@ -156,8 +179,8 @@ export default function TsunamiRadius({
     const extremeRadius = maxRadius * 0.4 * heightFactor;
     ctx.beginPath();
     ctx.arc(centerX, centerY, extremeRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255, 0, 0, 0.7)";
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = "rgba(80, 150, 220, 0.5)";
+    ctx.lineWidth = 3;
     ctx.setLineDash([10, 5]);
     ctx.stroke();
     ctx.setLineDash([]);
@@ -166,7 +189,7 @@ export default function TsunamiRadius({
     const highRadius = maxRadius * 0.7;
     ctx.beginPath();
     ctx.arc(centerX, centerY, highRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255, 140, 0, 0.6)";
+    ctx.strokeStyle = "rgba(100, 170, 240, 0.45)";
     ctx.lineWidth = 3;
     ctx.setLineDash([8, 4]);
     ctx.stroke();
@@ -176,7 +199,7 @@ export default function TsunamiRadius({
     const moderateRadius = maxRadius;
     ctx.beginPath();
     ctx.arc(centerX, centerY, moderateRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255, 255, 0, 0.5)";
+    ctx.strokeStyle = "rgba(120, 190, 255, 0.4)";
     ctx.lineWidth = 3;
     ctx.setLineDash([6, 3]);
     ctx.stroke();
@@ -209,11 +232,11 @@ export default function TsunamiRadius({
       ctx.restore();
     }
 
-    // Outer boundary
+    // Outer boundary - bright ocean blue
     ctx.beginPath();
     ctx.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(100, 180, 255, 0.8)";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(60, 170, 255, 0.9)";
+    ctx.lineWidth = 4;
     ctx.stroke();
 
       // Request next frame
@@ -230,14 +253,15 @@ export default function TsunamiRadius({
     waveSpeedKmh,
     arrivalTimeMinutes,
     affectedCoastlineKm,
+    zoom,
   ]);
 
   return (
     <div className="relative">
       <canvas
         ref={canvasRef}
-        width={300}
-        height={300}
+        width={mapWidth}
+        height={mapHeight}
         className="w-full h-auto"
       />
       <div className="absolute bottom-2 left-2 bg-black/70 text-white px-3 py-1 rounded text-sm">

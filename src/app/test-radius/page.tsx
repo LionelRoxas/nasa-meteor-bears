@@ -171,9 +171,63 @@ export default function TestRadiusPage() {
         </div>
       </div>
 
+      {/* Size Comparison - Same Zoom Level */}
+      <div className="mt-12 max-w-7xl mx-auto">
+        <h2 className="text-3xl font-bold mb-6 text-center text-yellow-300">
+          Size Comparison - Same Zoom Level
+        </h2>
+        <p className="text-center text-gray-300 mb-6">
+          These use the SAME zoom level to show true relative sizes
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Crater with fixed zoom */}
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <h3 className="text-xl font-bold mb-2 text-yellow-400">
+              Crater (25 mile radius)
+            </h3>
+            <CraterRadius
+              centerLat={testData.centerLat}
+              centerLng={testData.centerLng}
+              radiusMiles={25}
+              depthMiles={0.5}
+              isOcean={true}
+              zoom={6}
+              mapWidth={600}
+              mapHeight={600}
+            />
+          </div>
+
+          {/* Tsunami with same fixed zoom */}
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <h3 className="text-xl font-bold mb-2 text-blue-300">
+              Tsunami (777 mile radius - 31x LARGER!)
+            </h3>
+            <TsunamiRadius
+              centerLat={testData.centerLat}
+              centerLng={testData.centerLng}
+              waveHeightMeters={150}
+              waveSpeedKmh={800}
+              arrivalTimeMinutes={45}
+              affectedCoastlineKm={2500}
+              zoom={6}
+              mapWidth={600}
+              mapHeight={600}
+            />
+            <p className="text-sm text-gray-400 mt-2">
+              Tsunami radius: {(2500 / 2 * 0.621371).toFixed(0)} miles vs Crater: 25 miles
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="mt-12 max-w-4xl mx-auto bg-gray-800 p-6 rounded-lg">
         <h2 className="text-2xl font-bold mb-4">Test Notes</h2>
         <ul className="list-disc list-inside space-y-2 text-gray-300">
+          <li className="text-yellow-300 font-bold">
+            ⚠️ IMPORTANT: Individual components auto-scale to fit their canvas.
+            To see true size comparison, use the same zoom level (see comparison above).
+          </li>
           <li>
             All components use canvas animations with requestAnimationFrame for
             dynamic effects
@@ -199,7 +253,9 @@ export default function TestRadiusPage() {
             Tsunami displays expanding wave crests, foam, and directional
             propagation
           </li>
-          <li>Each component scales appropriately based on input parameters</li>
+          <li>
+            Components use REAL geographic scaling - large radii will span continents!
+          </li>
         </ul>
       </div>
     </div>

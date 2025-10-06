@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { milesToPixels } from "@/utils/geoUtils";
 
 interface EarthquakeRadiusProps {
   centerLat: number;
@@ -10,6 +11,9 @@ interface EarthquakeRadiusProps {
   casualties: {
     deaths: number;
   };
+  zoom?: number;
+  mapWidth?: number;
+  mapHeight?: number;
 }
 
 export default function EarthquakeRadius({
@@ -18,6 +22,9 @@ export default function EarthquakeRadius({
   radiusMiles,
   magnitude,
   casualties,
+  zoom,
+  mapWidth = 300,
+  mapHeight = 300,
 }: EarthquakeRadiusProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -32,7 +39,9 @@ export default function EarthquakeRadius({
     const height = canvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const maxRadius = Math.min(width, height) * 0.48;
+
+    const calculatedZoom = zoom ?? Math.max(0, 10 - Math.log2(radiusMiles));
+    const maxRadius = milesToPixels(radiusMiles, centerLat, calculatedZoom);
 
     let animationId: number;
 
@@ -179,11 +188,11 @@ export default function EarthquakeRadius({
       ctx.stroke();
     }
 
-    // Modified Mercalli Intensity contours
+    // Modified Mercalli Intensity contours - subtle brown/earth tones
     const mmiContours = [
-      { radius: severeRadius, label: "IX-X", color: "rgba(139, 0, 0, 0.8)" },
-      { radius: moderateRadius, label: "VI-VIII", color: "rgba(255, 140, 0, 0.7)" },
-      { radius: maxRadius, label: "III-V", color: "rgba(210, 180, 140, 0.6)" },
+      { radius: severeRadius, color: "rgba(120, 90, 70, 0.5)" },
+      { radius: moderateRadius, color: "rgba(140, 110, 80, 0.4)" },
+      { radius: maxRadius, color: "rgba(160, 130, 100, 0.35)" },
     ];
 
     mmiContours.forEach(({ radius, color }) => {
@@ -191,7 +200,9 @@ export default function EarthquakeRadius({
       ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
+      ctx.setLineDash([8, 4]);
       ctx.stroke();
+      ctx.setLineDash([]);
     });
 
     // Outer boundary
@@ -208,14 +219,14 @@ export default function EarthquakeRadius({
     animate();
 
     return () => cancelAnimationFrame(animationId);
-  }, [centerLat, centerLng, radiusMiles, magnitude, casualties]);
+  }, [centerLat, centerLng, radiusMiles, magnitude, casualties, zoom]);
 
   return (
     <div className="relative">
       <canvas
         ref={canvasRef}
-        width={300}
-        height={300}
+        width={mapWidth}
+        height={mapHeight}
         className="w-full h-auto"
       />
       <div className="absolute bottom-2 left-2 bg-black/70 text-white px-3 py-1 rounded text-sm">
