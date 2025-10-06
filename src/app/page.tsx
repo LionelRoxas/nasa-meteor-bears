@@ -1,29 +1,13 @@
-// app/page.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import MapboxMap from "@/components/MapboxMap2";
 import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar";
 import Navbar from "@/components/Navbar";
-import ImpactSimulator from "@/components/ImpactSimulator";
-import {
-  useEnhancedPredictions,
-  type EnhancedPrediction,
-} from "@/hooks/useEnhancedPredictions";
-import TerrainVisualizer from "@/components/TerrainVisualizer";
-import USGSDataPanel from "@/components/USGSDataPanel";
 
-// Simulation phase type for 3D→2D transition
-type SimulationPhase =
-  | "idle"
-  | "countdown"
-  | "fetching-prediction"
-  | "3d-simulation"
-  | "transition"
-  | "2d-impact"
-  | "2d-aftermath";
-
-// Define the NASA asteroid data type locally if not exported from hook
+// Define the NASA asteroid data type
 interface NASAAsteroidData {
   id: string;
   name: string;
@@ -42,16 +26,32 @@ interface NASAAsteroidData {
   raw_data?: Record<string, unknown>;
 }
 
-export default function Home() {
-  // Simulation phase state for 3D→2D transition
-  const [simulationPhase, setSimulationPhase] =
-    useState<SimulationPhase>("idle");
-
+export default function MapboxSimPage() {
+  // Simulation state
   const [isSimulating, setIsSimulating] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
   const [hasImpacted, setHasImpacted] = useState(false);
+
+  // UI state
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showNASAPanel, setShowNASAPanel] = useState(false);
   const [wasNASAPanelOpen, setWasNASAPanelOpen] = useState(false);
+
+  // Map view controls
+  const [show3DBuildings, setShow3DBuildings] = useState(true);
+  const [streetViewMode, setStreetViewMode] = useState(false);
+  const [enhancedBuildings, setEnhancedBuildings] = useState(true);
+
+  // Impact location state
+  const [impactLocation, setImpactLocation] = useState({
+    longitude: -74.5,
+    latitude: 40.7,
+    city: "New York",
+    country: "USA",
+  });
+  const [simulationStatus, setSimulationStatus] = useState("Ready to simulate");
+  const [currentSimulation, setCurrentSimulation] = useState<any>(null);
+
+  // Asteroid parameters
   const [asteroidParams, setAsteroidParams] = useState({
     diameter: 400,
     velocity: 20,
@@ -62,6 +62,8 @@ export default function Home() {
     craterSize: 0,
     affectedRadius: 0,
   });
+
+  // Impact data
   const [impactData, setImpactData] = useState({
     energy: 0,
     crater: 0,
@@ -69,146 +71,24 @@ export default function Home() {
     threatLevel: "MINIMAL",
   });
 
-  // NASA data integration
+  // NASA integration
   const [selectedNASAAsteroid, setSelectedNASAAsteroid] =
     useState<NASAAsteroidData | null>(null);
-  const [showNASAPanel, setShowNASAPanel] = useState(false);
   const [currentDistance, setCurrentDistance] = useState<number | undefined>(
     undefined
   );
 
-  // Enhanced predictions for 2D visualization
-  const { getEnhancedPrediction } = useEnhancedPredictions();
-  const [enhancedPrediction, setEnhancedPrediction] =
-    useState<EnhancedPrediction | null>(null);
-  const [impactLocation, setImpactLocation] = useState({ lat: 0, lng: 0 });
-  const [asteroidClicked, setAsteroidClicked] = useState(false);
-  const [callout, setCallout] = useState<{
-    x: number;
-    y: number;
-    visible: boolean;
-  }>({ x: 0, y: 0, visible: false });
-  const [showBoxes, setShowBoxes] = useState<{
-    asteroid: boolean;
-    consequence: boolean;
-    usgs: boolean;
-  }>({ asteroid: true, consequence: false, usgs: false });
-  const [resetTimer, setResetTimer] = useState<number | null>(null);
-
-  // Timeout refs for cleanup
-  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const aftermathTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const autoResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Handle countdown and automatic start
-  useEffect(() => {
-    if (countdown !== null && countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown(countdown - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    } else if (countdown === 0) {
-      // DON'T start simulation immediately - wait for prediction if fetching
-      if (simulationPhase === "fetching-prediction") {
-        console.log(
-          "⏳ Waiting for prediction to complete before starting simulation..."
-        );
-        // Keep countdown at 0, will be triggered when prediction completes
-      } else {
-        setIsSimulating(true);
-        setCountdown(null);
-        setSimulationPhase("3d-simulation");
-      }
-    }
-  }, [countdown, simulationPhase]);
-
-  // Fetch enhanced prediction during countdown (BEFORE simulation starts)
-  useEffect(() => {
-    const fetchPrediction = async () => {
-      if (countdown === 4 && selectedNASAAsteroid) {
-        console.log("🚀 Fetching enhanced prediction during countdown...");
-        setSimulationPhase("fetching-prediction");
-
-        try {
-          const prediction = await getEnhancedPrediction(
-            selectedNASAAsteroid.id
-          );
-
-          if (prediction) {
-            setEnhancedPrediction(prediction);
-            console.log("✅ Enhanced prediction fetched:", prediction);
-
-            // Use real impact location from prediction if available
-            if (prediction.impact_location) {
-              const lat = prediction.impact_location.latitude ?? 0;
-              const lng = prediction.impact_location.longitude ?? 0;
-              setImpactLocation({ lat, lng });
-              console.log(
-                "📍 Impact location set to:",
-                `${lat.toFixed(2)}°, ${lng.toFixed(2)}° (${
-                  prediction.impact_location.type || "unknown"
-                })`
-              );
-            } else {
-              console.warn(
-                "⚠️ No impact_location in prediction, using default (0, 0)"
-              );
-            }
-          }
-        } catch (error) {
-          console.error("❌ Failed to fetch enhanced prediction:", error);
-        }
-
-        // Set back to countdown - the effect above will start simulation if countdown is 0
-        setSimulationPhase("countdown");
-      }
-    };
-
-    fetchPrediction();
-  }, [countdown, selectedNASAAsteroid, getEnhancedPrediction]);
-
-  // Start simulation when prediction completes and countdown is at 0
-  useEffect(() => {
-    if (countdown === 0 && simulationPhase === "countdown" && !isSimulating) {
-      console.log("🎬 Starting simulation now that prediction is ready!");
-      setIsSimulating(true);
-      setCountdown(null);
-      setSimulationPhase("3d-simulation");
-    }
-  }, [countdown, simulationPhase, isSimulating]);
-
-  // Reset timer countdown
-  useEffect(() => {
-    if (resetTimer !== null && resetTimer > 0) {
-      console.log(`⏱️ Reset timer: ${resetTimer} seconds remaining`);
-      const timer = setTimeout(() => {
-        console.log(
-          `⏱️ Timer tick - decrementing from ${resetTimer} to ${resetTimer - 1}`
-        );
-        setResetTimer(resetTimer - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    } else if (resetTimer === 0) {
-      console.log(
-        "⏱️ Reset timer reached 0 (but auto-reset timeout should have already fired)"
-      );
-    }
-  }, [resetTimer]);
-
-  useEffect(() => {
-    if (!isSimulating) {
-      setCurrentDistance(undefined);
-    }
-  }, [isSimulating]);
+  // MapboxMap reference
+  const mapboxRef = useRef<any>(null);
 
   // Calculate impact data whenever params change
   useEffect(() => {
     const volume = (4 / 3) * Math.PI * Math.pow(asteroidParams.diameter / 2, 3);
-    const mass = volume * 3000;
+    const mass = volume * 3000; // Assuming density of 3000 kg/m³
     const velocityMs = asteroidParams.velocity * 1000;
     const energy = 0.5 * mass * velocityMs * velocityMs;
-    const energyMt = energy / 4.184e15;
-    const craterSize = (1.8 * Math.pow(energy / (2700 * 9.81), 0.25)) / 1000;
+    const energyMt = energy / 4.184e15; // Convert to megatons
+    const craterSize = (1.8 * Math.pow(energy / (2700 * 9.81), 0.25)) / 1000; // km
     const affectedRadius = craterSize * 10;
 
     let threatLevel = "MINIMAL";
@@ -232,113 +112,7 @@ export default function Home() {
     }));
   }, [asteroidParams.diameter, asteroidParams.velocity]);
 
-  const handleStartImpact = () => {
-    if (!isSimulating && !countdown) {
-      setCountdown(10);
-      setHasImpacted(false);
-      setAsteroidClicked(false);
-      setSimulationPhase("countdown");
-      setWasNASAPanelOpen(showNASAPanel);
-      setIsSidebarCollapsed(true);
-      setShowNASAPanel(false);
-    } else {
-      setIsSimulating(false);
-      setCountdown(null);
-      setSimulationPhase("idle");
-      setIsSidebarCollapsed(false);
-      setShowNASAPanel(wasNASAPanelOpen);
-    }
-  };
-
-  const handleReset = () => {
-    console.log("🔄 handleReset called");
-
-    // Clear any pending timeouts
-    if (transitionTimeoutRef.current) {
-      clearTimeout(transitionTimeoutRef.current);
-      transitionTimeoutRef.current = null;
-    }
-    if (aftermathTimeoutRef.current) {
-      clearTimeout(aftermathTimeoutRef.current);
-      aftermathTimeoutRef.current = null;
-    }
-    if (autoResetTimeoutRef.current) {
-      clearTimeout(autoResetTimeoutRef.current);
-      autoResetTimeoutRef.current = null;
-    }
-
-    setIsSimulating(false);
-    setCountdown(null);
-    setHasImpacted(false);
-    setAsteroidClicked(false);
-    setSimulationPhase("idle");
-    setEnhancedPrediction(null);
-    setIsSidebarCollapsed(false);
-    setShowNASAPanel(wasNASAPanelOpen);
-    setResetTimer(null);
-    console.log("✅ Reset complete");
-  };
-
-  const handleImpact = () => {
-    const impactTime = Date.now();
-    console.log("💥 Impact detected! Starting 3D→2D transition...", {
-      time: impactTime,
-    });
-    setHasImpacted(true);
-    setSimulationPhase("transition");
-    console.log("🔥 Transition phase active - flash should show!");
-
-    // Clear any existing timeouts
-    if (transitionTimeoutRef.current) {
-      console.log("⚠️ Clearing existing transition timeout");
-      clearTimeout(transitionTimeoutRef.current);
-    }
-    if (aftermathTimeoutRef.current) {
-      console.log("⚠️ Clearing existing aftermath timeout");
-      clearTimeout(aftermathTimeoutRef.current);
-    }
-    if (autoResetTimeoutRef.current) {
-      console.log("⚠️ Clearing existing auto-reset timeout");
-      clearTimeout(autoResetTimeoutRef.current);
-    }
-
-    // Transition to 2D after 400ms
-    transitionTimeoutRef.current = setTimeout(() => {
-      const transitionTime = Date.now();
-      console.log("🎯 Transitioning to 2D impact visualization...", {
-        time: transitionTime,
-        elapsed: transitionTime - impactTime,
-      });
-      setIsSimulating(false);
-      setSimulationPhase("2d-impact");
-      setResetTimer(26);
-      console.log("⏱️ Reset timer started at 30 seconds");
-    }, 400);
-
-    // Move to aftermath after 3400ms
-    aftermathTimeoutRef.current = setTimeout(() => {
-      const aftermathTime = Date.now();
-      console.log("📊 Moving to aftermath analysis...", {
-        time: aftermathTime,
-        elapsed: aftermathTime - impactTime,
-      });
-      setSimulationPhase("2d-aftermath");
-      setIsSidebarCollapsed(false);
-      setShowNASAPanel(false);
-    }, 3400);
-
-    // Auto-reset after 30400ms (30 seconds after the 400ms transition)
-    autoResetTimeoutRef.current = setTimeout(() => {
-      const resetTime = Date.now();
-      console.log("🔄 Auto-reset timeout fired!", {
-        time: resetTime,
-        elapsed: resetTime - impactTime,
-        expectedElapsed: 30400,
-      });
-      handleReset();
-    }, 30400);
-  };
-
+  // Load NASA asteroid data
   const loadNASAAsteroid = (asteroid: NASAAsteroidData) => {
     console.log("Loading NASA asteroid data:", asteroid);
 
@@ -364,270 +138,132 @@ export default function Home() {
     const newVelocity = Number(asteroid.velocity) || 20;
     const newDistance = Math.min(Number(asteroid.distance) || 100000, 500000);
 
-    const volume = (4 / 3) * Math.PI * Math.pow(newDiameter / 2, 3);
-    const mass = volume * 3000;
-    const velocityMs = newVelocity * 1000;
-    const energy = 0.5 * mass * velocityMs * velocityMs;
-    const energyMt = energy / 4.184e15;
-    const craterSize = (1.8 * Math.pow(energy / (2700 * 9.81), 0.25)) / 1000;
-    const affectedRadius = craterSize * 10;
-
     setAsteroidParams((prev) => ({
       ...prev,
       diameter: newDiameter,
       velocity: newVelocity,
       distance: newDistance,
       angle: 45,
-      mass: mass,
-      energy: energyMt,
-      craterSize: craterSize,
-      affectedRadius: affectedRadius,
     }));
 
     setSelectedNASAAsteroid(asteroid);
+
+    // Update MapboxMap with new asteroid
+    if (mapboxRef.current?.updateAsteroidData) {
+      mapboxRef.current.updateAsteroidData({
+        diameter: newDiameter,
+        velocity: newVelocity,
+        name: asteroid.name,
+      });
+    }
   };
+
+  const handleStartImpact = () => {
+    if (!isSimulating) {
+      setHasImpacted(false);
+      setWasNASAPanelOpen(showNASAPanel);
+      setIsSidebarCollapsed(true);
+      setShowNASAPanel(false);
+      setIsSimulating(true);
+      // Trigger impact animation immediately
+      if (mapboxRef.current?.runImpactAnimation) {
+        mapboxRef.current.runImpactAnimation();
+      }
+    } else {
+      // Cancel simulation
+      setIsSimulating(false);
+      setIsSidebarCollapsed(false);
+      setShowNASAPanel(wasNASAPanelOpen);
+      if (mapboxRef.current?.resetSimulation) {
+        mapboxRef.current.resetSimulation();
+      }
+    }
+  };
+
+  const handleSimulationUpdate = (simulation: any) => {
+    setCurrentSimulation(simulation);
+  };
+
+  const handleReset = () => {
+    console.log("🔄 handleReset called");
+    setIsSimulating(false);
+    setHasImpacted(false);
+    setIsSidebarCollapsed(false);
+    setShowNASAPanel(wasNASAPanelOpen);
+    setCurrentSimulation(null); // Clear simulation data
+    if (mapboxRef.current?.resetSimulation) {
+      mapboxRef.current.resetSimulation();
+    }
+  };
+
+  const handleMapControlsChange = (controls: {
+    show3DBuildings: boolean;
+    streetViewMode: boolean;
+    enhancedBuildings: boolean;
+  }) => {
+    setShow3DBuildings(controls.show3DBuildings);
+    setStreetViewMode(controls.streetViewMode);
+    setEnhancedBuildings(controls.enhancedBuildings);
+  };
+
+  const handleRunSimulation = () => {
+    // This will be called when the impact simulation is triggered from the sidebar
+    if (mapboxRef.current?.runImpactAnimation) {
+      mapboxRef.current.runImpactAnimation();
+    }
+  };
+
+  const handleLocationClick = (location: any) => {
+    setImpactLocation(location);
+  };
+
+  const handleImpact = () => {
+    console.log("💥 Impact detected!");
+    setHasImpacted(true);
+    setIsSimulating(false);
+
+    // Auto-reset after 30 seconds
+    setTimeout(() => {
+      handleReset();
+    }, 30000);
+  };
+
+  // Reset when simulation stops
+  useEffect(() => {
+    if (!isSimulating) {
+      setCurrentDistance(undefined);
+    }
+  }, [isSimulating]);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black">
-      {/* OPTIMIZED: Conditional rendering - only mount active layer */}
-      {simulationPhase === "2d-impact" ||
-      simulationPhase === "2d-aftermath" ||
-      simulationPhase === "transition" ? (
-        /* 2D Layer - Only mounted during 2D phases AND transition */
-        <div
-          className="absolute inset-0 animate-in fade-in duration-700"
-          style={{ zIndex: 0 }}
-        >
-          <div className="w-full h-full flex flex-col items-center justify-center p-8 gap-6">
-            <div className="w-full max-w-6xl relative">
-              <TerrainVisualizer
-                width={1200}
-                height={600}
-                asteroidData={{
-                  impactLat: impactLocation.lat,
-                  impactLng: impactLocation.lng,
-                  craterRadius: asteroidParams.craterSize,
-                  energy: asteroidParams.energy,
-                }}
-                simulationPhase={
-                  simulationPhase === "2d-impact" ? "impact" : "aftermath"
-                }
-                showImpact={true}
-                enhancedPrediction={enhancedPrediction || undefined}
-                onAsteroidClick={(x, y) => {
-                  if (asteroidClicked && callout.visible) {
-                    setAsteroidClicked(false);
-                    setCallout((c) => ({ ...c, visible: false }));
-                    setShowBoxes({
-                      asteroid: false,
-                      consequence: false,
-                      usgs: false,
-                    });
-                    return;
-                  }
-                  setAsteroidClicked(true);
-                  setCallout({ x, y, visible: true });
-                  setShowBoxes({
-                    asteroid: true,
-                    consequence: false,
-                    usgs: true,
-                  });
-                }}
-              />
+      {/* MapboxMap Component - Full Screen Background */}
+      <div className="absolute inset-0" style={{ zIndex: 0 }}>
+        <MapboxMap
+          ref={mapboxRef}
+          className="w-full h-full"
+          asteroidParams={asteroidParams}
+          isSimulating={isSimulating}
+          impactLocation={impactLocation}
+          onImpact={handleImpact}
+          onDistanceUpdate={setCurrentDistance}
+          onLocationClick={handleLocationClick}
+          onStatusChange={setSimulationStatus}
+          onSimulationUpdate={handleSimulationUpdate}
+          show3DBuildings={show3DBuildings}
+          streetViewMode={streetViewMode}
+          enhancedBuildings={enhancedBuildings}
+        />
+      </div>
 
-              {enhancedPrediction && asteroidClicked && callout.visible && (
-                <div
-                  className="absolute z-50"
-                  style={{
-                    left: callout.x + 24,
-                    top: callout.y + 24,
-                  }}
-                >
-                  {/* Skinny connector line */}
-                  <div className="absolute -left-20 top-8 w-20 h-px bg-white/30"></div>
-
-                  {/* Tooltip box styled like sidebar/NASA overlays */}
-                  <div className="bg-black/80 backdrop-blur-md border border-white/20 rounded-xl p-4 shadow-2xl min-w-[260px] max-w-sm">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-sm font-semibold text-white/90">
-                        {selectedNASAAsteroid?.name || "Asteroid"}
-                      </h4>
-                      <button
-                        className="text-white/60 hover:text-white"
-                        onClick={() => {
-                          setAsteroidClicked(false);
-                          setCallout((c) => ({ ...c, visible: false }));
-                        }}
-                        aria-label="Close"
-                      >
-                        ×
-                      </button>
-                    </div>
-
-                    <div className="text-xs text-white/70 space-y-1">
-                      <div className="flex justify-between">
-                        <span>Diameter</span>
-                        <span className="text-white font-medium">
-                          {asteroidParams.diameter.toFixed(0)} m
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Energy</span>
-                        <span className="text-white font-medium">
-                          {asteroidParams.energy.toFixed(1)} MT
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Threat</span>
-                        <span className="text-white font-medium">
-                          {impactData.threatLevel}
-                        </span>
-                      </div>
-                    </div>
-
-                    {enhancedPrediction?.impact_physics && (
-                      <div className="mt-3 pt-3 border-t border-white/10 text-xs text-white/70 space-y-1">
-                        <div className="flex justify-between">
-                          <span>Crater Diameter</span>
-                          <span className="text-white font-medium">
-                            {enhancedPrediction.impact_physics.craterDiameter?.toFixed(
-                              2
-                            ) ?? "—"}{" "}
-                            km
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Damage Radius</span>
-                          <span className="text-white font-medium">
-                            {enhancedPrediction.impact_physics.affectedRadius?.toFixed(
-                              1
-                            ) ?? "—"}{" "}
-                            km
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Location</span>
-                          <span className="text-white font-medium">
-                            {impactLocation.lat.toFixed(2)}°,{" "}
-                            {impactLocation.lng.toFixed(2)}°
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>EQ Magnitude</span>
-                          <span className="text-white font-medium">
-                            {enhancedPrediction.impact_physics.earthquakeMagnitude?.toFixed?.(
-                              1
-                            ) ?? "—"}
-                          </span>
-                        </div>
-                        {enhancedPrediction?.usgsData &&
-                          enhancedPrediction.usgsData.expectedTsunamiHeight >
-                            0 && (
-                            <div className="flex justify-between">
-                              <span>Tsunami</span>
-                              <span className="text-white font-medium">
-                                {enhancedPrediction.usgsData?.expectedTsunamiHeight.toFixed(
-                                  1
-                                )}{" "}
-                                m
-                              </span>
-                            </div>
-                          )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Impact consequences tooltip removed; data merged into info tooltip */}
-
-              {/* USGS tooltip (top-left, opposite of info box) */}
-              {enhancedPrediction &&
-                asteroidClicked &&
-                callout.visible &&
-                showBoxes.usgs && (
-                  <div
-                    className="absolute z-50"
-                    style={{
-                      left: callout.x - 24 - 360,
-                      top: callout.y - 24 - 220,
-                    }}
-                  >
-                    <div className="absolute -right-32 top-8 w-32 h-px bg-white/30"></div>
-                    <div className="bg-black/80 backdrop-blur-md border border-white/20 rounded-xl p-4 shadow-2xl min-w-[300px] max-w-md">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-sm font-semibold text-white/90">
-                          USGS Assessment
-                        </h4>
-                        <button
-                          className="text-white/60 hover:text-white"
-                          onClick={() =>
-                            setShowBoxes((s) => ({ ...s, usgs: false }))
-                          }
-                          aria-label="Close"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      <USGSDataPanel
-                        prediction={enhancedPrediction}
-                        variant="inline"
-                      />
-                    </div>
-                  </div>
-                )}
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* 3D Layer - Only mounted during non-2D phases */
-        <div
-          className="absolute inset-0"
-          style={{ zIndex: 0, isolation: "isolate" }}
-        >
-          <ImpactSimulator
-            asteroidParams={asteroidParams}
-            isSimulating={isSimulating}
-            hasImpacted={hasImpacted}
-            onImpact={handleImpact}
-            onDistanceUpdate={setCurrentDistance}
-          />
-        </div>
-      )}
-
-      {/* UI Layer Container - Higher z-index */}
+      {/* UI Layer Container */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           zIndex: 10,
-          isolation: "isolate", // Create new stacking context
+          isolation: "isolate",
         }}
       >
-        {/* Countdown Overlay */}
-        {countdown !== null && (
-          <div
-            className="absolute inset-0 flex items-center justify-center pointer-events-none"
-            style={{ zIndex: 30 }}
-          >
-            <div className="text-8xl font-bold text-white animate-pulse drop-shadow-2xl">
-              {countdown}
-            </div>
-          </div>
-        )}
-
-        {/* Reset Timer */}
-        {resetTimer !== null && resetTimer > 0 && (
-          <div
-            className="absolute top-20 right-4 pointer-events-none"
-            style={{ zIndex: 30 }}
-          >
-            <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-white/20">
-              <div className="text-xs text-white/60 mb-1">Auto-reset in</div>
-              <div className="text-2xl font-bold text-white">{resetTimer}s</div>
-            </div>
-          </div>
-        )}
-
         {/* Impact Flash Effect */}
         {hasImpacted && (
           <div
@@ -638,17 +274,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* Transition Flash Effect - Full screen orange flash during 3D→2D transition */}
-        {simulationPhase === "transition" && (
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ zIndex: 40 }}
-          >
-            <div className="w-full h-full bg-orange-500 animate-[flash_0.4s_ease-out]"></div>
-          </div>
-        )}
-
-        {/* Navbar - Enable pointer events */}
+        {/* Navbar */}
         <div className="pointer-events-auto" style={{ zIndex: 50 }}>
           <Navbar
             isSidebarCollapsed={isSidebarCollapsed}
@@ -657,7 +283,6 @@ export default function Home() {
             toggleNASAPanel={() => setShowNASAPanel(!showNASAPanel)}
             selectedNASAAsteroid={selectedNASAAsteroid}
             isSimulating={isSimulating}
-            countdown={countdown}
             currentDistance={currentDistance}
             hasImpacted={hasImpacted}
           />
@@ -668,7 +293,7 @@ export default function Home() {
           className="absolute top-16 left-0 right-0 bottom-0 flex h-[calc(100vh-4rem)]"
           style={{ zIndex: 40 }}
         >
-          {/* Left Sidebar - Enable pointer events */}
+          {/* Left Sidebar */}
           <div className="pointer-events-auto">
             <LeftSidebar
               isCollapsed={isSidebarCollapsed}
@@ -676,13 +301,19 @@ export default function Home() {
               setAsteroidParams={setAsteroidParams}
               impactData={impactData}
               selectedNASAAsteroid={selectedNASAAsteroid}
-              isSimulating={isSimulating || countdown !== null}
+              isSimulating={isSimulating}
               onStartImpact={handleStartImpact}
               onReset={handleReset}
+              onMapControlsChange={handleMapControlsChange}
+              onRunSimulation={handleRunSimulation}
+              onLocationChange={handleLocationClick}
+              simulationStatus={simulationStatus}
+              currentSimulation={currentSimulation}
+              impactLocation={impactLocation}
             />
           </div>
 
-          {/* Main 3D View Area */}
+          {/* Main View Area */}
           <div className="flex-1 relative">
             {/* NASA Data Panel Overlay */}
             {showNASAPanel && (
@@ -694,15 +325,7 @@ export default function Home() {
                   <NASADataPanel onSelectAsteroid={loadNASAAsteroid} />
                 </div>
               </div>
-            )}
-
-            {/* Impact Info Overlay */}
-            {hasImpacted && (
-              <div
-                className="absolute bottom-0 left-0 flex items-end h-auto pointer-events-auto"
-                style={{ zIndex: 45 }}
-              ></div>
-            )}
+            )}           
           </div>
         </div>
       </div>
