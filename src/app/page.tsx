@@ -53,7 +53,7 @@ export default function Home() {
   const [hasImpacted, setHasImpacted] = useState(false);
   const [wasNASAPanelOpen, setWasNASAPanelOpen] = useState(false);
   const [asteroidParams, setAsteroidParams] = useState({
-    diameter: 200,
+    diameter: 400,
     velocity: 20,
     angle: 45,
     distance: 10000,
