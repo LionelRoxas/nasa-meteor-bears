@@ -999,25 +999,25 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         sceneRef.current.add(explosion);
         console.log('Explosion created at impact location:', endPosition);
         
-        // Remove asteroid and trail
+        // Remove asteroid and trail (impact moment)
         sceneRef.current.remove(asteroidMeshRef.current);
         sceneRef.current.remove(trail);
         sceneRef.current.remove(aura);
-        console.log('Asteroid and trail removed from scene');
-        
-        // Explosion animation
-        for (let i = 0; i < 20; i++) {
-          explosion.scale.multiplyScalar(1.2);
-          explosionMaterial.opacity *= 0.9;
-          await new Promise(resolve => setTimeout(resolve, 100));
+        console.log('Asteroid and trail removed from scene (impact moment)');
+
+        // IMMEDIATE crater & damage zones (trigger simulation now)
+        setCurrentSimulation(simulation);
+        setStatus('Impact! Calculating crater and damage zones...');
+
+        // Run explosion animation while crater already visible
+        for (let i = 0; i < 16; i++) {
+          explosion.scale.multiplyScalar(1.22);
+          explosionMaterial.opacity *= 0.88;
+          await new Promise(resolve => setTimeout(resolve, 70));
         }
-        
         sceneRef.current.remove(explosion);
-        console.log('Explosion animation complete');
+        console.log('Explosion animation complete (crater already displayed)');
       }
-      
-      // Set simulation to trigger damage zone rendering
-      setCurrentSimulation(simulation);
       
       // Zoom to the actual impact site where the pin was placed
       await new Promise<void>((resolve) => {
