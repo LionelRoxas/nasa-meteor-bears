@@ -37,6 +37,7 @@ The project now includes a sophisticated 3D Earth visualization powered by Mapbo
    NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token_here
    ```
 3. Visit `/mapbox-sim` to experience the interactive 3D Earth simulator
+
 - Provides enhanced predictions using LLM-based earthquake correlation analysis
 
 ---
@@ -96,6 +97,13 @@ All calculations use peer-reviewed formulas:
 - Seismic wave propagation (5 concurrent waves)
 - Debris particle physics (100 particles with gravity simulation)
 
+#### Impact Radius Overlays (Mapbox GL)
+
+- Concentric, animated overlays for crater, fireball, wind blast, shockwave, earthquake, and tsunami
+- Accurate radii derived from physics outputs and trajectory-predicted impact location
+- Smooth pulsing animation with separate color and opacity channels for visual clarity
+- Outlines on outer rings for readability against varied basemaps
+
 ### AI-Enhanced Predictions
 
 - **GROQ LLM Integration** for intelligent risk assessment
@@ -116,6 +124,12 @@ All calculations use peer-reviewed formulas:
 - 10-second countdown before simulation
 - Auto-reset after 30 seconds
 - Real-time parameter updates
+
+#### Location Controls
+
+- Toggle between **Predicted Location** (from trajectory) and **Custom Pin**
+- One-click pin placement on the map with clear placement state
+- Street View mode and 3D building damage visualization toggles
 
 ---
 
@@ -154,6 +168,9 @@ GROQ_API_KEY=your_groq_api_key_here
 
 # NASA API key (optional - uses DEMO_KEY by default)
 NASA_API_KEY=your_nasa_api_key
+
+# Mapbox (required for 3D Earth and impact overlays)
+NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token
 ```
 
 Get a free GROQ API key at: https://console.groq.com/keys
@@ -180,6 +197,7 @@ src/
 │       └── asteroid-trajectory.ts        # Keplerian orbital mechanics
 ├── components/
 │   ├── ImpactSimulator.tsx               # 3D Three.js simulation
+│   ├── ImpactRadiusOverlay.tsx           # Mapbox animated impact radius layers
 │   ├── TerrainVisualizer.tsx             # 2D impact terrain renderer
 │   ├── NASADataPanel.tsx                 # NASA asteroid browser
 │   ├── USGSDataPanel.tsx                 # USGS data display
@@ -224,6 +242,8 @@ src/
 - Observe 3D orbital descent with trail effects
 - Experience transition to 2D impact visualization
 - View real terrain, crater formation, shockwaves, and debris
+
+Tip: You can also explore overlays on the Mapbox demo page at `/mapbox-sim`.
 
 ### 4. **Analyze Results**
 
