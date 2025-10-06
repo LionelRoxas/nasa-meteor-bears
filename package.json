@@ -3,18 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "dev": "next dev",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@types/three": "^0.180.0",
+    "cesium": "^1.134.0",
     "groq": "^4.10.2",
     "groq-sdk": "^0.33.0",
     "next": "15.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "resium": "^1.19.0-beta.1",
     "three": "^0.180.0"
   },
   "devDependencies": {
