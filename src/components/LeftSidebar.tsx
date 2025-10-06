@@ -4,6 +4,7 @@
 "use client";
 
 import React from "react";
+import AsteroidPreview from "./AsteroidPreview";
 
 interface AsteroidParams {
   diameter: number;
@@ -54,7 +55,7 @@ export default function LeftSidebar({
   if (isCollapsed) return null;
 
   return (
-    <div className="absolute top-4 left-4 z-10 w-[380px] h-[520px] bg-black/70 backdrop-blur-lg rounded-lg border border-white/10 overflow-hidden flex flex-col shadow-2xl">
+    <div className="absolute top-4 left-4 z-10 w-[380px] h-[720px] bg-black/70 backdrop-blur-lg rounded-lg border border-white/10 overflow-hidden flex flex-col shadow-2xl">
       {/* Header */}
       <div className="bg-black/50 backdrop-blur-sm border-b border-white/10">
         <div className="px-5 py-3">
@@ -75,6 +76,11 @@ export default function LeftSidebar({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
+        {/* 3D Asteroid Preview */}
+        <div className="mb-6">
+          <AsteroidPreview diameter={asteroidParams.diameter} />
+        </div>
+
         {/* Parameters */}
         <div className="space-y-4 mb-6">
           {/* Asteroid Diameter */}
