@@ -2,9 +2,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import MapboxMap from "@/components/MapboxMap2";
+import MapboxMap from "@/components/MapboxMap3";
 import NASADataPanel from "@/components/NASADataPanel";
-import LeftSidebar from "@/components/LeftSidebar";
+import LeftSidebar from "@/components/LeftSidebar2y";
 import Navbar from "@/components/Navbar";
 
 // Define the NASA asteroid data type
@@ -325,7 +325,7 @@ export default function MapboxSimPage() {
                   <NASADataPanel onSelectAsteroid={loadNASAAsteroid} />
                 </div>
               </div>
-            )}           
+            )}
           </div>
         </div>
       </div>

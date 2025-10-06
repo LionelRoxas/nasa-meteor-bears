@@ -141,6 +141,8 @@ export interface EnhancedPrediction {
     expectedTsunamiHeight: number;
     secondaryHazards: string[];
   };
+  // FULL consequence prediction data from consequence-predictor.ts
+  consequencePrediction?: any; // Contains ALL fields: comprehensiveImpact, thermalEffects, blastEffects, windEffects, casualties, etc.
 }
 
 export function useEnhancedPredictions() {
@@ -308,6 +310,10 @@ export function useEnhancedPredictions() {
         console.log("🔗 Combining consequence prediction with enhanced prediction");
         console.log("📊 Consequence prediction has usgsData:", !!consequencePrediction.usgsData);
 
+        // Store the FULL consequence prediction data (ALL fields from consequence-predictor.ts)
+        enhancedPrediction.consequencePrediction = consequencePrediction;
+
+        // Also extract key fields for easy access
         enhancedPrediction.trajectory = consequencePrediction.trajectory;
         enhancedPrediction.impact_location = {
           latitude: consequencePrediction.trajectory.impact_location.latitude,

@@ -1,9 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 import {
   ImpactPhysicsCalculator,
   type ImpactParameters,
-} from '@/services/impactPhysicsCalculator';
+} from "@/services/impactPhysicsCalculator";
 
 const GEONAMES_API = "http://api.geonames.org/findNearbyPlaceNameJSON";
 const GEONAMES_USERNAME = process.env.GEONAMES_USERNAME || "demo"; // Replace with your username
@@ -20,7 +19,7 @@ export async function POST(request: Request) {
       asteroidDensity,
     } = body;
 
-    console.log('Comprehensive Impact API called:', {
+    console.log("Comprehensive Impact API called:", {
       latitude,
       longitude,
       diameter,
@@ -49,29 +48,32 @@ export async function POST(request: Request) {
     // Get USGS assessment for earthquake and tsunami validation
     let usgsData = null;
     try {
-      const usgsResponse = await fetch(`${request.url.split('/comprehensive-impact')[0]}/usgs-assessment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latitude,
-          longitude,
-          impactEnergy: results.energy * 4.184e24, // Convert gigatons to joules
-          craterDiameter: results.crater.diameter / 0.621371, // Convert miles to km
-        }),
-      });
+      const usgsResponse = await fetch(
+        `${request.url.split("/comprehensive-impact")[0]}/usgs-assessment`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            latitude,
+            longitude,
+            impactEnergy: results.energy * 4.184e24, // Convert gigatons to joules
+            craterDiameter: results.crater.diameter / 0.621371, // Convert miles to km
+          }),
+        }
+      );
 
       if (usgsResponse.ok) {
         usgsData = await usgsResponse.json();
-        console.log('USGS validation data received:', {
+        console.log("USGS validation data received:", {
           seismicZone: usgsData.seismicZone?.zone,
           tsunamiRisk: usgsData.tsunamiRisk?.riskLevel,
         });
       }
     } catch (error) {
-      console.warn('Could not fetch USGS validation data:', error);
+      console.warn("Could not fetch USGS validation data:", error);
     }
 
-    console.log('Impact calculation completed:', {
+    console.log("Impact calculation completed:", {
       energy: results.energy,
       craterDiameter: results.crater.diameter,
       totalDeaths: results.totalCasualties.deaths,
@@ -112,12 +114,12 @@ export async function POST(request: Request) {
       usgsValidation: usgsData,
     });
   } catch (error) {
-    console.error('Comprehensive Impact API error:', error);
+    console.error("Comprehensive Impact API error:", error);
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to calculate impact',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        error: "Failed to calculate impact",
+        message: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     );
@@ -131,7 +133,13 @@ export async function POST(request: Request) {
 async function getPopulationData(
   latitude: number,
   longitude: number
-): Promise<{ density: number; nearestCity?: { name: string; population: number; distance: number } } | undefined> {
+): Promise<
+  | {
+      density: number;
+      nearestCity?: { name: string; population: number; distance: number };
+    }
+  | undefined
+> {
   try {
     // Get nearest populated place
     const geonamesUrl = `${GEONAMES_API}?lat=${latitude}&lng=${longitude}&username=${GEONAMES_USERNAME}&radius=500&maxRows=1`;
@@ -186,7 +194,7 @@ async function getPopulationData(
       density: 0,
     };
   } catch (error) {
-    console.error('Error fetching population data:', error);
+    console.error("Error fetching population data:", error);
 
     // Fallback: estimate based on general location
     // Ocean regions have 0 density, land has at least some population
@@ -202,17 +210,17 @@ async function getPopulationData(
 function estimateDensityFromCoordinates(lat: number, lng: number): number {
   // Major urban areas (rough estimates)
   const urbanCenters = [
-    { name: 'Tokyo', lat: 35.6762, lng: 139.6503, density: 6000 },
-    { name: 'Delhi', lat: 28.7041, lng: 77.1025, density: 11000 },
-    { name: 'Shanghai', lat: 31.2304, lng: 121.4737, density: 3800 },
-    { name: 'São Paulo', lat: -23.5505, lng: -46.6333, density: 7400 },
-    { name: 'Mumbai', lat: 19.0760, lng: 72.8777, density: 20000 },
-    { name: 'Cairo', lat: 30.0444, lng: 31.2357, density: 19000 },
-    { name: 'Beijing', lat: 39.9042, lng: 116.4074, density: 1300 },
-    { name: 'New York', lat: 40.7128, lng: -74.0060, density: 10700 },
-    { name: 'Los Angeles', lat: 34.0522, lng: -118.2437, density: 3200 },
-    { name: 'London', lat: 51.5074, lng: -0.1278, density: 5700 },
-    { name: 'Paris', lat: 48.8566, lng: 2.3522, density: 21000 },
+    { name: "Tokyo", lat: 35.6762, lng: 139.6503, density: 6000 },
+    { name: "Delhi", lat: 28.7041, lng: 77.1025, density: 11000 },
+    { name: "Shanghai", lat: 31.2304, lng: 121.4737, density: 3800 },
+    { name: "São Paulo", lat: -23.5505, lng: -46.6333, density: 7400 },
+    { name: "Mumbai", lat: 19.076, lng: 72.8777, density: 20000 },
+    { name: "Cairo", lat: 30.0444, lng: 31.2357, density: 19000 },
+    { name: "Beijing", lat: 39.9042, lng: 116.4074, density: 1300 },
+    { name: "New York", lat: 40.7128, lng: -74.006, density: 10700 },
+    { name: "Los Angeles", lat: 34.0522, lng: -118.2437, density: 3200 },
+    { name: "London", lat: 51.5074, lng: -0.1278, density: 5700 },
+    { name: "Paris", lat: 48.8566, lng: 2.3522, density: 21000 },
   ];
 
   // Find nearest urban center
@@ -275,10 +283,7 @@ function estimateDensityFromCoordinates(lat: number, lng: number): number {
  */
 function isOceanLocation(lat: number, lng: number): boolean {
   // Pacific Ocean
-  if (
-    (lng > 120 && lng < 180) ||
-    (lng > -180 && lng < -100)
-  ) {
+  if ((lng > 120 && lng < 180) || (lng > -180 && lng < -100)) {
     // But exclude major land masses
     if (lng > 100 && lng < 180 && lat > -10 && lat < 60) {
       // Could be Asia/Pacific islands

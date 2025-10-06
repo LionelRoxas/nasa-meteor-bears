@@ -704,7 +704,7 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
       const impactParams: ImpactParameters = {
         diameter: asteroidDiameter,
         velocity: asteroidVelocity,
-        angle: 45, // Default impact angle
+        angle: 45,
         latitude: actualImpactLocation.latitude,
         longitude: actualImpactLocation.longitude,
         asteroidDensity: this.ASTEROID_DENSITY,
@@ -725,68 +725,56 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
       comprehensiveImpact = undefined;
     }
 
-    // Step 1: Extract physics data from comprehensiveImpact (already calculated)
-    // All physics calculations now come from ImpactPhysicsCalculator using EXACT formulas from README.md
-    const energy = comprehensiveImpact
-      ? comprehensiveImpact.energy * 4.184e15 // Convert Gigatons to Joules
-      : 0;
-    const craterDiameter = comprehensiveImpact
-      ? comprehensiveImpact.crater.diameter / 0.621371 // Convert miles to km
-      : 0;
-    const craterDepth = comprehensiveImpact
-      ? ((comprehensiveImpact.crater.depthOnLand || comprehensiveImpact.crater.depthOnSeafloor)! / 0.621371)
-      : 0;
+    // Step 1: Calculate physics-based parameters using EXACT scientific formulas
+    const energy = this.calculateKineticEnergy(asteroid);
+    const craterDiameter = this.calculateCraterDiameter(energy);
+    const craterDepth = this.calculateCraterDepth(craterDiameter);
     const craterRadius = craterDiameter / 2;
-    const earthquakeMagnitude = comprehensiveImpact?.earthquake.magnitude || 0;
-    const tsunamiHeight = comprehensiveImpact?.tsunami?.height;
+    const earthquakeMagnitude = this.calculateEarthquakeMagnitude(energy);
+    const tsunamiHeight = this.calculateTsunamiHeight(
+      energy,
+      actualImpactLocation
+    );
     const affectedRadius = Math.max(craterDiameter * 20, 5); // Significant damage radius based on crater size
-    const megatonsEquivalent = comprehensiveImpact
-      ? comprehensiveImpact.energy * 1000 // Convert Gigatons to Megatons
-      : 0;
+    const megatonsEquivalent = energy / (this.TNT_ENERGY_PER_KG * 1e9);
 
-    // Extract fireball and thermal effects from comprehensiveImpact
-    const fireballRadius = comprehensiveImpact?.fireball.radiusKm || 0;
-    const thermalRadii = {
-      severe: fireballRadius * 1.5, // Approximate from comprehensiveImpact data
-      moderate: fireballRadius * 2,
-      minor: fireballRadius * 2.5,
-    };
+    // Calculate fireball and thermal effects
+    const fireballRadius = this.calculateFireballRadius(megatonsEquivalent);
+    const thermalRadii = this.calculateThermalBurnRadii(megatonsEquivalent);
 
-    // Extract blast/overpressure effects from comprehensiveImpact
-    const blastRadii = {
-      severe: comprehensiveImpact?.shockWave.damageZones.buildingsCollapse / 0.621371 || 0,
-      moderate: comprehensiveImpact?.shockWave.damageZones.homesCollapse / 0.621371 || 0,
-      light: (comprehensiveImpact?.shockWave.damageZones.homesCollapse / 0.621371 || 0) * 1.5,
-      lungDamage: comprehensiveImpact?.shockWave.damageZones.buildingsCollapse / 0.621371 || 0,
-      eardrumRupture: (comprehensiveImpact?.shockWave.damageZones.buildingsCollapse / 0.621371 || 0) * 0.8,
-    };
+    // Calculate blast/overpressure effects
+    const blastRadii = this.calculateBlastRadii(megatonsEquivalent);
 
-    // Extract wind effects from comprehensiveImpact
-    const peakWindSpeed = comprehensiveImpact?.windBlast.peakSpeed || 0;
-    const windRadii = {
-      ef5Tornado: comprehensiveImpact?.windBlast.damageZones.ef5TornadoEquivalent / 0.621371 || 0,
-      homesLeveled: comprehensiveImpact?.windBlast.damageZones.completelyLeveled / 0.621371 || 0,
-      treesKnocked: comprehensiveImpact?.windBlast.damageZones.treesKnockedDown / 0.621371 || 0,
-    };
+    // Calculate wind effects
+    const peakWindSpeed = this.calculatePeakWindSpeed(
+      megatonsEquivalent,
+      craterRadius
+    );
+    const windRadii = this.calculateWindDamageRadii(megatonsEquivalent);
 
-    // Extract shockwave decibels from comprehensiveImpact
-    const shockwaveDecibels = comprehensiveImpact?.shockWave.decibels || 0;
+    // Calculate overpressure and shock wave decibels at crater rim
+    const craterRadiusMeters = craterRadius * 1000;
+    const areaAtRim = 4 * Math.PI * Math.pow(craterRadiusMeters, 2);
+    const overpressureAtRim = Math.pow(energy / areaAtRim, 0.7) / 101325; // atm
+    const shockwaveDecibels =
+      this.calculateShockwaveDecibels(overpressureAtRim);
 
     // Estimate population density at impact location
     const populationDensity =
       trajectory.impact_location.population_density || 100; // people per km²
     const earthquakeZoneArea = Math.PI * Math.pow(affectedRadius, 2);
 
-    // Extract casualties from comprehensiveImpact
-    const casualties = {
-      vaporized: 0, // Not in comprehensiveImpact, keep old calculation if needed
-      fireballDeaths: comprehensiveImpact?.fireball.casualties.deaths || 0,
-      severeBurnDeaths: comprehensiveImpact?.fireball.casualties.thirdDegreeBurns || 0,
-      shockwaveDeaths: comprehensiveImpact?.shockWave.casualties.deaths || 0,
-      windBlastDeaths: comprehensiveImpact?.windBlast.casualties.deaths || 0,
-      earthquakeDeaths: 0, // Calculate separately if needed
-      totalEstimated: comprehensiveImpact?.totalCasualties.deaths || 0,
-    };
+    // Calculate casualties for each effect type
+    const casualties = this.calculateCasualties(
+      populationDensity,
+      craterRadius,
+      fireballRadius,
+      thermalRadii,
+      blastRadii,
+      windRadii,
+      earthquakeMagnitude,
+      earthquakeZoneArea
+    );
 
     // Step 2: Get enhanced correlation data from partner's API (top 10 best matches)
     let correlationData = null;
