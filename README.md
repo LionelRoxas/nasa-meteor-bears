@@ -18,6 +18,25 @@ This project addresses the **NASA Space Apps 2024 "Asteroid Threat Simulator"** 
 - Simulates asteroid trajectories using Keplerian orbital mechanics
 - Calculates impact consequences with scientifically accurate formulas
 - Visualizes 3D orbital paths and 2D impact zones with realistic terrain
+- **NEW**: Interactive 3D Earth visualization with Mapbox GL JS for impact simulation
+
+## 🗺️ Mapbox Integration
+
+The project now includes a sophisticated 3D Earth visualization powered by Mapbox GL JS:
+
+- **3D Globe**: Realistic Earth rendering with satellite imagery and terrain
+- **Interactive Impact Selection**: Click anywhere on Earth to select impact locations
+- **Real-time Visualization**: Immediate feedback with impact markers and animations
+- **Immersive Experience**: 3D perspective with atmospheric effects and smooth transitions
+
+### Getting Started with Mapbox
+
+1. Get a Mapbox access token from [mapbox.com](https://account.mapbox.com/access-tokens/)
+2. Create a `.env.local` file and add:
+   ```
+   NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token_here
+   ```
+3. Visit `/mapbox-sim` to experience the interactive 3D Earth simulator
 - Provides enhanced predictions using LLM-based earthquake correlation analysis
 
 ---
