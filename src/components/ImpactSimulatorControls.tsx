@@ -46,6 +46,7 @@ interface ImpactSimulatorControlsProps {
   onRunImpact: () => void;
   onReset: () => void;
   currentSimulation: ImpactSimulation | null;
+  hasImpactOccurred: boolean; // Flag to indicate if impact has finished
   // Pin placement controls
   usePredictedLocation: boolean;
   onToggleLocationMode: () => void;
@@ -69,6 +70,7 @@ export default function ImpactSimulatorControls({
   onRunImpact,
   onReset,
   currentSimulation,
+  hasImpactOccurred,
   // Pin placement controls
   usePredictedLocation,
   onToggleLocationMode,
@@ -317,16 +319,21 @@ export default function ImpactSimulatorControls({
         </div>
       </div>
 
-      {/* Action Buttons - Only show simulate button when location is set */}
+      {/* Action Buttons - Dynamic button that changes based on simulation state */}
       <div className="space-y-2">
-        {/* Simulate Button - Show when we have a location (predicted or pin) and no current simulation */}
-        {((usePredictedLocation || impactPin) && !currentSimulation) && (
+        {/* Dynamic Action Button - Changes from Simulate to Reset based on impact state */}
+        {(usePredictedLocation || impactPin) && (
           <button
-            onClick={onRunImpact}
+            onClick={hasImpactOccurred ? () => {
+              console.log("Reset button clicked - refreshing page");
+              window.location.reload();
+            } : onRunImpact}
             disabled={isAnimating}
             className={`w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider ${
               isAnimating
                 ? "bg-white/10 text-white/50 cursor-not-allowed"
+                : hasImpactOccurred
+                ? "bg-red-600 text-white hover:bg-red-700"
                 : "bg-white text-black backdrop-blur-sm hover:bg-white/90"
             }`}
           >
@@ -335,20 +342,11 @@ export default function ImpactSimulatorControls({
                 <div className="animate-spin rounded-full h-3 w-3 border-b border-white mr-2"></div>
                 Simulating...
               </div>
+            ) : hasImpactOccurred ? (
+              "🔄 Reset Simulation"
             ) : (
               "🚀 Simulate Impact"
             )}
-          </button>
-        )}
-
-        {/* Reset Button - Show when simulation exists */}
-        {currentSimulation && (
-          <button
-            onClick={onReset}
-            disabled={isAnimating}
-            className="w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider bg-gray-600 text-white hover:bg-gray-700 disabled:bg-white/10 disabled:text-white/50 disabled:cursor-not-allowed"
-          >
-            🔄 Reset Simulation
           </button>
         )}
 

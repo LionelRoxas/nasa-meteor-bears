@@ -11,6 +11,7 @@ import {
   useImperativeHandle,
   useMemo,
 } from "react";
+import { useRouter } from "next/navigation";
 import mapboxgl from "mapbox-gl";
 import * as THREE from 'three';
 import { createAsteroidMesh } from '@/lib/asteroid-utils';
@@ -53,6 +54,7 @@ interface MapboxMapProps {
   onLocationClick?: (location: ImpactLocation) => void;
   onStatusChange?: (status: string) => void;
   onSimulationUpdate?: (simulation: ImpactSimulation | null) => void;
+  onImpactOccurred?: (hasImpacted: boolean) => void; // Callback when impact state changes
   show3DBuildings?: boolean;
   streetViewMode?: boolean;
   enhancedBuildings?: boolean;
@@ -155,6 +157,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       onLocationClick,
       onStatusChange,
       onSimulationUpdate,
+      onImpactOccurred,
       show3DBuildings = true,
       streetViewMode = false,
       enhancedBuildings = true,
@@ -167,6 +170,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
     },
     ref
   ) => {
+    const router = useRouter();
     const mapContainer = useRef<HTMLDivElement>(null);
     const [map, setMap] = useState<mapboxgl.Map | null>(null);
     const [mapLoaded, setMapLoaded] = useState(false);
@@ -197,6 +201,11 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       }),
       []
     );
+
+    // Notify parent when impact occurs
+    useEffect(() => {
+      onImpactOccurred?.(hasImpactOccurred);
+    }, [hasImpactOccurred, onImpactOccurred]);
 
     // Update refs when props change
     useEffect(() => {
@@ -1129,6 +1138,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           opacity: 0.3,
           blending: THREE.AdditiveBlending
         });
+        // eslint-disable-next-line prefer-const
         trail = new THREE.Mesh(trailGeometry, trailMaterial);
         
         // Create inner aura
@@ -1139,6 +1149,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           opacity: 0.5,
           blending: THREE.AdditiveBlending
         });
+        // eslint-disable-next-line prefer-const
         aura = new THREE.Mesh(auraGeometry, auraMaterial);
         
         // Screen-space path: start off to the right, impact at exact screen center

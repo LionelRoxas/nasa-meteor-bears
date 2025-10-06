@@ -52,6 +52,7 @@ interface LeftSidebarProps {
   onStartPinPlacement?: () => void;
   onRemovePin?: () => void;
   onToggleLocationMode?: () => void;
+  hasImpactOccurred?: boolean; // Flag to indicate if impact has finished
 }
 
 export default function LeftSidebar({
@@ -80,6 +81,7 @@ export default function LeftSidebar({
   onStartPinPlacement: parentOnStartPinPlacement,
   onRemovePin: parentOnRemovePin,
   onToggleLocationMode,
+  hasImpactOccurred = false,
 }: LeftSidebarProps) {
   const [viewMode, setViewMode] = useState<"parameters" | "simulator">(
     "parameters"
@@ -368,6 +370,7 @@ export default function LeftSidebar({
             onRunImpact={handleRunImpact}
             onReset={onReset}
             currentSimulation={currentSimulation}
+            hasImpactOccurred={hasImpactOccurred}
             // Pin placement props
             usePredictedLocation={usePredictedLocation}
             onToggleLocationMode={handleToggleLocationMode}
