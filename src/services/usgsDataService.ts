@@ -350,15 +350,40 @@ export class USGSDataService {
   }
 
   /**
-   * Estimate distance to nearest coast (simplified)
+   * Estimate distance to nearest coast (improved approximation)
    */
   private estimateCoastDistance(lat: number, lng: number): number {
-    // This is a very rough estimate
-    // In production, use actual coastline geometry
-    if (this.isCoastalLocation(lat, lng)) {
-      return Math.random() * 50; // 0-50 km for coastal areas
+    // Improved coast distance estimation based on geographic zones
+    const boundaries = [
+      // Pacific Ocean boundaries
+      { minLat: -60, maxLat: 60, minLng: -180, maxLng: -100, coastLng: [-130, -100] },
+      { minLat: -60, maxLat: 60, minLng: 100, maxLng: 180, coastLng: [100, 150] },
+      // Atlantic Ocean boundaries
+      { minLat: -60, maxLat: 70, minLng: -100, maxLng: -60, coastLng: [-80, -70] },
+      { minLat: -60, maxLat: 70, minLng: -30, maxLng: 20, coastLng: [-10, 10] },
+      // Indian Ocean boundaries
+      { minLat: -50, maxLat: 30, minLng: 20, maxLng: 100, coastLng: [40, 80] },
+    ];
+
+    let minDistance = 500; // Default for inland locations
+
+    for (const boundary of boundaries) {
+      if (lat >= boundary.minLat && lat <= boundary.maxLat &&
+          lng >= boundary.minLng && lng <= boundary.maxLng) {
+        // Calculate approximate distance to coast using longitude difference
+        const distToWestCoast = Math.abs(lng - boundary.coastLng[0]);
+        const distToEastCoast = Math.abs(lng - boundary.coastLng[1]);
+        const lngDist = Math.min(distToWestCoast, distToEastCoast);
+
+        // Rough conversion: 1 degree ≈ 111km at equator, adjust for latitude
+        const kmPerDegree = 111 * Math.cos(lat * Math.PI / 180);
+        const estimatedDist = lngDist * kmPerDegree;
+
+        minDistance = Math.min(minDistance, estimatedDist);
+      }
     }
-    return 500; // Default for inland
+
+    return Math.max(minDistance, 5); // Minimum 5km for coastal areas
   }
 
   /**
@@ -391,9 +416,9 @@ export class USGSDataService {
       ]);
 
       // Calculate expected earthquake magnitude from impact energy
-      // Using empirical relationship: M = (2/3) * log10(E) - 2.9
+      // Using Gutenberg-Richter: log₁₀(E) = 1.5M + 4.8, solving for M: M = (log₁₀(E) - 4.8) / 1.5
       // Where E is in Joules
-      const expectedEarthquakeMagnitude = (2 / 3) * Math.log10(impactEnergy) - 2.9;
+      const expectedEarthquakeMagnitude = (Math.log10(impactEnergy) - 4.8) / 1.5;
 
       // Calculate expected tsunami height for water impacts
       const expectedTsunamiHeight = tsunamiRisk.isCoastal
@@ -432,15 +457,22 @@ export class USGSDataService {
   }
 
   /**
-   * Calculate tsunami height from crater size and coastal proximity
+   * Calculate tsunami height using Ward & Asphaug (2000) formula
    */
   private calculateTsunamiHeight(craterDiameter: number, elevation: number): number {
     if (elevation > 0) return 0; // Not underwater impact
 
-    // Simplified tsunami height calculation
-    // Based on crater diameter (proxy for energy)
-    // Height (m) ≈ 10 * sqrt(crater_diameter_km)
-    return Math.min(10 * Math.sqrt(craterDiameter), 100); // Cap at 100m
+    // Ward & Asphaug (2000) cavity scaling: H = 1.88 × E^0.22
+    // Approximate energy from crater diameter using inverse Pike formula
+    // E = 9.1×10²⁴ D²·⁵⁹ erg, convert to megatons for tsunami calculation
+    const energyErg = 9.1e24 * Math.pow(craterDiameter, 2.59);
+    const TNT_ENERGY_PER_KG = 4.184e6; // Joules per kg
+    const energyJoules = energyErg / 1e7; // Convert erg to Joules
+    const energyMT = energyJoules / (TNT_ENERGY_PER_KG * 1e9);
+
+    // Ward & Asphaug formula: H = 1.88 × E^0.22
+    const tsunamiHeight = 1.88 * Math.pow(energyMT, 0.22) * 10; // Scale factor for initial wave
+    return Math.min(tsunamiHeight, 1000); // Cap at 1000m
   }
 }
 

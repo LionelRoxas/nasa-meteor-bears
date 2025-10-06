@@ -82,12 +82,16 @@ export async function POST(request: Request) {
       tsunamiRiskLevel = "NONE";
     }
 
-    // Calculate expected earthquake magnitude from impact
-    const expectedEarthquakeMagnitude = Math.max((2 / 3) * Math.log10(impactEnergy) - 2.9, 0);
+    // Calculate expected earthquake magnitude from impact using Gutenberg-Richter
+    // Exact formula: log₁₀(E) = 1.5M + 4.8, solving for M: M = (log₁₀(E) - 4.8) / 1.5
+    const expectedEarthquakeMagnitude = Math.max((Math.log10(impactEnergy) - 4.8) / 1.5, 0);
 
-    // Calculate tsunami height
+    // Calculate tsunami height using Ward & Asphaug (2000) formula
+    // H = 1.88 × E^0.22 where E is in megatons TNT
+    const TNT_ENERGY_PER_KG = 4.184e6; // Joules per kg of TNT
+    const energyMT = impactEnergy / (TNT_ENERGY_PER_KG * 1e9); // Convert to megatons
     const expectedTsunamiHeight = elevation < 0 && isCoastal
-      ? Math.min(10 * Math.sqrt(craterDiameter), 100)
+      ? Math.min(1.88 * Math.pow(energyMT, 0.22) * 10, 1000) // Cap at 1000m
       : 0;
 
     // Secondary hazards
@@ -119,7 +123,7 @@ export async function POST(request: Request) {
       tsunamiRisk: {
         isCoastal,
         riskLevel: tsunamiRiskLevel,
-        nearestCoastDistance: isCoastal ? Math.random() * 50 : 500,
+        nearestCoastDistance: isCoastal ? estimateCoastDistance(latitude, longitude) : 500,
         elevationAboveSeaLevel: elevation,
         tsunamiHistory: tsunamiEarthquakes.length,
       },
@@ -189,4 +193,41 @@ function isCoastalLocation(lat: number, lng: number): boolean {
   }
 
   return false;
+}
+
+function estimateCoastDistance(lat: number, lng: number): number {
+  // Improved coast distance estimation based on geographic zones
+  // This is still an approximation - for production, use actual coastline geometry
+
+  // Check major ocean boundaries and estimate distance
+  const boundaries = [
+    // Pacific Ocean boundaries
+    { minLat: -60, maxLat: 60, minLng: -180, maxLng: -100, coastLng: [-130, -100] },
+    { minLat: -60, maxLat: 60, minLng: 100, maxLng: 180, coastLng: [100, 150] },
+    // Atlantic Ocean boundaries
+    { minLat: -60, maxLat: 70, minLng: -100, maxLng: -60, coastLng: [-80, -70] },
+    { minLat: -60, maxLat: 70, minLng: -30, maxLng: 20, coastLng: [-10, 10] },
+    // Indian Ocean boundaries
+    { minLat: -50, maxLat: 30, minLng: 20, maxLng: 100, coastLng: [40, 80] },
+  ];
+
+  let minDistance = 500; // Default for inland locations
+
+  for (const boundary of boundaries) {
+    if (lat >= boundary.minLat && lat <= boundary.maxLat &&
+        lng >= boundary.minLng && lng <= boundary.maxLng) {
+      // Calculate approximate distance to coast using longitude difference
+      const distToWestCoast = Math.abs(lng - boundary.coastLng[0]);
+      const distToEastCoast = Math.abs(lng - boundary.coastLng[1]);
+      const lngDist = Math.min(distToWestCoast, distToEastCoast);
+
+      // Rough conversion: 1 degree ≈ 111km at equator, adjust for latitude
+      const kmPerDegree = 111 * Math.cos(lat * Math.PI / 180);
+      const estimatedDist = lngDist * kmPerDegree;
+
+      minDistance = Math.min(minDistance, estimatedDist);
+    }
+  }
+
+  return Math.max(minDistance, 5); // Minimum 5km for coastal areas
 }

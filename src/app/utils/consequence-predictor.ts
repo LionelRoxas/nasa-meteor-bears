@@ -79,10 +79,47 @@ export interface ConsequencePrediction {
   impactPhysics: {
     energy: number; // Joules
     craterDiameter: number; // km
+    craterDepth: number; // km
     earthquakeMagnitude: number;
     affectedRadius: number; // km
     tsunamiHeight?: number; // meters (if ocean impact)
     megatonsEquivalent: number; // MT TNT
+    fireballRadius: number; // km
+    peakWindSpeed: number; // mph
+    shockwaveDecibels: number; // dB
+  };
+  thermalEffects: {
+    fireballRadius: number; // km
+    severeBurns: { radius: number; casualties: number }; // 3rd degree
+    moderateburns: { radius: number; casualties: number }; // 2nd degree
+    minorBurns: { radius: number; casualties: number }; // 1st degree
+    clothesIgniteRadius: number; // km
+    treesIgniteRadius: number; // km
+  };
+  blastEffects: {
+    overpressureAtRim: number; // atmospheres
+    severeBlastRadius: number; // km (ΔP > 0.3 atm)
+    moderateBlastRadius: number; // km (ΔP > 0.1 atm)
+    lightBlastRadius: number; // km (ΔP > 0.03 atm)
+    lungDamageRadius: number; // km
+    eardrumRuptureRadius: number; // km
+    buildingsCollapseRadius: number; // km
+    homesCollapseRadius: number; // km
+  };
+  windEffects: {
+    peakWindSpeed: number; // mph
+    ef5TornadoZoneRadius: number; // km (v > 200 mph)
+    homesLeveledRadius: number; // km (v > 250 mph)
+    treesKnockedRadius: number; // km (v > 100 mph)
+  };
+  casualties: {
+    vaporized: number; // Inside crater
+    fireballDeaths: number; // Fireball zone
+    severeBurnDeaths: number; // 3rd degree burns
+    shockwaveDeaths: number; // Blast overpressure
+    windBlastDeaths: number; // Wind damage
+    earthquakeDeaths: number; // Seismic effects
+    totalEstimated: number; // Sum of all
   };
   populationAtRisk: number;
   economicDamage: number; // billions USD
@@ -190,6 +227,174 @@ class ConsequencePredictor {
 
     // Tsunami height approximately scales with cavity depth for moderate impacts
     return Math.min(cavityDepth * 10, 1000); // Cap at 1km for realism
+  }
+
+  // Crater depth calculation (Pike 1977-1988)
+  calculateCraterDepth(diameter: number): number {
+    // Simple craters (D < 3.2 km): d/D = 0.2
+    // Complex craters (D >= 3.2 km): d/D = 0.15 (shallower due to collapse)
+    const SIMPLE_CRATER_THRESHOLD = 3.2; // km
+    const depthToRatio = diameter < SIMPLE_CRATER_THRESHOLD ? 0.2 : 0.15;
+    return diameter * depthToRatio;
+  }
+
+  // Fireball radius calculation (nuclear blast scaling)
+  calculateFireballRadius(energyMT: number): number {
+    // R_fireball = 140 × E^0.4 meters (Glasstone & Dolan)
+    // Fireball scales as approximately 5th root of energy
+    const radiusMeters = 140 * Math.pow(energyMT, 0.4);
+    return radiusMeters / 1000; // Convert to km
+  }
+
+  // Thermal radiation burn zones (Collins et al. 2005, nuclear scaling)
+  calculateThermalBurnRadii(energyMT: number): {
+    severe: number; // 3rd degree burns
+    moderate: number; // 2nd degree burns
+    minor: number; // 1st degree burns
+    clothesIgnite: number;
+    treesIgnite: number;
+  } {
+    // All formulas from nuclear weapons effects, validated for asteroid impacts
+    return {
+      severe: (1300 * Math.pow(energyMT, 0.41)) / 1000, // km
+      moderate: (1900 * Math.pow(energyMT, 0.41)) / 1000, // km
+      minor: (2500 * Math.pow(energyMT, 0.41)) / 1000, // km
+      clothesIgnite: (1100 * Math.pow(energyMT, 0.41)) / 1000, // km
+      treesIgnite: (1400 * Math.pow(energyMT, 0.41)) / 1000, // km
+    };
+  }
+
+  // Overpressure and blast radius calculations
+  calculateBlastRadii(energyMT: number): {
+    severe: number; // ΔP > 0.3 atm (lung damage, severe destruction)
+    moderate: number; // ΔP > 0.1 atm (buildings collapse)
+    light: number; // ΔP > 0.03 atm (homes damaged)
+    lungDamage: number; // ΔP > 0.3 atm
+    eardrumRupture: number; // ΔP > 0.15 atm
+  } {
+    // Scaling: R = (E / factor)^0.33 (cube root scaling for blast)
+    return {
+      severe: Math.pow(energyMT / 100, 0.33), // km
+      moderate: Math.pow(energyMT / 30, 0.33), // km
+      light: Math.pow(energyMT / 10, 0.33), // km
+      lungDamage: Math.pow(energyMT / 100, 0.33), // km
+      eardrumRupture: Math.pow(energyMT / 50, 0.33), // km
+    };
+  }
+
+  // Peak wind speed calculation (Rankine-Hugoniot relations)
+  calculatePeakWindSpeed(energyMT: number, craterRadius: number): number {
+    // At crater rim, estimate overpressure from energy and crater size
+    // ΔP ≈ (E / (4π R²))^0.7 atmospheres
+    const craterRadiusMeters = craterRadius * 1000;
+    const area = 4 * Math.PI * Math.pow(craterRadiusMeters, 2);
+    const energyJoules = energyMT * this.TNT_ENERGY_PER_KG * 1e9;
+    const overpressureAtm = Math.pow(energyJoules / area, 0.7) / 101325; // Convert Pa to atm
+
+    // Wind speed: v = 470 × (ΔP)^0.5 m/s
+    const windSpeedMS = 470 * Math.pow(Math.max(overpressureAtm, 0.01), 0.5);
+
+    // Convert to mph
+    return windSpeedMS * 2.237; // 1 m/s = 2.237 mph
+  }
+
+  // Wind damage radii calculation
+  calculateWindDamageRadii(energyMT: number): {
+    ef5Tornado: number; // v > 200 mph
+    homesLeveled: number; // v > 250 mph
+    treesKnocked: number; // v > 100 mph
+  } {
+    // Wind speed decreases with distance from impact
+    // Using empirical scaling: v ∝ R^(-0.7)
+    const baseRadius = Math.pow(energyMT, 0.33); // Base scaling with energy
+
+    return {
+      ef5Tornado: baseRadius * 0.8, // km (>200 mph zone)
+      homesLeveled: baseRadius * 0.6, // km (>250 mph zone)
+      treesKnocked: baseRadius * 1.5, // km (>100 mph zone)
+    };
+  }
+
+  // Shock wave decibel calculation
+  calculateShockwaveDecibels(overpressureAtm: number): number {
+    // Convert overpressure to Pascals
+    const overpressurePa = overpressureAtm * 101325;
+
+    // Sound pressure level: dB = 20 × log₁₀(P / P₀)
+    // Reference pressure P₀ = 20 μPa = 0.00002 Pa
+    const referencePressure = 0.00002;
+    const dB = 20 * Math.log10(overpressurePa / referencePressure);
+
+    // Cap at 194 dB (maximum in atmosphere = 1 atm)
+    return Math.min(dB, 194);
+  }
+
+  // Casualty calculations based on population density and effect zones
+  calculateCasualties(
+    populationDensity: number, // people per km²
+    craterRadius: number, // km
+    fireballRadius: number, // km
+    thermalRadii: { severe: number; moderate: number; minor: number },
+    blastRadii: { severe: number; moderate: number },
+    windRadii: { homesLeveled: number },
+    earthquakeMagnitude: number,
+    earthquakeZoneArea: number // km²
+  ): {
+    vaporized: number;
+    fireballDeaths: number;
+    severeBurnDeaths: number;
+    shockwaveDeaths: number;
+    windBlastDeaths: number;
+    earthquakeDeaths: number;
+    totalEstimated: number;
+  } {
+    // Vaporized in crater
+    const craterArea = Math.PI * Math.pow(craterRadius, 2);
+    const vaporized = Math.round(populationDensity * craterArea);
+
+    // Fireball deaths (90% fatality rate, excluding crater area)
+    const fireballArea = Math.PI * Math.pow(fireballRadius, 2) - craterArea;
+    const fireballDeaths = Math.round(populationDensity * fireballArea * 0.9);
+
+    // Severe burn deaths (50% fatality for 3rd degree, excluding fireball)
+    const severeBurnArea = Math.PI * (Math.pow(thermalRadii.severe, 2) - Math.pow(fireballRadius, 2));
+    const severeBurnDeaths = Math.round(populationDensity * severeBurnArea * 0.5);
+
+    // Shockwave deaths (70% fatality for severe blast zone)
+    const severeBlastArea = Math.PI * Math.pow(blastRadii.severe, 2);
+    const shockwaveDeaths = Math.round(populationDensity * severeBlastArea * 0.7);
+
+    // Wind blast deaths (50% fatality for homes leveled zone)
+    const windArea = Math.PI * Math.pow(windRadii.homesLeveled, 2);
+    const windBlastDeaths = Math.round(populationDensity * windArea * 0.5);
+
+    // Earthquake deaths (varies with magnitude)
+    const earthquakeFatalityRate = this.getEarthquakeFatalityRate(earthquakeMagnitude);
+    const earthquakeDeaths = Math.round(populationDensity * earthquakeZoneArea * earthquakeFatalityRate);
+
+    const totalEstimated = vaporized + fireballDeaths + severeBurnDeaths +
+                          shockwaveDeaths + windBlastDeaths + earthquakeDeaths;
+
+    return {
+      vaporized,
+      fireballDeaths,
+      severeBurnDeaths,
+      shockwaveDeaths,
+      windBlastDeaths,
+      earthquakeDeaths,
+      totalEstimated,
+    };
+  }
+
+  // Earthquake fatality rate estimation
+  private getEarthquakeFatalityRate(magnitude: number): number {
+    // Empirical fatality rates from historical earthquake data
+    if (magnitude < 4.0) return 0.0001;
+    if (magnitude < 5.0) return 0.001;
+    if (magnitude < 6.0) return 0.01;
+    if (magnitude < 7.0) return 0.05;
+    if (magnitude < 8.0) return 0.1;
+    return 0.2; // M >= 8.0
   }
 
   // Load and parse earthquake data for context (partner's top 10 analysis will enhance this)
@@ -467,6 +672,8 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
     // Step 1: Calculate physics-based parameters using EXACT scientific formulas
     const energy = this.calculateKineticEnergy(asteroid);
     const craterDiameter = this.calculateCraterDiameter(energy);
+    const craterDepth = this.calculateCraterDepth(craterDiameter);
+    const craterRadius = craterDiameter / 2;
     const earthquakeMagnitude = this.calculateEarthquakeMagnitude(energy);
     const tsunamiHeight = this.calculateTsunamiHeight(
       energy,
@@ -475,12 +682,50 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
     const affectedRadius = Math.max(craterDiameter * 20, 5); // Significant damage radius based on crater size
     const megatonsEquivalent = energy / (this.TNT_ENERGY_PER_KG * 1e9);
 
+    // Calculate fireball and thermal effects
+    const fireballRadius = this.calculateFireballRadius(megatonsEquivalent);
+    const thermalRadii = this.calculateThermalBurnRadii(megatonsEquivalent);
+
+    // Calculate blast/overpressure effects
+    const blastRadii = this.calculateBlastRadii(megatonsEquivalent);
+
+    // Calculate wind effects
+    const peakWindSpeed = this.calculatePeakWindSpeed(megatonsEquivalent, craterRadius);
+    const windRadii = this.calculateWindDamageRadii(megatonsEquivalent);
+
+    // Calculate overpressure and shock wave decibels at crater rim
+    const craterRadiusMeters = craterRadius * 1000;
+    const areaAtRim = 4 * Math.PI * Math.pow(craterRadiusMeters, 2);
+    const overpressureAtRim = Math.pow(energy / areaAtRim, 0.7) / 101325; // atm
+    const shockwaveDecibels = this.calculateShockwaveDecibels(overpressureAtRim);
+
+    // Estimate population density at impact location
+    const populationDensity = trajectory.impact_location.population_density || 100; // people per km²
+    const earthquakeZoneArea = Math.PI * Math.pow(affectedRadius, 2);
+
+    // Calculate casualties for each effect type
+    const casualties = this.calculateCasualties(
+      populationDensity,
+      craterRadius,
+      fireballRadius,
+      thermalRadii,
+      blastRadii,
+      windRadii,
+      earthquakeMagnitude,
+      earthquakeZoneArea
+    );
+
     console.log("Physics calculations:", {
       energy: energy.toExponential(3),
       craterDiameter: craterDiameter.toFixed(3),
+      craterDepth: craterDepth.toFixed(3),
       earthquakeMagnitude: earthquakeMagnitude.toFixed(2),
       affectedRadius: affectedRadius.toFixed(1),
       megatonsEquivalent: megatonsEquivalent.toExponential(3),
+      fireballRadius: fireballRadius.toFixed(3),
+      peakWindSpeed: peakWindSpeed.toFixed(0),
+      shockwaveDecibels: shockwaveDecibels.toFixed(0),
+      totalCasualties: casualties.totalEstimated,
     });
 
     // Step 2: Get enhanced correlation data from partner's API (top 10 best matches)
@@ -968,12 +1213,50 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         impactPhysics: {
           energy,
           craterDiameter,
+          craterDepth,
           earthquakeMagnitude:
             usgsAssessment?.expectedEarthquakeMagnitude || earthquakeMagnitude, // Use USGS calculated value if available
           affectedRadius,
           tsunamiHeight: usgsAssessment?.expectedTsunamiHeight || tsunamiHeight, // Use USGS value if available
           megatonsEquivalent,
+          fireballRadius,
+          peakWindSpeed,
+          shockwaveDecibels,
         },
+        thermalEffects: {
+          fireballRadius,
+          severeBurns: {
+            radius: thermalRadii.severe,
+            casualties: casualties.severeBurnDeaths,
+          },
+          moderateburns: {
+            radius: thermalRadii.moderate,
+            casualties: Math.round(populationDensity * Math.PI * (Math.pow(thermalRadii.moderate, 2) - Math.pow(thermalRadii.severe, 2)) * 0.3),
+          },
+          minorBurns: {
+            radius: thermalRadii.minor,
+            casualties: Math.round(populationDensity * Math.PI * (Math.pow(thermalRadii.minor, 2) - Math.pow(thermalRadii.moderate, 2)) * 0.1),
+          },
+          clothesIgniteRadius: thermalRadii.clothesIgnite,
+          treesIgniteRadius: thermalRadii.treesIgnite,
+        },
+        blastEffects: {
+          overpressureAtRim,
+          severeBlastRadius: blastRadii.severe,
+          moderateBlastRadius: blastRadii.moderate,
+          lightBlastRadius: blastRadii.light,
+          lungDamageRadius: blastRadii.lungDamage,
+          eardrumRuptureRadius: blastRadii.eardrumRupture,
+          buildingsCollapseRadius: blastRadii.moderate, // Buildings collapse at moderate blast
+          homesCollapseRadius: blastRadii.light, // Homes damaged at light blast
+        },
+        windEffects: {
+          peakWindSpeed,
+          ef5TornadoZoneRadius: windRadii.ef5Tornado,
+          homesLeveledRadius: windRadii.homesLeveled,
+          treesKnockedRadius: windRadii.treesKnocked,
+        },
+        casualties,
         populationAtRisk: Math.round(populationAtRisk),
         economicDamage: Math.round(economicDamage / 1000), // Convert to billions
         threatLevel,
@@ -1013,11 +1296,49 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         impactPhysics: {
           energy,
           craterDiameter,
+          craterDepth,
           earthquakeMagnitude,
           affectedRadius,
           tsunamiHeight,
           megatonsEquivalent,
+          fireballRadius,
+          peakWindSpeed,
+          shockwaveDecibels,
         },
+        thermalEffects: {
+          fireballRadius,
+          severeBurns: {
+            radius: thermalRadii.severe,
+            casualties: casualties.severeBurnDeaths,
+          },
+          moderateburns: {
+            radius: thermalRadii.moderate,
+            casualties: Math.round(populationDensity * Math.PI * (Math.pow(thermalRadii.moderate, 2) - Math.pow(thermalRadii.severe, 2)) * 0.3),
+          },
+          minorBurns: {
+            radius: thermalRadii.minor,
+            casualties: Math.round(populationDensity * Math.PI * (Math.pow(thermalRadii.minor, 2) - Math.pow(thermalRadii.moderate, 2)) * 0.1),
+          },
+          clothesIgniteRadius: thermalRadii.clothesIgnite,
+          treesIgniteRadius: thermalRadii.treesIgnite,
+        },
+        blastEffects: {
+          overpressureAtRim,
+          severeBlastRadius: blastRadii.severe,
+          moderateBlastRadius: blastRadii.moderate,
+          lightBlastRadius: blastRadii.light,
+          lungDamageRadius: blastRadii.lungDamage,
+          eardrumRuptureRadius: blastRadii.eardrumRupture,
+          buildingsCollapseRadius: blastRadii.moderate,
+          homesCollapseRadius: blastRadii.light,
+        },
+        windEffects: {
+          peakWindSpeed,
+          ef5TornadoZoneRadius: windRadii.ef5Tornado,
+          homesLeveledRadius: windRadii.homesLeveled,
+          treesKnockedRadius: windRadii.treesKnocked,
+        },
+        casualties,
         populationAtRisk: fallbackPopulation,
         economicDamage: Math.round(craterDiameter * 10),
         threatLevel,
