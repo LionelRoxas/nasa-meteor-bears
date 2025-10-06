@@ -91,6 +91,7 @@ export interface ConsequencePrediction {
     craterDepth: number; // km
     earthquakeMagnitude: number;
     affectedRadius: number; // km
+    earthquakeFeltRadius: number; // km - how far earthquake is felt
     tsunamiHeight?: number; // meters (if ocean impact)
     megatonsEquivalent: number; // MT TNT
     fireballRadius: number; // km
@@ -768,8 +769,15 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
 
     // Calculate earthquake felt radius based on magnitude (empirical formula)
     // For M7: ~200km, M6: ~100km, M5: ~50km, M4: ~20km
-    const earthquakeFeltRadius = Math.pow(10, 0.43 * earthquakeMagnitude - 0.83); // km
-    const earthquakeZoneArea = Math.PI * Math.pow(earthquakeFeltRadius, 2);
+    const earthquakeFeltRadius = Math.pow(
+      10,
+      0.43 * earthquakeMagnitude - 0.83
+    ); // km
+
+    // Earthquake DAMAGE radius is much smaller than felt radius
+    // Use a realistic damage zone: roughly 10-20% of felt radius for serious damage
+    const earthquakeDamageRadius = earthquakeFeltRadius * 0.15; // 15% of felt radius
+    const earthquakeDamageArea = Math.PI * Math.pow(earthquakeDamageRadius, 2);
 
     // Calculate casualties for each effect type
     const casualties = this.calculateCasualties(
@@ -780,7 +788,7 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
       blastRadii,
       windRadii,
       earthquakeMagnitude,
-      earthquakeZoneArea
+      earthquakeDamageArea // Use damage area, not felt area
     );
 
     // Step 2: Get enhanced correlation data from partner's API (top 10 best matches)
@@ -1314,7 +1322,9 @@ Return ONLY the JSON object for 2D terrain visualization.`;
       };
 
       // Generate mitigation strategies with the complete result object
-      const mitigationStrategies = await this.generateMitigationStrategies(baseResult);
+      const mitigationStrategies = await this.generateMitigationStrategies(
+        baseResult
+      );
 
       // Add mitigation strategies to the final result
       const result = {
@@ -1347,6 +1357,12 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         megatonsEquivalent,
         fallbackPopulation
       );
+
+      // Calculate earthquake felt radius for fallback (same as main code)
+      const earthquakeFeltRadius = Math.pow(
+        10,
+        0.43 * earthquakeMagnitude - 0.83
+      ); // km
 
       return {
         impactPhysics: {

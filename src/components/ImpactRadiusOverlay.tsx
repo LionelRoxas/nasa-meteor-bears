@@ -3,12 +3,30 @@
 
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
-import { getCraterLayers, craterConfig } from "./ImpactRadius/MapboxCraterRadius";
-import { getFireballLayers, fireballConfig } from "./ImpactRadius/MapboxFireballRadius";
-import { getWindBlastLayers, windBlastConfig } from "./ImpactRadius/MapboxWindBlastRadius";
-import { getEarthquakeLayers, earthquakeConfig } from "./ImpactRadius/MapboxEarthquakeRadius";
-import { getTsunamiLayers, tsunamiConfig } from "./ImpactRadius/MapboxTsunamiRadius";
-import { getShockwaveLayers, shockwaveConfig } from "./ImpactRadius/MapboxShockwaveRadius";
+import {
+  getCraterLayers,
+  craterConfig,
+} from "./ImpactRadius/MapboxCraterRadius";
+import {
+  getFireballLayers,
+  fireballConfig,
+} from "./ImpactRadius/MapboxFireballRadius";
+import {
+  getWindBlastLayers,
+  windBlastConfig,
+} from "./ImpactRadius/MapboxWindBlastRadius";
+import {
+  getEarthquakeLayers,
+  earthquakeConfig,
+} from "./ImpactRadius/MapboxEarthquakeRadius";
+import {
+  getTsunamiLayers,
+  tsunamiConfig,
+} from "./ImpactRadius/MapboxTsunamiRadius";
+import {
+  getShockwaveLayers,
+  shockwaveConfig,
+} from "./ImpactRadius/MapboxShockwaveRadius";
 
 interface ImpactRadiusOverlayProps {
   consequencePrediction: any;
@@ -24,7 +42,11 @@ interface ImpactRadiusOverlayProps {
 }
 
 // Helper to create a circle GeoJSON
-const createCircle = (center: [number, number], radiusKm: number, steps = 64) => {
+const createCircle = (
+  center: [number, number],
+  radiusKm: number,
+  steps = 64
+) => {
   const coords = [];
   const distanceX = radiusKm / (111.32 * Math.cos((center[1] * Math.PI) / 180));
   const distanceY = radiusKm / 110.574;
@@ -54,6 +76,22 @@ export default function ImpactRadiusOverlay({
 }: ImpactRadiusOverlayProps) {
   const animationFrameRef = useRef<number>();
 
+  // Parse CSS rgba/ rgb string into numeric channels
+  const parseRgba = (color: string) => {
+    const m = color.match(
+      /rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\)/i
+    );
+    if (!m) {
+      return { r: 255, g: 255, b: 255, a: 0.5 };
+    }
+    const r = parseInt(m[1], 10);
+    const g = parseInt(m[2], 10);
+    const b = parseInt(m[3], 10);
+    const a =
+      m[4] !== undefined ? Math.max(0, Math.min(1, parseFloat(m[4]!))) : 1;
+    return { r, g, b, a };
+  };
+
   useEffect(() => {
     console.log("🔵 ImpactRadiusOverlay useEffect triggered", {
       hasMap: !!map,
@@ -81,7 +119,10 @@ export default function ImpactRadiusOverlay({
     }
 
     if (!consequencePrediction?.trajectory?.impact_location) {
-      console.log("⏭️ Early return - no impact_location", consequencePrediction.trajectory);
+      console.log(
+        "⏭️ Early return - no impact_location",
+        consequencePrediction.trajectory
+      );
       return;
     }
 
@@ -161,7 +202,8 @@ export default function ImpactRadiusOverlay({
         layers: tsunamiLayers,
         animated: tsunamiConfig.animated,
         pulseSpeed: tsunamiConfig.pulseSpeed,
-        visible: visibleRadii.tsunami && isOcean && impactPhysics.tsunamiHeight > 0,
+        visible:
+          visibleRadii.tsunami && isOcean && impactPhysics.tsunamiHeight > 0,
       },
       {
         id: "shockwave",
@@ -199,25 +241,33 @@ export default function ImpactRadiusOverlay({
       for (let i = 0; i < 20; i++) {
         const layerId = `impact-${id}-${i}`;
         if (map.getLayer(layerId)) map.removeLayer(layerId);
-        if (map.getLayer(`${layerId}-outline`)) map.removeLayer(`${layerId}-outline`);
+        if (map.getLayer(`${layerId}-outline`))
+          map.removeLayer(`${layerId}-outline`);
         if (map.getSource(layerId)) map.removeSource(layerId);
       }
     });
 
-    console.log("📊 Radius configurations:", radiusConfigs.map(({ id, radiusKm, visible }) => ({
-      id,
-      radiusKm,
-      visible,
-    })));
+    console.log(
+      "📊 Radius configurations:",
+      radiusConfigs.map(({ id, radiusKm, visible }) => ({
+        id,
+        radiusKm,
+        visible,
+      }))
+    );
 
     // Add visible radius layers
     radiusConfigs.forEach(({ id, radiusKm, layers, visible }) => {
       if (!visible || radiusKm <= 0) {
-        console.log(`⏭️ Skipping ${id} - visible: ${visible}, radiusKm: ${radiusKm}`);
+        console.log(
+          `⏭️ Skipping ${id} - visible: ${visible}, radiusKm: ${radiusKm}`
+        );
         return;
       }
 
-      console.log(`✅ Adding ${id} with ${layers.length} layers, radius ${radiusKm}km`);
+      console.log(
+        `✅ Adding ${id} with ${layers.length} layers, radius ${radiusKm}km`
+      );
 
       // Add each concentric circle layer
       layers.forEach((layer, index) => {
@@ -230,26 +280,28 @@ export default function ImpactRadiusOverlay({
           data: circle as any,
         });
 
+        const { r, g, b, a } = parseRgba(layer.color);
         map.addLayer({
           id: layerId,
           type: "fill",
           source: layerId,
           paint: {
-            "fill-color": layer.color.split("rgba(")[1].split(",").slice(0, 3).map((v, i) => i === 0 ? parseInt(v) : parseInt(v)).join(",").split(",").map(v => `rgb(${v})`)[0] || "#ffffff",
-            "fill-opacity": parseFloat(layer.color.match(/[\d.]+\)$/)?.[0].replace(")", "") || "0.5"),
+            "fill-color": `rgb(${r}, ${g}, ${b})`,
+            "fill-opacity": a,
           },
         });
 
         // Add outline for outermost layer only
         if (index === 0) {
+          const { r: lr, g: lg, b: lb, a: la } = parseRgba(layer.color);
           map.addLayer({
             id: `${layerId}-outline`,
             type: "line",
             source: layerId,
             paint: {
-              "line-color": layer.color.split("rgba(")[1]?.split(",").slice(0, 3).join(",") || "#ffffff",
+              "line-color": `rgb(${lr}, ${lg}, ${lb})`,
               "line-width": 2,
-              "line-opacity": 0.8,
+              "line-opacity": Math.max(la, 0.8),
             },
           });
         }
@@ -260,19 +312,26 @@ export default function ImpactRadiusOverlay({
     const animate = () => {
       const time = Date.now() / 1000;
 
-      radiusConfigs.forEach(({ id, radiusKm, layers, animated, pulseSpeed, visible }) => {
-        if (!visible || radiusKm <= 0 || !animated) return;
+      radiusConfigs.forEach(
+        ({ id, radiusKm, layers, animated, pulseSpeed, visible }) => {
+          if (!visible || radiusKm <= 0 || !animated) return;
 
-        const pulse = Math.sin(time * (pulseSpeed || 1)) * 0.15 + 0.85;
+          const pulse = Math.sin(time * (pulseSpeed || 1)) * 0.15 + 0.85;
 
-        layers.forEach((layer, index) => {
-          const layerId = `impact-${id}-${index}`;
-          if (map.getLayer(layerId)) {
-            const baseOpacity = parseFloat(layer.color.match(/[\d.]+\)$/)?.[0].replace(")", "") || "0.5");
-            map.setPaintProperty(layerId, "fill-opacity", baseOpacity * pulse);
-          }
-        });
-      });
+          layers.forEach((layer, index) => {
+            const layerId = `impact-${id}-${index}`;
+            if (map.getLayer(layerId)) {
+              const { a } = parseRgba(layer.color);
+              const baseOpacity = Number.isFinite(a) ? a : 0.5;
+              map.setPaintProperty(
+                layerId,
+                "fill-opacity",
+                baseOpacity * pulse
+              );
+            }
+          });
+        }
+      );
 
       animationFrameRef.current = requestAnimationFrame(animate);
     };
@@ -290,7 +349,8 @@ export default function ImpactRadiusOverlay({
         for (let i = 0; i < 20; i++) {
           const layerId = `impact-${id}-${i}`;
           if (map.getLayer(layerId)) map.removeLayer(layerId);
-          if (map.getLayer(`${layerId}-outline`)) map.removeLayer(`${layerId}-outline`);
+          if (map.getLayer(`${layerId}-outline`))
+            map.removeLayer(`${layerId}-outline`);
           if (map.getSource(layerId)) map.removeSource(layerId);
         }
       });

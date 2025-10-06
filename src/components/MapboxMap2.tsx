@@ -251,13 +251,15 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       }
     }, [map, isPlacingPin]);
 
-    // Get the effective impact location (either pin or predicted)
+    // Get the effective impact location (pin overrides everything)
     const effectiveImpactLocation = useMemo<ImpactLocation>(() => {
-      if (usePredictedLocation || !impactPinProp) {
-        return predictedLocation;
+      // Custom pin has highest priority
+      if (!usePredictedLocation && impactPinProp) {
+        return impactPinProp;
       }
-      return impactPinProp;
-    }, [usePredictedLocation, impactPinProp, predictedLocation]);
+      // Use the impactLocation prop (can be predicted or default)
+      return impactLocation;
+    }, [usePredictedLocation, impactPinProp, impactLocation]);
 
     // Initialize map
     useEffect(() => {

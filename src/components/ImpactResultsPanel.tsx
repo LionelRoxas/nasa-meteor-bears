@@ -29,7 +29,9 @@ export default function ImpactResultsPanel({
 
   // Safety check - we MUST have legacy impactPhysics (it's always returned from consequence-predictor)
   if (!legacyImpactPhysics) {
-    console.error("No impact physics data available - missing required legacy impactPhysics field");
+    console.error(
+      "No impact physics data available - missing required legacy impactPhysics field"
+    );
     console.error("Available keys:", Object.keys(consequencePrediction));
     return null;
   }
@@ -57,16 +59,11 @@ export default function ImpactResultsPanel({
   const craterDiameterMiles = impactPhysics.craterDiameter * 0.621371;
   const craterDepthMiles = impactPhysics.craterDepth * 0.621371;
   const fireballDiameterMiles = useComprehensive
-    ? (comprehensiveImpact.fireball?.diameter || 0)
+    ? comprehensiveImpact.fireball?.diameter || 0
     : (thermalEffects?.fireballRadius || 0) * 2 * 0.621371;
   const impactVelocityMph = trajectory?.impact_velocity * 2236.94; // km/s to mph
   const energyMegatons = impactPhysics.megatonsEquivalent || 0; // MT TNT
   const energyGigatons = energyMegatons / 1000; // MT to GT
-
-  // Extract casualties - use legacy structure from consequence-predictor
-  const craterCasualties = useComprehensive
-    ? (comprehensiveImpact.crater?.casualties || 0)
-    : (casualties?.vaporized || 0);
 
   const fireballCasualties = useComprehensive
     ? comprehensiveImpact.fireball?.casualties
@@ -75,32 +72,6 @@ export default function ImpactResultsPanel({
         thirdDegreeBurns: thermalEffects?.severeBurns?.casualties || 0,
         secondDegreeBurns: thermalEffects?.moderateburns?.casualties || 0,
       };
-
-  const shockwaveCasualties = useComprehensive
-    ? comprehensiveImpact.shockWave?.casualties
-    : { deaths: casualties?.shockwaveDeaths || 0 };
-
-  const windBlastCasualties = useComprehensive
-    ? comprehensiveImpact.windBlast?.casualties
-    : { deaths: casualties?.windBlastDeaths || 0 };
-
-  const earthquakeCasualties = useComprehensive
-    ? comprehensiveImpact.earthquake?.casualties
-    : { deaths: casualties?.earthquakeDeaths || 0 };
-
-  const tsunamiCasualties = useComprehensive
-    ? (comprehensiveImpact.tsunami?.casualties || 0)
-    : 0; // No tsunami casualties in legacy structure
-
-  // Calculate total casualties
-  const totalCasualties = useComprehensive
-    ? (craterCasualties || 0) +
-      (fireballCasualties?.deaths || 0) +
-      (shockwaveCasualties?.deaths || 0) +
-      (windBlastCasualties?.deaths || 0) +
-      (earthquakeCasualties?.deaths || 0) +
-      (tsunamiCasualties || 0)
-    : (casualties?.totalEstimated || 0);
 
   return (
     <div className="absolute top-20 left-4 z-50 w-[600px] max-h-[calc(100vh-120px)] bg-black/90 backdrop-blur-xl border border-white/20 rounded-lg shadow-2xl overflow-hidden pointer-events-auto">
@@ -117,12 +88,32 @@ export default function ImpactResultsPanel({
           className="text-white/60 hover:text-white/90 transition-colors"
         >
           {isCollapsed ? (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 15l7-7 7 7"
+              />
             </svg>
           )}
         </button>
@@ -139,14 +130,17 @@ export default function ImpactResultsPanel({
               </h3>
               <div className="space-y-2 pl-3 border-l-2 border-amber-400/30">
                 <p className="text-white/90 text-sm">
-                  <span className="font-bold text-lg text-amber-300">{formatDecimal(craterDiameterMiles, 2)}</span>{" "}
+                  <span className="font-bold text-lg text-amber-300">
+                    {formatDecimal(craterDiameterMiles, 2)}
+                  </span>{" "}
                   <span className="text-white/60">mile wide crater</span>
                 </p>
                 <p className="text-white/80 text-xs">
-                  An estimated <span className="font-semibold text-red-400">{formatNumber(craterCasualties)}</span> people would be vaporized in the crater
-                </p>
-                <p className="text-white/80 text-xs">
-                  The crater is <span className="font-semibold text-amber-300">{formatDecimal(craterDepthMiles, 2)}</span> miles deep
+                  The crater is{" "}
+                  <span className="font-semibold text-amber-300">
+                    {formatDecimal(craterDepthMiles, 2)}
+                  </span>{" "}
+                  miles deep
                 </p>
               </div>
             </section>
@@ -159,10 +153,18 @@ export default function ImpactResultsPanel({
               </h3>
               <div className="space-y-2 pl-3 border-l-2 border-orange-400/30">
                 <p className="text-white/80 text-xs">
-                  Your asteroid impacted the ground at <span className="font-semibold text-orange-300">{formatNumber(impactVelocityMph)}</span> mph
+                  Your asteroid impacted the ground at{" "}
+                  <span className="font-semibold text-orange-300">
+                    {formatNumber(impactVelocityMph)}
+                  </span>{" "}
+                  mph
                 </p>
                 <p className="text-white/80 text-xs">
-                  The impact is equivalent to <span className="font-semibold text-orange-300">{formatNumber(energyGigatons)}</span> Gigatons of TNT
+                  The impact is equivalent to{" "}
+                  <span className="font-semibold text-orange-300">
+                    {formatNumber(energyGigatons)}
+                  </span>{" "}
+                  Gigatons of TNT
                 </p>
                 <p className="text-white/70 text-xs italic">
                   {energyMegatons > 100000
@@ -185,30 +187,40 @@ export default function ImpactResultsPanel({
                 </h3>
                 <div className="space-y-2 pl-3 border-l-2 border-yellow-400/30">
                   <p className="text-white/90 text-sm">
-                    <span className="font-bold text-lg text-yellow-300">{formatDecimal(fireballDiameterMiles, 2)}</span>{" "}
+                    <span className="font-bold text-lg text-yellow-300">
+                      {formatDecimal(fireballDiameterMiles, 2)}
+                    </span>{" "}
                     <span className="text-white/60">mile wide fireball</span>
                   </p>
-                  <p className="text-white/80 text-xs">
-                    An estimated <span className="font-semibold text-red-400">{formatNumber(fireballCasualties?.deaths || 0)}</span> people would die from the fireball
-                  </p>
-                  {fireballCasualties?.thirdDegreeBurns && (
-                    <p className="text-white/80 text-xs">
-                      An estimated <span className="font-semibold text-orange-400">{formatNumber(fireballCasualties.thirdDegreeBurns)}</span> people would receive 3rd degree burns
-                    </p>
-                  )}
                   {fireballCasualties?.secondDegreeBurns && (
                     <p className="text-white/80 text-xs">
-                      An estimated <span className="font-semibold text-yellow-400">{formatNumber(fireballCasualties.secondDegreeBurns)}</span> people would receive 2nd degree burns
+                      An estimated{" "}
+                      <span className="font-semibold text-yellow-400">
+                        {formatNumber(fireballCasualties.secondDegreeBurns)}
+                      </span>{" "}
+                      people would receive 2nd degree burns
                     </p>
                   )}
                   {thermalEffects?.clothesIgniteRadius && (
                     <p className="text-white/80 text-xs">
-                      Clothes would catch on fire within <span className="font-semibold text-yellow-300">{formatNumber(thermalEffects.clothesIgniteRadius * 0.621371)}</span> miles of the impact
+                      Clothes would catch on fire within{" "}
+                      <span className="font-semibold text-yellow-300">
+                        {formatNumber(
+                          thermalEffects.clothesIgniteRadius * 0.621371
+                        )}
+                      </span>{" "}
+                      miles of the impact
                     </p>
                   )}
                   {thermalEffects?.treesIgniteRadius && (
                     <p className="text-white/80 text-xs">
-                      Trees would catch on fire within <span className="font-semibold text-yellow-300">{formatNumber(thermalEffects.treesIgniteRadius * 0.621371)}</span> miles of the impact
+                      Trees would catch on fire within{" "}
+                      <span className="font-semibold text-yellow-300">
+                        {formatNumber(
+                          thermalEffects.treesIgniteRadius * 0.621371
+                        )}
+                      </span>{" "}
+                      miles of the impact
                     </p>
                   )}
                 </div>
@@ -224,30 +236,54 @@ export default function ImpactResultsPanel({
                 </h3>
                 <div className="space-y-2 pl-3 border-l-2 border-blue-400/30">
                   <p className="text-white/90 text-sm">
-                    <span className="font-bold text-lg text-blue-300">{formatNumber((blastEffects?.overpressureAtRim || 0) * 101325)}</span>{" "}
+                    <span className="font-bold text-lg text-blue-300">
+                      {formatNumber(
+                        (blastEffects?.overpressureAtRim || 0) * 101325
+                      )}
+                    </span>{" "}
                     <span className="text-white/60">pascals overpressure</span>
                   </p>
-                  <p className="text-white/80 text-xs">
-                    An estimated <span className="font-semibold text-red-400">{formatNumber(shockwaveCasualties?.deaths || 0)}</span> people would die from the shock wave
-                  </p>
+
                   {blastEffects.lungDamageRadius && (
                     <p className="text-white/80 text-xs">
-                      Anyone within <span className="font-semibold text-blue-300">{formatNumber(blastEffects.lungDamageRadius * 0.621371)}</span> miles would likely receive lung damage
+                      Anyone within{" "}
+                      <span className="font-semibold text-blue-300">
+                        {formatNumber(blastEffects.lungDamageRadius * 0.621371)}
+                      </span>{" "}
+                      miles would likely receive lung damage
                     </p>
                   )}
                   {blastEffects.eardrumRuptureRadius && (
                     <p className="text-white/80 text-xs">
-                      Anyone within <span className="font-semibold text-blue-300">{formatNumber(blastEffects.eardrumRuptureRadius * 0.621371)}</span> miles would likely have ruptured eardrums
+                      Anyone within{" "}
+                      <span className="font-semibold text-blue-300">
+                        {formatNumber(
+                          blastEffects.eardrumRuptureRadius * 0.621371
+                        )}
+                      </span>{" "}
+                      miles would likely have ruptured eardrums
                     </p>
                   )}
                   {blastEffects.buildingCollapseRadius && (
                     <p className="text-white/80 text-xs">
-                      Buildings within <span className="font-semibold text-blue-300">{formatNumber(blastEffects.buildingCollapseRadius * 0.621371)}</span> miles would collapse
+                      Buildings within{" "}
+                      <span className="font-semibold text-blue-300">
+                        {formatNumber(
+                          blastEffects.buildingCollapseRadius * 0.621371
+                        )}
+                      </span>{" "}
+                      miles would collapse
                     </p>
                   )}
                   {blastEffects.homesCollapseRadius && (
                     <p className="text-white/80 text-xs">
-                      Homes within <span className="font-semibold text-blue-300">{formatNumber(blastEffects.homesCollapseRadius * 0.621371)}</span> miles would collapse
+                      Homes within{" "}
+                      <span className="font-semibold text-blue-300">
+                        {formatNumber(
+                          blastEffects.homesCollapseRadius * 0.621371
+                        )}
+                      </span>{" "}
+                      miles would collapse
                     </p>
                   )}
                 </div>
@@ -263,25 +299,43 @@ export default function ImpactResultsPanel({
                 </h3>
                 <div className="space-y-2 pl-3 border-l-2 border-cyan-400/30">
                   <p className="text-white/90 text-sm">
-                    <span className="font-bold text-lg text-cyan-300">{formatNumber(windEffects?.peakWindSpeed || 0)}</span>{" "}
+                    <span className="font-bold text-lg text-cyan-300">
+                      {formatNumber(windEffects?.peakWindSpeed || 0)}
+                    </span>{" "}
                     <span className="text-white/60">mph peak wind speed</span>
                   </p>
-                  <p className="text-white/80 text-xs">
-                    An estimated <span className="font-semibold text-red-400">{formatNumber(windBlastCasualties?.deaths || 0)}</span> people would die from the wind blast
-                  </p>
+
                   {windEffects?.homesLeveledRadius && (
                     <p className="text-white/80 text-xs">
-                      Homes within <span className="font-semibold text-cyan-300">{formatNumber(windEffects.homesLeveledRadius * 0.621371)}</span> miles would be completely leveled
+                      Homes within{" "}
+                      <span className="font-semibold text-cyan-300">
+                        {formatNumber(
+                          windEffects.homesLeveledRadius * 0.621371
+                        )}
+                      </span>{" "}
+                      miles would be completely leveled
                     </p>
                   )}
                   {windEffects?.ef5TornadoZoneRadius && (
                     <p className="text-white/80 text-xs">
-                      Within <span className="font-semibold text-cyan-300">{formatNumber(windEffects.ef5TornadoZoneRadius * 0.621371)}</span> miles it would feel like being inside an EF5 tornado
+                      Within{" "}
+                      <span className="font-semibold text-cyan-300">
+                        {formatNumber(
+                          windEffects.ef5TornadoZoneRadius * 0.621371
+                        )}
+                      </span>{" "}
+                      miles it would feel like being inside an EF5 tornado
                     </p>
                   )}
                   {windEffects?.treesKnockedRadius && (
                     <p className="text-white/80 text-xs">
-                      Nearly all trees within <span className="font-semibold text-cyan-300">{formatNumber(windEffects.treesKnockedRadius * 0.621371)}</span> miles would be knocked down
+                      Nearly all trees within{" "}
+                      <span className="font-semibold text-cyan-300">
+                        {formatNumber(
+                          windEffects.treesKnockedRadius * 0.621371
+                        )}
+                      </span>{" "}
+                      miles would be knocked down
                     </p>
                   )}
                 </div>
@@ -297,15 +351,20 @@ export default function ImpactResultsPanel({
                 </h3>
                 <div className="space-y-2 pl-3 border-l-2 border-amber-500/30">
                   <p className="text-white/90 text-sm">
-                    <span className="font-bold text-lg text-amber-400">{formatDecimal(impactPhysics.earthquakeMagnitude, 1)}</span>{" "}
+                    <span className="font-bold text-lg text-amber-400">
+                      {formatDecimal(impactPhysics.earthquakeMagnitude, 1)}
+                    </span>{" "}
                     <span className="text-white/60">magnitude earthquake</span>
-                  </p>
-                  <p className="text-white/80 text-xs">
-                    An estimated <span className="font-semibold text-red-400">{formatNumber(earthquakeCasualties?.deaths || 0)}</span> people would die from the earthquake
                   </p>
                   {impactPhysics.earthquakeFeltRadius && (
                     <p className="text-white/80 text-xs">
-                      The earthquake would be felt <span className="font-semibold text-amber-400">{formatNumber(impactPhysics.earthquakeFeltRadius * 0.621371)}</span> miles away
+                      The earthquake would be felt{" "}
+                      <span className="font-semibold text-amber-400">
+                        {formatNumber(
+                          impactPhysics.earthquakeFeltRadius * 0.621371
+                        )}
+                      </span>{" "}
+                      miles away
                     </p>
                   )}
                 </div>
@@ -313,52 +372,54 @@ export default function ImpactResultsPanel({
             )}
 
             {/* Tsunami Section (Ocean impacts only) */}
-            {trajectory?.impact_location?.geographic_type === "ocean" && impactPhysics.tsunamiHeight && (
-              <section className="space-y-3">
-                <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-1 h-4 bg-blue-500"></span>
-                  Tsunami
-                </h3>
-                <div className="space-y-2 pl-3 border-l-2 border-blue-500/30">
-                  <p className="text-white/90 text-sm">
-                    <span className="font-bold text-lg text-blue-400">{formatNumber(impactPhysics.tsunamiHeight)}</span>{" "}
-                    <span className="text-white/60">meter high tsunami waves</span>
-                  </p>
-                  <p className="text-white/80 text-xs">
-                    An estimated <span className="font-semibold text-red-400">{formatNumber(tsunamiCasualties || 0)}</span> people would die from the tsunami
-                  </p>
-                  <p className="text-white/70 text-xs italic">
-                    Coastal areas within hundreds of miles would be devastated
-                  </p>
-                </div>
-              </section>
-            )}
+            {trajectory?.impact_location?.geographic_type === "ocean" &&
+              impactPhysics.tsunamiHeight && (
+                <section className="space-y-3">
+                  <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-1 h-4 bg-blue-500"></span>
+                    Tsunami
+                  </h3>
+                  <div className="space-y-2 pl-3 border-l-2 border-blue-500/30">
+                    <p className="text-white/90 text-sm">
+                      <span className="font-bold text-lg text-blue-400">
+                        {formatNumber(impactPhysics.tsunamiHeight)}
+                      </span>{" "}
+                      <span className="text-white/60">
+                        meter high tsunami waves
+                      </span>
+                    </p>
+
+                    <p className="text-white/70 text-xs italic">
+                      Coastal areas within hundreds of miles would be devastated
+                    </p>
+                  </div>
+                </section>
+              )}
 
             {/* Mitigation Tips */}
-            {consequencePrediction.mitigationStrategies && Array.isArray(consequencePrediction.mitigationStrategies) && consequencePrediction.mitigationStrategies.length > 0 && (
-              <section className="space-y-3 mt-6 pt-6 border-t border-white/10">
-                <h3 className="text-sm font-bold text-green-400 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-1 h-4 bg-green-400"></span>
-                  Mitigation Strategies
-                </h3>
-                <div className="space-y-2 pl-3 border-l-2 border-green-400/30">
-                  {consequencePrediction.mitigationStrategies.map((strategy: string, index: number) => (
-                    <p key={index} className="text-white/80 text-xs flex items-start gap-2">
-                      <span className="text-green-400 mt-0.5">•</span>
-                      <span>{strategy}</span>
-                    </p>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Total Casualties */}
-            <section className="mt-6 p-4 bg-red-900/20 border border-red-500/30 rounded">
-              <p className="text-white/90 text-sm text-center">
-                <span className="block text-xs text-white/60 mb-1">ESTIMATED TOTAL CASUALTIES</span>
-                <span className="font-bold text-2xl text-red-400">{formatNumber(totalCasualties)}</span>
-              </p>
-            </section>
+            {consequencePrediction.mitigationStrategies &&
+              Array.isArray(consequencePrediction.mitigationStrategies) &&
+              consequencePrediction.mitigationStrategies.length > 0 && (
+                <section className="space-y-3 mt-6 pt-6 border-t border-white/10">
+                  <h3 className="text-sm font-bold text-green-400 uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-1 h-4 bg-green-400"></span>
+                    Mitigation Strategies
+                  </h3>
+                  <div className="space-y-2 pl-3 border-l-2 border-green-400/30">
+                    {consequencePrediction.mitigationStrategies.map(
+                      (strategy: string, index: number) => (
+                        <p
+                          key={index}
+                          className="text-white/80 text-xs flex items-start gap-2"
+                        >
+                          <span className="text-green-400 mt-0.5">•</span>
+                          <span>{strategy}</span>
+                        </p>
+                      )
+                    )}
+                  </div>
+                </section>
+              )}
           </div>
         </div>
       )}

@@ -379,14 +379,37 @@ export default function ImpactSimulatorControls({
       </div>
 
       {/* Enhanced Prediction Impact Analysis */}
-      {cachedPrediction?.consequencePrediction && (
+      {cachedPrediction?.consequencePrediction?.comprehensiveImpact && (
         <div>
           <label className="block text-[10px] font-light text-white/60 uppercase tracking-wider mb-2">
             Impact Analysis
           </label>
           <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded space-y-3">
+            {/* Energy */}
+            {cachedPrediction.consequencePrediction.comprehensiveImpact.energy && (
+              <div>
+                <div className="text-[10px] font-light text-purple-300 uppercase tracking-wider mb-1">
+                  Energy
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div>
+                    <span className="text-white/40">Gigatons TNT:</span>{" "}
+                    <span className="text-white/90">
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.energy.toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-white/40">Comparison:</span>{" "}
+                    <span className="text-white/90 text-[9px]">
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.energyComparison}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Crater */}
-            {cachedPrediction.consequencePrediction.crater && (
+            {cachedPrediction.consequencePrediction.comprehensiveImpact.crater && (
               <div>
                 <div className="text-[10px] font-light text-blue-300 uppercase tracking-wider mb-1">
                   Crater
@@ -395,20 +418,20 @@ export default function ImpactSimulatorControls({
                   <div>
                     <span className="text-white/40">Diameter:</span>{" "}
                     <span className="text-white/90">
-                      {(
-                        cachedPrediction.consequencePrediction.crater.diameter /
-                        1000
-                      ).toFixed(2)}{" "}
-                      km
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.crater.diameter.toFixed(2)} km
                     </span>
                   </div>
                   <div>
                     <span className="text-white/40">Depth:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.crater.depth.toFixed(
-                        0
-                      )}{" "}
-                      m
+                      {(cachedPrediction.consequencePrediction.comprehensiveImpact.crater.depthOnLand ||
+                        cachedPrediction.consequencePrediction.comprehensiveImpact.crater.depthOnSeafloor || 0).toFixed(2)} mi
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-white/40">Volume:</span>{" "}
+                    <span className="text-white/90">
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.crater.volume.toFixed(1)} km³
                     </span>
                   </div>
                 </div>
@@ -416,7 +439,7 @@ export default function ImpactSimulatorControls({
             )}
 
             {/* Fireball */}
-            {cachedPrediction.consequencePrediction.fireball && (
+            {cachedPrediction.consequencePrediction.comprehensiveImpact.fireball && (
               <div>
                 <div className="text-[10px] font-light text-orange-300 uppercase tracking-wider mb-1">
                   Fireball
@@ -425,20 +448,13 @@ export default function ImpactSimulatorControls({
                   <div>
                     <span className="text-white/40">Radius:</span>{" "}
                     <span className="text-white/90">
-                      {(
-                        cachedPrediction.consequencePrediction.fireball.radius /
-                        1000
-                      ).toFixed(2)}{" "}
-                      km
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.fireball.radiusKm.toFixed(2)} km
                     </span>
                   </div>
                   <div>
-                    <span className="text-white/40">Thermal:</span>{" "}
+                    <span className="text-white/40">Diameter:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.fireball.thermal_radiation.toFixed(
-                        0
-                      )}{" "}
-                      kJ/m²
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.fireball.diameter.toFixed(2)} km
                     </span>
                   </div>
                 </div>
@@ -446,57 +462,74 @@ export default function ImpactSimulatorControls({
             )}
 
             {/* Shockwave */}
-            {cachedPrediction.consequencePrediction.shockwave && (
+            {cachedPrediction.consequencePrediction.comprehensiveImpact.shockWave && (
               <div>
                 <div className="text-[10px] font-light text-yellow-300 uppercase tracking-wider mb-1">
                   Shockwave
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
                   <div>
-                    <span className="text-white/40">Overpressure:</span>{" "}
+                    <span className="text-white/40">Decibels:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.shockwave.overpressure.toFixed(
-                        1
-                      )}{" "}
-                      kPa
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.shockWave.decibels.toFixed(0)} dB
                     </span>
                   </div>
                   <div>
-                    <span className="text-white/40">Arrival:</span>{" "}
+                    <span className="text-white/40">Buildings Collapse:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.shockwave.arrival_time.toFixed(
-                        0
-                      )}{" "}
-                      s
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.shockWave.damageZones.buildingsCollapse.toFixed(1)} mi
                     </span>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Seismic */}
-            {cachedPrediction.consequencePrediction.seismic && (
+            {/* Wind Blast */}
+            {cachedPrediction.consequencePrediction.comprehensiveImpact.windBlast && (
+              <div>
+                <div className="text-[10px] font-light text-green-300 uppercase tracking-wider mb-1">
+                  Wind Blast
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div>
+                    <span className="text-white/40">Peak Speed:</span>{" "}
+                    <span className="text-white/90">
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.windBlast.peakSpeed.toFixed(0)} mph
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-white/40">Trees Knocked:</span>{" "}
+                    <span className="text-white/90">
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.windBlast.damageZones.treesKnockedDown.toFixed(1)} mi
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Earthquake */}
+            {cachedPrediction.consequencePrediction.comprehensiveImpact.earthquake && (
               <div>
                 <div className="text-[10px] font-light text-red-300 uppercase tracking-wider mb-1">
-                  Seismic
+                  Earthquake
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
                   <div>
                     <span className="text-white/40">Magnitude:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.seismic.richter_magnitude.toFixed(
-                        1
-                      )}
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.earthquake.magnitude.toFixed(1)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-white/40">Felt:</span>{" "}
+                    <span className="text-white/40">Felt Radius:</span>{" "}
                     <span className="text-white/90">
-                      {(
-                        cachedPrediction.consequencePrediction.seismic
-                          .felt_radius / 1000
-                      ).toFixed(0)}{" "}
-                      km
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.earthquake.feltRadius.toFixed(0)} mi
+                    </span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-white/40">Equivalent:</span>{" "}
+                    <span className="text-white/90 text-[9px]">
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.earthquake.equivalentEvent}
                     </span>
                   </div>
                 </div>
@@ -504,7 +537,7 @@ export default function ImpactSimulatorControls({
             )}
 
             {/* Tsunami (if ocean impact) */}
-            {cachedPrediction.consequencePrediction.tsunami && (
+            {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami && (
               <div>
                 <div className="text-[10px] font-light text-cyan-300 uppercase tracking-wider mb-1">
                   Tsunami
@@ -513,22 +546,42 @@ export default function ImpactSimulatorControls({
                   <div>
                     <span className="text-white/40">Wave Height:</span>{" "}
                     <span className="text-white/90">
-                      {cachedPrediction.consequencePrediction.tsunami.wave_height.toFixed(
-                        1
-                      )}{" "}
-                      m
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami.height.toFixed(1)} m
                     </span>
                   </div>
                   <div>
-                    <span className="text-white/40">Radius:</span>{" "}
+                    <span className="text-white/40">Arrival:</span>{" "}
                     <span className="text-white/90">
-                      {(
-                        cachedPrediction.consequencePrediction.tsunami
-                          .affected_radius / 1000
-                      ).toFixed(0)}{" "}
-                      km
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami.arrivalTime.toFixed(0)} min
                     </span>
                   </div>
+                  <div>
+                    <span className="text-white/40">Wave Speed:</span>{" "}
+                    <span className="text-white/90">
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami.waveSpeed.toFixed(0)} km/h
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-white/40">Coastline:</span>{" "}
+                    <span className="text-white/90">
+                      {cachedPrediction.consequencePrediction.comprehensiveImpact.tsunami.affectedCoastlineDistance.toFixed(0)} km
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Frequency */}
+            {cachedPrediction.consequencePrediction.comprehensiveImpact.frequency && (
+              <div>
+                <div className="text-[10px] font-light text-gray-300 uppercase tracking-wider mb-1">
+                  Frequency
+                </div>
+                <div className="text-[10px]">
+                  <span className="text-white/40">Average Interval:</span>{" "}
+                  <span className="text-white/90">
+                    {cachedPrediction.consequencePrediction.comprehensiveImpact.frequency.averageInterval.toLocaleString()} years
+                  </span>
                 </div>
               </div>
             )}

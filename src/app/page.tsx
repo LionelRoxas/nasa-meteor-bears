@@ -8,7 +8,6 @@ import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar";
 import Navbar from "@/components/Navbar";
 import ImpactRadiusTogglePanel from "@/components/ImpactRadiusTogglePanel";
-import ImpactResultsPanel from "@/components/ImpactResultsPanel";
 
 // Define the NASA asteroid data type
 interface NASAAsteroidData {
@@ -86,14 +85,10 @@ export default function MapboxSimPage() {
   );
   const [enhancedPrediction, setEnhancedPrediction] = useState<any>(null);
 
-  // Debug: Log when enhanced prediction changes
-  useEffect(() => {
-    console.log("🔮 Enhanced prediction updated:", {
-      hasEnhancedPrediction: !!enhancedPrediction,
-      hasConsequencePrediction: !!enhancedPrediction?.consequencePrediction,
-      consequencePrediction: enhancedPrediction?.consequencePrediction,
-    });
-  }, [enhancedPrediction]);
+  // Pin placement state (declare before useEffects that use it)
+  const [usePredictedLocation, setUsePredictedLocation] = useState(true);
+  const [impactPin, setImpactPin] = useState<any>(null);
+  const [isPlacingPin, setIsPlacingPin] = useState(false);
 
   // MapboxMap reference
   const mapboxRef = useRef<any>(null);
@@ -136,10 +131,32 @@ export default function MapboxSimPage() {
       shockwave: false,
     });
   };
-  // Pin placement state
-  const [usePredictedLocation, setUsePredictedLocation] = useState(true);
-  const [impactPin, setImpactPin] = useState<any>(null);
-  const [isPlacingPin, setIsPlacingPin] = useState(false);
+
+  // Debug: Log when enhanced prediction changes
+  useEffect(() => {
+    console.log("🔮 Enhanced prediction updated:", {
+      hasEnhancedPrediction: !!enhancedPrediction,
+      hasConsequencePrediction: !!enhancedPrediction?.consequencePrediction,
+      consequencePrediction: enhancedPrediction?.consequencePrediction,
+    });
+  }, [enhancedPrediction]);
+
+  // Update impact location when enhanced prediction loads (NASA asteroid)
+  useEffect(() => {
+    if (enhancedPrediction?.impact_location && usePredictedLocation) {
+      const predictedLocation = {
+        latitude: enhancedPrediction.impact_location.latitude,
+        longitude: enhancedPrediction.impact_location.longitude,
+        city: enhancedPrediction.impact_location.type || "Predicted Location",
+        country: "",
+      };
+      console.log(
+        "📍 Setting impact location from enhanced prediction:",
+        predictedLocation
+      );
+      setImpactLocation(predictedLocation);
+    }
+  }, [enhancedPrediction, usePredictedLocation]);
 
   // Calculate impact data whenever params change
   useEffect(() => {
@@ -256,7 +273,8 @@ export default function MapboxSimPage() {
     setIsSidebarCollapsed(false);
     setShowNASAPanel(wasNASAPanelOpen);
     setCurrentSimulation(null); // Clear simulation data
-    // Keep enhancedPrediction so it can be used for next simulation
+    setEnhancedPrediction(null); // Clear prediction data
+    setImpactLocation(defaultImpactLocation); // Reset to default location
     // Reset pin placement state
     setImpactPin(null);
     setIsPlacingPin(false);
@@ -273,8 +291,21 @@ export default function MapboxSimPage() {
       if (next) {
         // Switching back to predicted location
         setImpactPin(null);
-        setImpactLocation(defaultImpactLocation);
         setIsPlacingPin(false);
+
+        // Restore predicted location if available, otherwise use default
+        if (enhancedPrediction?.impact_location) {
+          const predictedLocation = {
+            latitude: enhancedPrediction.impact_location.latitude,
+            longitude: enhancedPrediction.impact_location.longitude,
+            city:
+              enhancedPrediction.impact_location.type || "Predicted Location",
+            country: "",
+          };
+          setImpactLocation(predictedLocation);
+        } else {
+          setImpactLocation(defaultImpactLocation);
+        }
       } else {
         // Switching to custom pin mode
         setImpactPin(null);
@@ -457,17 +488,6 @@ export default function MapboxSimPage() {
                 </div>
               </div>
             )}
-
-            {/* Impact Results Panel - Show after impact on LEFT */}
-            {hasImpacted &&
-              enhancedPrediction?.consequencePrediction &&
-              !showNASAPanel && (
-                <ImpactResultsPanel
-                  consequencePrediction={
-                    enhancedPrediction.consequencePrediction
-                  }
-                />
-              )}
 
             {/* Impact Radius Toggle Panel - Show after impact on RIGHT */}
             {hasImpacted &&
