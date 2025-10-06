@@ -14,21 +14,28 @@ interface MapboxMapProps {
 export default function MapboxMap({ className = '' }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const initialCenterRef = useRef<[number, number]>([-74.5, 40.7]);
+  const isPlacingPinRef = useRef(false);
+  const currentSimulationRef = useRef<ImpactSimulation | null>(null);
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedComet, setSelectedComet] = useState<CometData>(TEST_COMETS[0]);
-  const [impactLocation, setImpactLocation] = useState<ImpactLocation>({
-    longitude: -74.5,
-    latitude: 40.7,
-    city: 'New York',
-    country: 'USA'
-  });
+  const [impactPin, setImpactPin] = useState<ImpactLocation | null>(null);
   const [currentSimulation, setCurrentSimulation] = useState<ImpactSimulation | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [status, setStatus] = useState('Initializing...');
+  const [isPlacingPin, setIsPlacingPin] = useState(false);
+  const [status, setStatus] = useState('Click "Place Pin" then click on map');
   const [show3DBuildings, setShow3DBuildings] = useState(true);
   const [streetViewMode, setStreetViewMode] = useState(false);
   const [enhancedBuildings, setEnhancedBuildings] = useState(true);
+
+  // Update refs when state changes
+  useEffect(() => {
+    isPlacingPinRef.current = isPlacingPin;
+  }, [isPlacingPin]);
+
+  useEffect(() => {
+    currentSimulationRef.current = currentSimulation;
+  }, [currentSimulation]);
 
   // Initialize map
   useEffect(() => {
@@ -123,44 +130,20 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
               minzoom: 13,
               paint: {
                 'fill-extrusion-color': [
-                  'case',
-                  ['boolean', ['feature-state', 'vaporized'], false],
-                  '#000000', // Vaporized buildings - black/transparent
-                  ['boolean', ['feature-state', 'destroyed'], false],
-                  '#ff0000', // Destroyed buildings - red
-                  ['boolean', ['feature-state', 'severely-damaged'], false],
-                  '#ff6600', // Severely damaged - orange
-                  ['boolean', ['feature-state', 'moderately-damaged'], false],
-                  '#ffaa00', // Moderately damaged - yellow-orange
-                  ['boolean', ['feature-state', 'lightly-damaged'], false],
-                  '#ffff00', // Lightly damaged - yellow
-                  [
-                    'interpolate',
-                    ['linear'],
-                    ['get', 'height'],
-                    0, '#7f8fa6',     // Low buildings - gray
-                    50, '#718093',    // Medium buildings - darker gray
-                    100, '#57606f',   // Tall buildings - dark gray
-                    200, '#2f3542'    // Skyscrapers - very dark gray
-                  ]
+                  'interpolate',
+                  ['linear'],
+                  ['get', 'height'],
+                  0, '#7f8fa6',     // Low buildings - gray
+                  50, '#718093',    // Medium buildings - darker gray
+                  100, '#57606f',   // Tall buildings - dark gray
+                  200, '#2f3542'    // Skyscrapers - very dark gray
                 ],
                 'fill-extrusion-height': [
                   'interpolate',
                   ['linear'],
                   ['zoom'],
                   13, 0,
-                  13.5, [
-                    'case',
-                    ['boolean', ['feature-state', 'vaporized'], false],
-                    0, // Vaporized buildings are completely gone
-                    ['boolean', ['feature-state', 'destroyed'], false],
-                    ['*', ['get', 'height'], 0.05], // Destroyed buildings are almost completely collapsed
-                    ['boolean', ['feature-state', 'severely-damaged'], false],
-                    ['*', ['get', 'height'], 0.3], // Severely damaged are heavily collapsed
-                    ['boolean', ['feature-state', 'moderately-damaged'], false],
-                    ['*', ['get', 'height'], 0.7], // Moderately damaged lose some height
-                    ['get', 'height'] // Normal height for undamaged buildings
-                  ]
+                  13.5, ['get', 'height']
                 ],
                 'fill-extrusion-base': [
                   'interpolate',
@@ -242,15 +225,21 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           console.log('Map is idle and ready');
         });
 
-        // Handle clicks to set impact location
+        // Handle clicks to place impact pin
         mapInstance.on('click', (e: mapboxgl.MapMouseEvent) => {
-          const { lng, lat } = e.lngLat;
-          setImpactLocation({
-            longitude: lng,
-            latitude: lat,
-            city: 'Selected Location',
-            country: 'Unknown'
-          });
+          console.log('Map clicked - isPlacingPin:', isPlacingPinRef.current, 'currentSimulation:', currentSimulationRef.current);
+          if (isPlacingPinRef.current && !currentSimulationRef.current) {
+            const { lng, lat } = e.lngLat;
+            console.log('Placing pin at:', lng, lat);
+            setImpactPin({
+              longitude: lng,
+              latitude: lat,
+              city: 'Selected Location',
+              country: 'Unknown'
+            });
+            setIsPlacingPin(false);
+            setStatus('Pin placed! Ready to simulate impact');
+          }
         });
 
         mapInstance.on('error', (e: { error: Error }) => {
@@ -275,47 +264,57 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps to prevent reinitialization
 
-  // Update map center when impact location changes
+  // Add pin visualization when impact pin is placed
   useEffect(() => {
-    if (!map || !mapLoaded) return;
+    if (!map || !mapLoaded || !impactPin) return;
 
     const currentMap = map;
 
+    // Clean up existing pin
+    try {
+      if (currentMap.getLayer('impact-pin')) {
+        currentMap.removeLayer('impact-pin');
+      }
+      if (currentMap.getSource('impact-pin')) {
+        currentMap.removeSource('impact-pin');
+      }
+    } catch {
+      // Pin might not exist, continue
+    }
+
+    // Add red pin marker
+    currentMap.addSource('impact-pin', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [impactPin.longitude, impactPin.latitude]
+        },
+        properties: {}
+      }
+    });
+
+    currentMap.addLayer({
+      id: 'impact-pin',
+      type: 'circle',
+      source: 'impact-pin',
+      paint: {
+        'circle-radius': 12,
+        'circle-color': '#ff0000',
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 1
+      }
+    });
+
+    // Fly to pin location
     currentMap.flyTo({
-      center: [impactLocation.longitude, impactLocation.latitude],
-      zoom: 6,
+      center: [impactPin.longitude, impactPin.latitude],
+      zoom: 8,
       duration: 2000
     });
-  if (!currentMap.isStyleLoaded()) return;
-
-  // Reset building colors when location changes
-  if (!currentMap.getLayer('building-3d')) return;
-
-    const features = currentMap.queryRenderedFeatures({ layers: ['building-3d'] });
-    features.forEach((feature) => {
-      if (!feature.id) return;
-
-      currentMap.setFeatureState(
-        { source: 'composite', sourceLayer: 'building', id: feature.id },
-        { 
-          destroyed: false,
-          'severely-damaged': false,
-          'moderately-damaged': false,
-          'lightly-damaged': false,
-          'vaporized': false,
-          'crater-zone': false
-        }
-      );
-    });
-  }, [map, mapLoaded, impactLocation]);
-
-  // Run simulation when comet or location changes
-  useEffect(() => {
-    if (selectedComet && impactLocation) {
-      const simulation = simulateImpact(selectedComet, impactLocation);
-      setCurrentSimulation(simulation);
-    }
-  }, [selectedComet, impactLocation]);
+  }, [map, mapLoaded, impactPin]);
 
   // Function to add crater visualization to the map
   const addCraterVisualization = useCallback((mapInstance: mapboxgl.Map, simulation: ImpactSimulation) => {
@@ -438,125 +437,15 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
   }, []);
 
-  // Function to create crater and alter buildings based on impact
+  // Function to create crater visualization
   const createCraterAndAlterBuildings = useCallback((mapInstance: mapboxgl.Map, simulation: ImpactSimulation) => {
-    if (!mapInstance.getLayer('building-3d')) return;
-
     try {
-      // Query all building features in the viewport
-      const features = mapInstance.queryRenderedFeatures({ layers: ['building-3d'] });
-
-      features.forEach((feature) => {
-        if (feature.geometry.type === 'Polygon' && feature.geometry.coordinates[0]) {
-          // Calculate building center (simple approximation)
-          const coords = feature.geometry.coordinates[0] as number[][];
-          let totalLng = 0, totalLat = 0;
-          coords.forEach((coord: number[]) => {
-            const [lng, lat] = coord;
-            totalLng += lng;
-            totalLat += lat;
-          });
-          const buildingLng = totalLng / coords.length;
-          const buildingLat = totalLat / coords.length;
-
-          // Calculate distance from impact point to building
-          const distance = calculateDistance(
-            simulation.location.latitude,
-            simulation.location.longitude,
-            buildingLat,
-            buildingLng
-          );
-
-          // Reset all damage states first
-          if (feature.id) {
-            mapInstance.setFeatureState(
-              { source: 'composite', sourceLayer: 'building', id: feature.id },
-              { 
-                destroyed: false,
-                'severely-damaged': false,
-                'moderately-damaged': false,
-                'lightly-damaged': false,
-                'vaporized': false,
-                'crater-zone': false
-              }
-            );
-          }
-
-          // Determine damage level based on distance from impact
-          const craterRadius = simulation.craterDiameter / 2000; // Convert to km
-          const vaporizeRadius = craterRadius * 0.3; // Inner crater zone - complete vaporization
-          const craterEdgeRadius = craterRadius * 0.8; // Crater edge - complete destruction
-          
-          if (distance <= vaporizeRadius) {
-            // Vaporization zone - buildings completely removed
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 
-                  vaporized: true,
-                  'crater-zone': true
-                }
-              );
-            }
-          } else if (distance <= craterEdgeRadius) {
-            // Crater zone - buildings destroyed and collapsed into crater
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 
-                  destroyed: true,
-                  'crater-zone': true
-                }
-              );
-            }
-          } else if (distance <= craterRadius * 1.5) {
-            // Crater rim - severe structural damage, buildings partially collapsed
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 'severely-damaged': true }
-              );
-            }
-          } else if (distance <= craterRadius * 3) {
-            // Moderate damage zone
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 'moderately-damaged': true }
-              );
-            }
-          } else if (distance <= simulation.damageRadius) {
-            // Light damage zone
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 'lightly-damaged': true }
-              );
-            }
-          }
-        }
-      });
-
       // Add crater visualization
       addCraterVisualization(mapInstance, simulation);
-
     } catch (error) {
-      console.error('Error creating crater and altering buildings:', error);
+      console.error('Error creating crater visualization:', error);
     }
   }, [addCraterVisualization]);
-
-  // Helper function to calculate distance between two points in km
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // Earth's radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
 
   // Comprehensive cleanup function
   const cleanupMapLayers = useCallback((mapInstance: mapboxgl.Map) => {
@@ -564,7 +453,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
     try {
       // Remove existing impact-related layers and sources
-      const layerIds = ['damage-zones', 'impact-point'];
+      const layerIds = ['damage-zones', 'impact-point', 'impact-pin'];
       layerIds.forEach(id => {
         try {
           if (mapInstance.getLayer(id)) {
@@ -640,7 +529,9 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     // Reset simulation state
     setCurrentSimulation(null);
     setIsAnimating(false);
-    setStatus('Ready to simulate impact');
+    setImpactPin(null);
+    setIsPlacingPin(false);
+    setStatus('Click "Place Pin" then click on map');
 
     // Reset view to initial position
     map.flyTo({
@@ -652,7 +543,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     });
   }, [map, cleanupMapLayers]);
 
-  // Add damage zones to map
+  // Add damage zones to map (only after impact simulation)
   useEffect(() => {
     if (!map || !mapLoaded || !currentSimulation) return;
     if (!map.isStyleLoaded()) return;
@@ -705,7 +596,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           const angle = (i * 360) / 64;
           const radians = (angle * Math.PI) / 180;
           
-          // Simple approximation for small circles
+          // Fixed coordinate calculation for proper centering
           const deltaLat = (radius * Math.cos(radians)) / 111320;
           const deltaLng = (radius * Math.sin(radians)) / (111320 * Math.cos(center[1] * Math.PI / 180));
           
@@ -758,7 +649,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
   // Function to toggle street view mode
   const toggleStreetView = useCallback(() => {
-    if (!map || !mapLoaded) return;
+    if (!map || !mapLoaded || !impactPin) return;
 
     const newStreetViewMode = !streetViewMode;
     setStreetViewMode(newStreetViewMode);
@@ -766,7 +657,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     if (newStreetViewMode) {
       // Street view mode - close zoom, angled view, ground level perspective
       map.flyTo({
-        center: [impactLocation.longitude, impactLocation.latitude],
+        center: [impactPin.longitude, impactPin.latitude],
         zoom: 18, // Very close zoom for street level
         pitch: 70, // High pitch for ground-level perspective
         bearing: 45, // Angled view
@@ -775,14 +666,14 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     } else {
       // Aerial view mode - moderate zoom, top-down view
       map.flyTo({
-        center: [impactLocation.longitude, impactLocation.latitude],
+        center: [impactPin.longitude, impactPin.latitude],
         zoom: 15,
         pitch: 45, // Moderate pitch for 3D effect
         bearing: 0, // North-facing
         duration: 2000
       });
     }
-  }, [map, mapLoaded, streetViewMode, impactLocation]);
+  }, [map, mapLoaded, streetViewMode, impactPin]);
 
   // Toggle enhanced buildings with better materials and lighting
   const toggleEnhancedBuildings = useCallback(() => {
@@ -819,16 +710,19 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   };
 
   const runImpactAnimation = async () => {
-    if (!map || !currentSimulation || isAnimating) return;
+    if (!map || !impactPin || isAnimating) return;
     
     setIsAnimating(true);
     setStatus('Simulating impact...');
     
     try {
+      // Create simulation from pin location
+      const simulation = simulateImpact(selectedComet, impactPin);
+      
       // Zoom out to show trajectory
       await new Promise<void>((resolve) => {
         map.flyTo({
-          center: [currentSimulation.location.longitude, currentSimulation.location.latitude],
+          center: [impactPin.longitude, impactPin.latitude],
           zoom: 2,
           duration: 1500
         });
@@ -836,8 +730,8 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       });
       
       // Show asteroid approaching
-      const startLng = currentSimulation.location.longitude + 15;
-      const startLat = currentSimulation.location.latitude + 10;
+      const startLng = impactPin.longitude + 15;
+      const startLat = impactPin.latitude + 10;
       
       // Add asteroid marker
       map.addSource('asteroid', {
@@ -867,8 +761,8 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       
       // Animate asteroid movement
       const steps = 60;
-      const lngStep = (currentSimulation.location.longitude - startLng) / steps;
-      const latStep = (currentSimulation.location.latitude - startLat) / steps;
+      const lngStep = (impactPin.longitude - startLng) / steps;
+      const latStep = (impactPin.latitude - startLat) / steps;
       
       for (let i = 0; i <= steps; i++) {
         const progress = i / steps;
@@ -899,10 +793,13 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         map.removeSource('asteroid');
       }
       
+      // Set simulation to trigger damage zone rendering
+      setCurrentSimulation(simulation);
+      
       // Zoom to impact site - closer to see buildings
       await new Promise<void>((resolve) => {
         map.flyTo({
-          center: [currentSimulation.location.longitude, currentSimulation.location.latitude],
+          center: [impactPin.longitude, impactPin.latitude],
           zoom: 16, // Much closer zoom to see 3D buildings
           pitch: 45, // Angled view for better 3D building visibility
           duration: 2000
@@ -1009,18 +906,56 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
             </select>
           </div>
           
-          {/* Impact Location */}
+          {/* Impact Pin Location */}
           <div>
             <label className="block text-sm font-medium text-gray-200 mb-2">
-              Impact Location:
+              Impact Pin:
             </label>
             <div className="p-3 bg-gray-800/50 rounded-md text-sm">
-              <div className="text-blue-300 font-medium">{impactLocation.city}</div>
-              <div className="text-gray-400 text-xs">
-                {impactLocation.latitude.toFixed(4)}°, {impactLocation.longitude.toFixed(4)}°
-              </div>
+              {impactPin ? (
+                <>
+                  <div className="text-blue-300 font-medium">{impactPin.city}</div>
+                  <div className="text-gray-400 text-xs">
+                    {impactPin.latitude.toFixed(4)}°, {impactPin.longitude.toFixed(4)}°
+                  </div>
+                </>
+              ) : currentSimulation ? (
+                <div className="text-gray-400">Reset to place new pin</div>
+              ) : (
+                <div className="text-gray-400">No pin placed</div>
+              )}
             </div>
           </div>
+
+          {/* Pin Controls */}
+          {!currentSimulation && (
+            <div className="space-y-2">
+              {!impactPin ? (
+                <button
+                  onClick={() => {
+                    setIsPlacingPin(true);
+                    setStatus('Click anywhere on Earth to place pin');
+                  }}
+                  disabled={isAnimating}
+                  className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed"
+                >
+                  📍 Place Pin
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setImpactPin(null);
+                    setIsPlacingPin(false);
+                    setStatus('Click "Place Pin" then click on map');
+                  }}
+                  disabled={isAnimating}
+                  className="w-full px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed"
+                >
+                  🗑️ Remove Pin
+                </button>
+              )}
+            </div>
+          )}
           
           {/* Status */}
           <div className="p-3 bg-gray-800/50 rounded-md">
@@ -1031,8 +966,8 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           {/* 3D Buildings Toggle */}
           <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-md">
             <div>
-              <div className="text-sm text-gray-200">3D Buildings</div>
-              <div className="text-xs text-gray-400">Show building damage</div>
+              <div className="text-sm text-gray-200">Toggle Buildings</div>
+              <div className="text-xs text-gray-400">Show/hide buildings</div>
             </div>
             <button
               onClick={toggle3DBuildings}
@@ -1088,67 +1023,25 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
             </button>
           </div>
           
-          {/* Building Damage Legend */}
-          {show3DBuildings && (
-            <div className="p-3 bg-gray-800/50 rounded-md">
-              <h4 className="text-sm font-medium text-gray-200 mb-3">🏢 Building Damage Levels</h4>
-              <div className="space-y-2">
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#000000' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Vaporized</span>
-                    <span className="text-gray-500 ml-1">(0-0.15km)</span>
-                  </div>
+          {/* Simulate Button - Only show when pin is placed but no simulation */}
+          {impactPin && !currentSimulation && (
+            <button
+              onClick={runImpactAnimation}
+              disabled={isAnimating || !mapLoaded}
+              className="w-full px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed shadow-lg"
+            >
+              {isAnimating ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Simulating...
                 </div>
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ff0000' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Destroyed</span>
-                    <span className="text-gray-500 ml-1">(0.15-0.4km)</span>
-                  </div>
-                </div>
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ff6600' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Severe Damage</span>
-                    <span className="text-gray-500 ml-1">(0.4-0.75km)</span>
-                  </div>
-                </div>
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ffaa00' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Moderate Damage</span>
-                    <span className="text-gray-500 ml-1">(0.75-1.5km)</span>
-                  </div>
-                </div>
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ffff00' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Light Damage</span>
-                    <span className="text-gray-500 ml-1">(1.5km+)</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+              ) : (
+                '🚀 Simulate Impact'
+              )}
+            </button>
           )}
-          
-          {/* Simulate Button */}
-          <button
-            onClick={runImpactAnimation}
-            disabled={isAnimating || !mapLoaded}
-            className="w-full px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed shadow-lg"
-          >
-            {isAnimating ? (
-              <div className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Simulating...
-              </div>
-            ) : (
-              '🚀 Simulate Impact'
-            )}
-          </button>
 
-          {/* Reset Button */}
+          {/* Reset Button - Only show when simulation exists */}
           {currentSimulation && (
             <button
               onClick={resetSimulation}
@@ -1161,12 +1054,12 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
           {/* Instructions */}
           <div className="text-xs text-gray-400 space-y-1">
-            <p>• Click anywhere on Earth to set target</p>
-            <p>• Choose asteroid size and simulate</p>
-            <p>• Toggle 3D buildings for damage view</p>
+            <p>• Click &quot;Place Pin&quot; then click on Earth</p>
+            <p>• Choose asteroid size and simulate impact</p>
+            <p>• View crater impact zones after simulation</p>
+            <p>• Toggle buildings for 3D view</p>
             <p>• Use Street View for ground perspective</p>
-            <p>• Enhanced rendering for better visuals</p>
-            <p>• View real-time damage analysis</p>
+            <p>• Reset to start a new simulation</p>
           </div>
         </div>
 
@@ -1202,9 +1095,9 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
                 </div>
               </div>
               
-              {/* Damage Zones Legend */}
+              {/* Crater Impact Zones Legend */}
               <div className="mt-3">
-                <h4 className="text-xs font-medium text-gray-300 mb-2">Damage Zones:</h4>
+                <h4 className="text-xs font-medium text-gray-300 mb-2">🎯 Crater Impact Zones:</h4>
                 <div className="space-y-1">
                   {getDamageZones(currentSimulation).map((zone, index) => (
                     <div key={index} className="flex items-center text-xs">
@@ -1226,9 +1119,9 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       </div>
 
       {/* Location Display - Bottom Right */}
-      {mapLoaded && (
+      {mapLoaded && impactPin && (
         <div className="absolute bottom-6 right-6 bg-black/80 text-white px-3 py-2 rounded-lg text-xs">
-          Target: {impactLocation.latitude.toFixed(3)}°, {impactLocation.longitude.toFixed(3)}°
+          Target: {impactPin.latitude.toFixed(3)}°, {impactPin.longitude.toFixed(3)}°
         </div>
       )}
     </div>
