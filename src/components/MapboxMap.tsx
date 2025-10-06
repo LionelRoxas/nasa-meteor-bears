@@ -6,6 +6,8 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import Link from 'next/link';
 import { CometData, ImpactLocation, ImpactSimulation } from '@/types/comet';
 import { TEST_COMETS, simulateImpact, getDamageZones } from '@/lib/services/comet-simulation';
+import * as THREE from 'three';
+import { createAsteroidMesh } from '@/lib/asteroid-utils';
 
 interface MapboxMapProps {
   className?: string;
@@ -14,21 +16,146 @@ interface MapboxMapProps {
 export default function MapboxMap({ className = '' }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const initialCenterRef = useRef<[number, number]>([-74.5, 40.7]);
+  const isPlacingPinRef = useRef(false);
+  const currentSimulationRef = useRef<ImpactSimulation | null>(null);
+  
+  // Three.js refs
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const asteroidMeshRef = useRef<THREE.Mesh | null>(null);
+  
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedComet, setSelectedComet] = useState<CometData>(TEST_COMETS[0]);
-  const [impactLocation, setImpactLocation] = useState<ImpactLocation>({
-    longitude: -74.5,
-    latitude: 40.7,
-    city: 'New York',
-    country: 'USA'
-  });
+  const [impactPin, setImpactPin] = useState<ImpactLocation | null>(null);
   const [currentSimulation, setCurrentSimulation] = useState<ImpactSimulation | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [status, setStatus] = useState('Initializing...');
+  const [isPlacingPin, setIsPlacingPin] = useState(false);
+  const [status, setStatus] = useState('Click "Place Pin" then click on map');
   const [show3DBuildings, setShow3DBuildings] = useState(true);
   const [streetViewMode, setStreetViewMode] = useState(false);
   const [enhancedBuildings, setEnhancedBuildings] = useState(true);
+
+  // Update refs when state changes
+  useEffect(() => {
+    isPlacingPinRef.current = isPlacingPin;
+  }, [isPlacingPin]);
+
+  useEffect(() => {
+    currentSimulationRef.current = currentSimulation;
+  }, [currentSimulation]);
+
+  // Sound effects utility functions
+  const playImpactSound = useCallback(() => {
+    try {
+      const audio = new Audio('/sounds/explode.wav');
+      audio.volume = 0.5;
+      audio.play().catch(error => console.log('Impact sound failed to play:', error));
+    } catch (error) {
+      console.log('Error creating impact audio:', error);
+    }
+  }, []);
+
+  // Convert lat/lng to 3D coordinates for Three.js overlay
+  const lngLatTo3D = useCallback((lng: number, lat: number, altitude: number = 0) => {
+    const phi = (90 - lat) * Math.PI / 180;
+    const theta = (lng + 180) * Math.PI / 180;
+    const radius = 50 + altitude; // Earth radius in our 3D scene
+    
+    return new THREE.Vector3(
+      -(radius * Math.sin(phi) * Math.cos(theta)),
+      radius * Math.cos(phi),
+      radius * Math.sin(phi) * Math.sin(theta)
+    );
+  }, []);
+
+  // Update map cursor when pin placement state changes
+  useEffect(() => {
+    if (!map) return;
+    
+    if (isPlacingPin) {
+      // Set a red crosshair cursor using CSS
+      map.getCanvas().style.cursor = 'url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 20 20\'%3E%3Cline x1=\'10\' y1=\'0\' x2=\'10\' y2=\'20\' stroke=\'%23ff0000\' stroke-width=\'2\'/%3E%3Cline x1=\'0\' y1=\'10\' x2=\'20\' y2=\'10\' stroke=\'%23ff0000\' stroke-width=\'2\'/%3E%3C/svg%3E") 10 10, crosshair';
+    } else {
+      map.getCanvas().style.cursor = '';
+    }
+  }, [map, isPlacingPin]);
+
+  // Initialize Three.js scene for asteroid visualization
+  useEffect(() => {
+    if (!map || !mapLoaded) return;
+
+    const animationId: number | null = null;
+
+    // Create Three.js scene with AsteroidPreview setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ 
+      alpha: true, 
+      antialias: true 
+    });
+    
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setClearColor(0x000000, 0); // Transparent background
+    renderer.domElement.style.position = 'absolute';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '0';
+    renderer.domElement.style.pointerEvents = 'none';
+    renderer.domElement.style.zIndex = '5';
+    
+    console.log('Three.js renderer created and configured');
+    
+    // Add renderer to map container
+    if (mapContainer.current) {
+      mapContainer.current.appendChild(renderer.domElement);
+      console.log('Three.js renderer added to map container');
+    }
+
+    // Use the exact lighting setup from AsteroidPreview
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    sunLight.position.set(8, 5, 3);
+    sunLight.castShadow = true;
+    scene.add(sunLight);
+
+    const fillLight = new THREE.DirectionalLight(0xaabbff, 0.6);
+    fillLight.position.set(-5, -2, -5);
+    scene.add(fillLight);
+
+    const ambientLight = new THREE.AmbientLight(0x606060, 0.7);
+    scene.add(ambientLight);
+
+    // Store references
+    sceneRef.current = scene;
+    rendererRef.current = renderer;
+    cameraRef.current = camera;
+
+    // Set initial camera position for better 3D view
+    camera.position.set(0, 0, 0);
+    camera.lookAt(0, 0, -30);
+
+    // Start render loop
+    const animate = () => {
+      if (rendererRef.current && sceneRef.current && cameraRef.current) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
+      requestAnimationFrame(animate);
+    };
+    animate();
+    console.log('Three.js animation loop started');
+
+    return () => {
+      if (renderer.domElement.parentNode) {
+        renderer.domElement.parentNode.removeChild(renderer.domElement);
+      }
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    };
+  }, [map, mapLoaded]);
 
   // Initialize map
   useEffect(() => {
@@ -123,44 +250,20 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
               minzoom: 13,
               paint: {
                 'fill-extrusion-color': [
-                  'case',
-                  ['boolean', ['feature-state', 'vaporized'], false],
-                  '#000000', // Vaporized buildings - black/transparent
-                  ['boolean', ['feature-state', 'destroyed'], false],
-                  '#ff0000', // Destroyed buildings - red
-                  ['boolean', ['feature-state', 'severely-damaged'], false],
-                  '#ff6600', // Severely damaged - orange
-                  ['boolean', ['feature-state', 'moderately-damaged'], false],
-                  '#ffaa00', // Moderately damaged - yellow-orange
-                  ['boolean', ['feature-state', 'lightly-damaged'], false],
-                  '#ffff00', // Lightly damaged - yellow
-                  [
-                    'interpolate',
-                    ['linear'],
-                    ['get', 'height'],
-                    0, '#7f8fa6',     // Low buildings - gray
-                    50, '#718093',    // Medium buildings - darker gray
-                    100, '#57606f',   // Tall buildings - dark gray
-                    200, '#2f3542'    // Skyscrapers - very dark gray
-                  ]
+                  'interpolate',
+                  ['linear'],
+                  ['get', 'height'],
+                  0, '#7f8fa6',     // Low buildings - gray
+                  50, '#718093',    // Medium buildings - darker gray
+                  100, '#57606f',   // Tall buildings - dark gray
+                  200, '#2f3542'    // Skyscrapers - very dark gray
                 ],
                 'fill-extrusion-height': [
                   'interpolate',
                   ['linear'],
                   ['zoom'],
                   13, 0,
-                  13.5, [
-                    'case',
-                    ['boolean', ['feature-state', 'vaporized'], false],
-                    0, // Vaporized buildings are completely gone
-                    ['boolean', ['feature-state', 'destroyed'], false],
-                    ['*', ['get', 'height'], 0.05], // Destroyed buildings are almost completely collapsed
-                    ['boolean', ['feature-state', 'severely-damaged'], false],
-                    ['*', ['get', 'height'], 0.3], // Severely damaged are heavily collapsed
-                    ['boolean', ['feature-state', 'moderately-damaged'], false],
-                    ['*', ['get', 'height'], 0.7], // Moderately damaged lose some height
-                    ['get', 'height'] // Normal height for undamaged buildings
-                  ]
+                  13.5, ['get', 'height']
                 ],
                 'fill-extrusion-base': [
                   'interpolate',
@@ -242,15 +345,21 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           console.log('Map is idle and ready');
         });
 
-        // Handle clicks to set impact location
+        // Handle clicks to place impact pin
         mapInstance.on('click', (e: mapboxgl.MapMouseEvent) => {
-          const { lng, lat } = e.lngLat;
-          setImpactLocation({
-            longitude: lng,
-            latitude: lat,
-            city: 'Selected Location',
-            country: 'Unknown'
-          });
+          console.log('Map clicked - isPlacingPin:', isPlacingPinRef.current, 'currentSimulation:', currentSimulationRef.current);
+          if (isPlacingPinRef.current && !currentSimulationRef.current) {
+            const { lng, lat } = e.lngLat;
+            console.log('Placing pin at:', lng, lat);
+            setImpactPin({
+              longitude: lng,
+              latitude: lat,
+              city: 'Selected Location',
+              country: 'Unknown'
+            });
+            setIsPlacingPin(false);
+            setStatus('Pin placed! Ready to simulate impact');
+          }
         });
 
         mapInstance.on('error', (e: { error: Error }) => {
@@ -275,47 +384,60 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps to prevent reinitialization
 
-  // Update map center when impact location changes
+  // Add pin visualization when impact pin is placed
   useEffect(() => {
     if (!map || !mapLoaded) return;
 
     const currentMap = map;
 
+    // Clean up existing pin
+    try {
+      if (currentMap.getLayer('impact-pin')) {
+        currentMap.removeLayer('impact-pin');
+      }
+      if (currentMap.getSource('impact-pin')) {
+        currentMap.removeSource('impact-pin');
+      }
+    } catch {
+      // Pin might not exist, continue
+    }
+
+    // If no impact pin, we're done (pin has been removed)
+    if (!impactPin) return;
+
+    // Add red pin marker
+    currentMap.addSource('impact-pin', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [impactPin.longitude, impactPin.latitude]
+        },
+        properties: {}
+      }
+    });
+
+    currentMap.addLayer({
+      id: 'impact-pin',
+      type: 'circle',
+      source: 'impact-pin',
+      paint: {
+        'circle-radius': 12,
+        'circle-color': '#ff0000',
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 1
+      }
+    });
+
+    // Fly to pin location
     currentMap.flyTo({
-      center: [impactLocation.longitude, impactLocation.latitude],
-      zoom: 6,
+      center: [impactPin.longitude, impactPin.latitude],
+      zoom: 10, // Moderate zoom to see the area without being too close
       duration: 2000
     });
-  if (!currentMap.isStyleLoaded()) return;
-
-  // Reset building colors when location changes
-  if (!currentMap.getLayer('building-3d')) return;
-
-    const features = currentMap.queryRenderedFeatures({ layers: ['building-3d'] });
-    features.forEach((feature) => {
-      if (!feature.id) return;
-
-      currentMap.setFeatureState(
-        { source: 'composite', sourceLayer: 'building', id: feature.id },
-        { 
-          destroyed: false,
-          'severely-damaged': false,
-          'moderately-damaged': false,
-          'lightly-damaged': false,
-          'vaporized': false,
-          'crater-zone': false
-        }
-      );
-    });
-  }, [map, mapLoaded, impactLocation]);
-
-  // Run simulation when comet or location changes
-  useEffect(() => {
-    if (selectedComet && impactLocation) {
-      const simulation = simulateImpact(selectedComet, impactLocation);
-      setCurrentSimulation(simulation);
-    }
-  }, [selectedComet, impactLocation]);
+  }, [map, mapLoaded, impactPin]);
 
   // Function to add crater visualization to the map
   const addCraterVisualization = useCallback((mapInstance: mapboxgl.Map, simulation: ImpactSimulation) => {
@@ -438,125 +560,15 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
   }, []);
 
-  // Function to create crater and alter buildings based on impact
+  // Function to create crater visualization
   const createCraterAndAlterBuildings = useCallback((mapInstance: mapboxgl.Map, simulation: ImpactSimulation) => {
-    if (!mapInstance.getLayer('building-3d')) return;
-
     try {
-      // Query all building features in the viewport
-      const features = mapInstance.queryRenderedFeatures({ layers: ['building-3d'] });
-
-      features.forEach((feature) => {
-        if (feature.geometry.type === 'Polygon' && feature.geometry.coordinates[0]) {
-          // Calculate building center (simple approximation)
-          const coords = feature.geometry.coordinates[0] as number[][];
-          let totalLng = 0, totalLat = 0;
-          coords.forEach((coord: number[]) => {
-            const [lng, lat] = coord;
-            totalLng += lng;
-            totalLat += lat;
-          });
-          const buildingLng = totalLng / coords.length;
-          const buildingLat = totalLat / coords.length;
-
-          // Calculate distance from impact point to building
-          const distance = calculateDistance(
-            simulation.location.latitude,
-            simulation.location.longitude,
-            buildingLat,
-            buildingLng
-          );
-
-          // Reset all damage states first
-          if (feature.id) {
-            mapInstance.setFeatureState(
-              { source: 'composite', sourceLayer: 'building', id: feature.id },
-              { 
-                destroyed: false,
-                'severely-damaged': false,
-                'moderately-damaged': false,
-                'lightly-damaged': false,
-                'vaporized': false,
-                'crater-zone': false
-              }
-            );
-          }
-
-          // Determine damage level based on distance from impact
-          const craterRadius = simulation.craterDiameter / 2000; // Convert to km
-          const vaporizeRadius = craterRadius * 0.3; // Inner crater zone - complete vaporization
-          const craterEdgeRadius = craterRadius * 0.8; // Crater edge - complete destruction
-          
-          if (distance <= vaporizeRadius) {
-            // Vaporization zone - buildings completely removed
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 
-                  vaporized: true,
-                  'crater-zone': true
-                }
-              );
-            }
-          } else if (distance <= craterEdgeRadius) {
-            // Crater zone - buildings destroyed and collapsed into crater
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 
-                  destroyed: true,
-                  'crater-zone': true
-                }
-              );
-            }
-          } else if (distance <= craterRadius * 1.5) {
-            // Crater rim - severe structural damage, buildings partially collapsed
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 'severely-damaged': true }
-              );
-            }
-          } else if (distance <= craterRadius * 3) {
-            // Moderate damage zone
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 'moderately-damaged': true }
-              );
-            }
-          } else if (distance <= simulation.damageRadius) {
-            // Light damage zone
-            if (feature.id) {
-              mapInstance.setFeatureState(
-                { source: 'composite', sourceLayer: 'building', id: feature.id },
-                { 'lightly-damaged': true }
-              );
-            }
-          }
-        }
-      });
-
       // Add crater visualization
       addCraterVisualization(mapInstance, simulation);
-
     } catch (error) {
-      console.error('Error creating crater and altering buildings:', error);
+      console.error('Error creating crater visualization:', error);
     }
   }, [addCraterVisualization]);
-
-  // Helper function to calculate distance between two points in km
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // Earth's radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
 
   // Comprehensive cleanup function
   const cleanupMapLayers = useCallback((mapInstance: mapboxgl.Map) => {
@@ -564,7 +576,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
     try {
       // Remove existing impact-related layers and sources
-      const layerIds = ['damage-zones', 'impact-point'];
+      const layerIds = ['damage-zones', 'impact-point', 'impact-pin'];
       layerIds.forEach(id => {
         try {
           if (mapInstance.getLayer(id)) {
@@ -637,10 +649,18 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     // Clear all map layers and sources
     cleanupMapLayers(map);
 
+    // Clean up Three.js asteroid
+    if (asteroidMeshRef.current && sceneRef.current) {
+      sceneRef.current.remove(asteroidMeshRef.current);
+      asteroidMeshRef.current = null;
+    }
+
     // Reset simulation state
     setCurrentSimulation(null);
     setIsAnimating(false);
-    setStatus('Ready to simulate impact');
+    setImpactPin(null);
+    setIsPlacingPin(false);
+    setStatus('Click "Place Pin" then click on map');
 
     // Reset view to initial position
     map.flyTo({
@@ -652,11 +672,11 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     });
   }, [map, cleanupMapLayers]);
 
-  // Add damage zones to map
+  // Add damage zones to map (only after impact simulation)
   useEffect(() => {
     if (!map || !mapLoaded || !currentSimulation) return;
-    if (!map.isStyleLoaded()) return;
 
+    console.log('Adding damage zones for simulation:', currentSimulation);
     const currentMap = map; // Store reference to avoid null checks
 
     // Clean up existing layers before adding new ones
@@ -690,10 +710,13 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
     // Add damage zones
     const damageZones = getDamageZones(currentSimulation);
+    console.log('Damage zones to add:', damageZones);
     
     damageZones.forEach((zone, index) => {
       const sourceId = `damage-zone-${index}`;
       const layerId = `damage-zone-layer-${index}`;
+      
+      console.log(`Adding damage zone ${index}: ${zone.type} with radius ${zone.radius}km`);
       
       try {
         // Create circle for damage zone
@@ -705,7 +728,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           const angle = (i * 360) / 64;
           const radians = (angle * Math.PI) / 180;
           
-          // Simple approximation for small circles
+          // Fixed coordinate calculation for proper centering
           const deltaLat = (radius * Math.cos(radians)) / 111320;
           const deltaLng = (radius * Math.sin(radians)) / (111320 * Math.cos(center[1] * Math.PI / 180));
           
@@ -758,7 +781,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
   // Function to toggle street view mode
   const toggleStreetView = useCallback(() => {
-    if (!map || !mapLoaded) return;
+    if (!map || !mapLoaded || !impactPin) return;
 
     const newStreetViewMode = !streetViewMode;
     setStreetViewMode(newStreetViewMode);
@@ -766,7 +789,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     if (newStreetViewMode) {
       // Street view mode - close zoom, angled view, ground level perspective
       map.flyTo({
-        center: [impactLocation.longitude, impactLocation.latitude],
+        center: [impactPin.longitude, impactPin.latitude],
         zoom: 18, // Very close zoom for street level
         pitch: 70, // High pitch for ground-level perspective
         bearing: 45, // Angled view
@@ -775,14 +798,14 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     } else {
       // Aerial view mode - moderate zoom, top-down view
       map.flyTo({
-        center: [impactLocation.longitude, impactLocation.latitude],
+        center: [impactPin.longitude, impactPin.latitude],
         zoom: 15,
         pitch: 45, // Moderate pitch for 3D effect
         bearing: 0, // North-facing
         duration: 2000
       });
     }
-  }, [map, mapLoaded, streetViewMode, impactLocation]);
+  }, [map, mapLoaded, streetViewMode, impactPin]);
 
   // Toggle enhanced buildings with better materials and lighting
   const toggleEnhancedBuildings = useCallback(() => {
@@ -819,98 +842,196 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   };
 
   const runImpactAnimation = async () => {
-    if (!map || !currentSimulation || isAnimating) return;
+    if (!map || !impactPin || isAnimating || !sceneRef.current || !rendererRef.current || !cameraRef.current) return;
     
     setIsAnimating(true);
     setStatus('Simulating impact...');
     
     try {
-      // Zoom out to show trajectory
+      // Create simulation from pin location
+      const simulation = simulateImpact(selectedComet, impactPin);
+      
+      // Start from space view to show asteroid approach
       await new Promise<void>((resolve) => {
         map.flyTo({
-          center: [currentSimulation.location.longitude, currentSimulation.location.latitude],
-          zoom: 2,
+          center: [impactPin.longitude, impactPin.latitude],
+          zoom: 2, // Space view to see Earth
           duration: 1500
         });
         setTimeout(resolve, 1500);
       });
       
-      // Show asteroid approaching
-      const startLng = currentSimulation.location.longitude + 15;
-      const startLat = currentSimulation.location.latitude + 10;
+      // Create Three.js asteroid using exact AsteroidPreview setup
+      console.log('Creating realistic asteroid using AsteroidPreview method...');
       
-      // Add asteroid marker
-      map.addSource('asteroid', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [startLng, startLat]
-          },
-          properties: {}
-        }
-      });
-
-      map.addLayer({
-        id: 'asteroid',
-        type: 'circle',
-        source: 'asteroid',
-        paint: {
-          'circle-radius': 12,
-          'circle-color': '#ff8800',
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 0.9
-        }
-      });
+      // Create the asteroid using asteroid utils - same as AsteroidPreview
+      const asteroidDiameter = Math.max(selectedComet.diameter / 10, 100); // Use reasonable diameter
+      const asteroidMesh = createAsteroidMesh(THREE, { diameter: asteroidDiameter });
+      console.log('Created asteroid using asteroid-utils with diameter:', asteroidDiameter);
       
-      // Animate asteroid movement
+      // Don't override the material - let asteroid-utils handle it as it does in AsteroidPreview
+      console.log('Asteroid mesh created:', asteroidMesh);
+      
+      // Use bigger scaling for more dramatic effect
+      const minDiameter = 50;
+      const maxDiameter = 1000;
+      const minScale = 3.0; // Increased from 2.0
+      const maxScale = 6.0; // Increased from 4.5
+      const normalizedDiameter = (asteroidDiameter - minDiameter) / (maxDiameter - minDiameter);
+      const scaleFactor = minScale + normalizedDiameter * (maxScale - minScale);
+      asteroidMesh.scale.multiplyScalar(scaleFactor);
+      
+      // Create fiery trail/aura effect
+      const trailGeometry = new THREE.SphereGeometry(scaleFactor * 1.5, 16, 16);
+      const trailMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff6600, // Orange
+        transparent: true,
+        opacity: 0.3,
+        blending: THREE.AdditiveBlending
+      });
+      const trail = new THREE.Mesh(trailGeometry, trailMaterial);
+      
+      // Create inner aura
+      const auraGeometry = new THREE.SphereGeometry(scaleFactor * 1.2, 16, 16);
+      const auraMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffaa00, // Yellow-orange
+        transparent: true,
+        opacity: 0.5,
+        blending: THREE.AdditiveBlending
+      });
+      const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+      
+  // Screen-space path: start off to the right, impact at exact screen center
+  // We'll keep the map centered (or mostly centered) on the pin so impact aligns visually.
+  const startPosition = new THREE.Vector3(40, 10, -35);   // Further right & a bit higher
+  const endPosition   = new THREE.Vector3(0, 0, -35);     // Exact center of view (impact)
+      
+      asteroidMesh.position.copy(startPosition);
+      trail.position.copy(startPosition);
+      aura.position.copy(startPosition);
+      
+      sceneRef.current.add(asteroidMesh);
+      sceneRef.current.add(trail);
+      sceneRef.current.add(aura);
+      asteroidMeshRef.current = asteroidMesh;
+      console.log('Asteroid with fiery trail added to scene at position:', startPosition, 'with scale factor:', scaleFactor);
+      
+      // Position camera for clear side view
+      cameraRef.current.position.set(0, 0, 0);
+      cameraRef.current.lookAt(0, 0, -35);
+      console.log('Camera positioned for clear asteroid view');
+      
+      // Animate asteroid movement; keep map mostly fixed early, then tighten & zoom
       const steps = 60;
-      const lngStep = (currentSimulation.location.longitude - startLng) / steps;
-      const latStep = (currentSimulation.location.latitude - startLat) / steps;
-      
+      const centerLockFrame = 15; // After this frame we ensure map is locked on pin
       for (let i = 0; i <= steps; i++) {
-        const progress = i / steps;
-        const currentLng = startLng + (lngStep * i);
-        const currentLat = startLat + (latStep * i);
-        
-        const source = map.getSource('asteroid') as mapboxgl.GeoJSONSource;
-        source?.setData({
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [currentLng, currentLat]
-          },
-          properties: {}
+        const progress = i / steps; // 0 -> 1
+
+        // Position interpolation
+        asteroidMesh.position.lerpVectors(startPosition, endPosition, progress);
+        trail.position.copy(asteroidMesh.position);
+        aura.position.copy(asteroidMesh.position);
+
+        // Subtle tumble
+        asteroidMesh.rotation.x += 0.025;
+        asteroidMesh.rotation.y += 0.018;
+        asteroidMesh.rotation.z += 0.012;
+
+        // Aura intensifies
+        (trail.material as THREE.MeshBasicMaterial).opacity = 0.25 + progress * 0.55;
+        (aura.material as THREE.MeshBasicMaterial).opacity = 0.4 + progress * 0.4;
+
+        // Camera/map behavior:
+        //  - Frames 0..centerLockFrame: slight drift toward pin (cinematic)
+        //  - After that: lock exactly on pin; then progressive zoom near final approach
+        if (i <= centerLockFrame) {
+          const t = i / centerLockFrame; // 0..1
+            // Drift from a mild offset to true center
+          const lngOffset = 6 * (1 - t); // start 6° east
+          const latOffset = 4 * (1 - t); // start 4° north
+          map.setCenter([impactPin.longitude + lngOffset, impactPin.latitude + latOffset]);
+          map.setZoom(2.5 + t * 1.5); // 2.5 -> 4.0
+        } else {
+          // Locked center
+          map.setCenter([impactPin.longitude, impactPin.latitude]);
+          // Zoom in only in last 40% of flight
+          if (progress > 0.6) {
+            const zoomT = (progress - 0.6) / 0.4; // 0..1
+            map.setZoom(4 + zoomT * 8); // 4 -> 12
+          }
+        }
+
+        if (i % 12 === 0) {
+          console.log(`Asteroid frame ${i}/${steps}`, { pos: asteroidMesh.position });
+        }
+
+        setStatus(`Asteroid incoming... ${Math.round(progress * 100)}%`);
+        await new Promise(r => setTimeout(r, 50));
+      }
+
+      console.log('Asteroid reached center (impact). Zooming for assessment...');
+
+      // Post-impact zoom refine (fast) BEFORE explosion so crater matches center
+      await new Promise<void>(resolve => {
+        map.flyTo({
+          center: [impactPin.longitude, impactPin.latitude],
+          zoom: 12,
+          duration: 900,
+          pitch: 35
         });
+        setTimeout(resolve, 900);
+      });
+      
+      // Create impact explosion at the exact pin location
+      if (asteroidMeshRef.current) {
+        // Play impact sound
+        playImpactSound();
         
-        // Update status during animation
-        setStatus(`Asteroid approaching... ${Math.round(progress * 100)}%`);
+        // Create explosion effect at exact target location
+        const explosionGeometry = new THREE.SphereGeometry(2, 16, 16);
+        const explosionMaterial = new THREE.MeshBasicMaterial({ 
+          color: 0xff4500, 
+          transparent: true, 
+          opacity: 0.8 
+        });
+        const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+        explosion.position.copy(endPosition); // Use end position
+        sceneRef.current.add(explosion);
+        console.log('Explosion created at impact location:', endPosition);
         
-        await new Promise(resolve => setTimeout(resolve, 50));
+        // Remove asteroid and trail (impact moment)
+        sceneRef.current.remove(asteroidMeshRef.current);
+        sceneRef.current.remove(trail);
+        sceneRef.current.remove(aura);
+        console.log('Asteroid and trail removed from scene (impact moment)');
+
+        // IMMEDIATE crater & damage zones (trigger simulation now)
+        setCurrentSimulation(simulation);
+        setStatus('Impact! Calculating crater and damage zones...');
+
+        // Run explosion animation while crater already visible
+        for (let i = 0; i < 16; i++) {
+          explosion.scale.multiplyScalar(1.22);
+          explosionMaterial.opacity *= 0.88;
+          await new Promise(resolve => setTimeout(resolve, 70));
+        }
+        sceneRef.current.remove(explosion);
+        console.log('Explosion animation complete (crater already displayed)');
       }
       
-      // Remove asteroid after impact
-      if (map.getLayer('asteroid')) {
-        map.removeLayer('asteroid');
-      }
-      if (map.getSource('asteroid')) {
-        map.removeSource('asteroid');
-      }
-      
-      // Zoom to impact site - closer to see buildings
+      // Zoom to the actual impact site where the pin was placed
       await new Promise<void>((resolve) => {
         map.flyTo({
-          center: [currentSimulation.location.longitude, currentSimulation.location.latitude],
-          zoom: 16, // Much closer zoom to see 3D buildings
-          pitch: 45, // Angled view for better 3D building visibility
+          center: [impactPin.longitude, impactPin.latitude], // Center on actual pin location
+          zoom: 12, // Balanced zoom to see crater and surrounding damage zones
+          pitch: 35, // Moderate angled view for good 3D building visibility
           duration: 2000
         });
         setTimeout(resolve, 2000);
       });
       
-      setStatus('Impact simulation complete!');
+      console.log('Map centered on impact site at pin location:', [impactPin.longitude, impactPin.latitude]);
+      setStatus('Impact simulation complete! Crater and damage zones visible.');
       
     } catch (error) {
       console.error('Animation error:', error);
@@ -925,7 +1046,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       {/* Map Container - Full Screen */}
       <div 
         ref={mapContainer} 
-        className="absolute inset-0 w-full h-full"
+        className={`absolute inset-0 w-full h-full ${isPlacingPin ? 'cursor-crosshair' : ''}`}
         style={{ 
           minHeight: '100vh',
           backgroundColor: '#1a1a1a' // Fallback background
@@ -1009,18 +1130,56 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
             </select>
           </div>
           
-          {/* Impact Location */}
+          {/* Impact Pin Location */}
           <div>
             <label className="block text-sm font-medium text-gray-200 mb-2">
-              Impact Location:
+              Impact Pin:
             </label>
             <div className="p-3 bg-gray-800/50 rounded-md text-sm">
-              <div className="text-blue-300 font-medium">{impactLocation.city}</div>
-              <div className="text-gray-400 text-xs">
-                {impactLocation.latitude.toFixed(4)}°, {impactLocation.longitude.toFixed(4)}°
-              </div>
+              {impactPin ? (
+                <>
+                  <div className="text-blue-300 font-medium">{impactPin.city}</div>
+                  <div className="text-gray-400 text-xs">
+                    {impactPin.latitude.toFixed(4)}°, {impactPin.longitude.toFixed(4)}°
+                  </div>
+                </>
+              ) : currentSimulation ? (
+                <div className="text-gray-400">Reset to place new pin</div>
+              ) : (
+                <div className="text-gray-400">No pin placed</div>
+              )}
             </div>
           </div>
+
+          {/* Pin Controls */}
+          {!currentSimulation && (
+            <div className="space-y-2">
+              {!impactPin ? (
+                <button
+                  onClick={() => {
+                    setIsPlacingPin(true);
+                    setStatus('Click anywhere on Earth to place pin');
+                  }}
+                  disabled={isAnimating}
+                  className="w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed"
+                >
+                  {isPlacingPin ? '📍 Pinning...' : '📍 Place Pin'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setImpactPin(null);
+                    setIsPlacingPin(false);
+                    setStatus('Click "Place Pin" then click on map');
+                  }}
+                  disabled={isAnimating}
+                  className="w-full px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed"
+                >
+                  🗑️ Remove Pin
+                </button>
+              )}
+            </div>
+          )}
           
           {/* Status */}
           <div className="p-3 bg-gray-800/50 rounded-md">
@@ -1031,8 +1190,8 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           {/* 3D Buildings Toggle */}
           <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-md">
             <div>
-              <div className="text-sm text-gray-200">3D Buildings</div>
-              <div className="text-xs text-gray-400">Show building damage</div>
+              <div className="text-sm text-gray-200">Toggle Buildings</div>
+              <div className="text-xs text-gray-400">Show/hide buildings</div>
             </div>
             <button
               onClick={toggle3DBuildings}
@@ -1088,67 +1247,25 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
             </button>
           </div>
           
-          {/* Building Damage Legend */}
-          {show3DBuildings && (
-            <div className="p-3 bg-gray-800/50 rounded-md">
-              <h4 className="text-sm font-medium text-gray-200 mb-3">🏢 Building Damage Levels</h4>
-              <div className="space-y-2">
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#000000' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Vaporized</span>
-                    <span className="text-gray-500 ml-1">(0-0.15km)</span>
-                  </div>
+          {/* Simulate Button - Only show when pin is placed but no simulation */}
+          {impactPin && !currentSimulation && (
+            <button
+              onClick={runImpactAnimation}
+              disabled={isAnimating || !mapLoaded}
+              className="w-full px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed shadow-lg"
+            >
+              {isAnimating ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Simulating...
                 </div>
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ff0000' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Destroyed</span>
-                    <span className="text-gray-500 ml-1">(0.15-0.4km)</span>
-                  </div>
-                </div>
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ff6600' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Severe Damage</span>
-                    <span className="text-gray-500 ml-1">(0.4-0.75km)</span>
-                  </div>
-                </div>
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ffaa00' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Moderate Damage</span>
-                    <span className="text-gray-500 ml-1">(0.75-1.5km)</span>
-                  </div>
-                </div>
-                <div className="flex items-center text-xs">
-                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ffff00' }}></div>
-                  <div className="flex-1">
-                    <span className="text-gray-200">Light Damage</span>
-                    <span className="text-gray-500 ml-1">(1.5km+)</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+              ) : (
+                '🚀 Simulate Impact'
+              )}
+            </button>
           )}
-          
-          {/* Simulate Button */}
-          <button
-            onClick={runImpactAnimation}
-            disabled={isAnimating || !mapLoaded}
-            className="w-full px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 disabled:from-gray-600 disabled:to-gray-700 text-white rounded-md font-medium transition-all disabled:cursor-not-allowed shadow-lg"
-          >
-            {isAnimating ? (
-              <div className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Simulating...
-              </div>
-            ) : (
-              '🚀 Simulate Impact'
-            )}
-          </button>
 
-          {/* Reset Button */}
+          {/* Reset Button - Only show when simulation exists */}
           {currentSimulation && (
             <button
               onClick={resetSimulation}
@@ -1161,12 +1278,12 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
           {/* Instructions */}
           <div className="text-xs text-gray-400 space-y-1">
-            <p>• Click anywhere on Earth to set target</p>
-            <p>• Choose asteroid size and simulate</p>
-            <p>• Toggle 3D buildings for damage view</p>
+            <p>• Click &quot;Place Pin&quot; then click on Earth</p>
+            <p>• Choose asteroid size and simulate impact</p>
+            <p>• View crater impact zones after simulation</p>
+            <p>• Toggle buildings for 3D view</p>
             <p>• Use Street View for ground perspective</p>
-            <p>• Enhanced rendering for better visuals</p>
-            <p>• View real-time damage analysis</p>
+            <p>• Reset to start a new simulation</p>
           </div>
         </div>
 
@@ -1202,9 +1319,9 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
                 </div>
               </div>
               
-              {/* Damage Zones Legend */}
+              {/* Crater Impact Zones Legend */}
               <div className="mt-3">
-                <h4 className="text-xs font-medium text-gray-300 mb-2">Damage Zones:</h4>
+                <h4 className="text-xs font-medium text-gray-300 mb-2">🎯 Crater Impact Zones:</h4>
                 <div className="space-y-1">
                   {getDamageZones(currentSimulation).map((zone, index) => (
                     <div key={index} className="flex items-center text-xs">
@@ -1226,9 +1343,9 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       </div>
 
       {/* Location Display - Bottom Right */}
-      {mapLoaded && (
+      {mapLoaded && impactPin && (
         <div className="absolute bottom-6 right-6 bg-black/80 text-white px-3 py-2 rounded-lg text-xs">
-          Target: {impactLocation.latitude.toFixed(3)}°, {impactLocation.longitude.toFixed(3)}°
+          Target: {impactPin.latitude.toFixed(3)}°, {impactPin.longitude.toFixed(3)}°
         </div>
       )}
     </div>
