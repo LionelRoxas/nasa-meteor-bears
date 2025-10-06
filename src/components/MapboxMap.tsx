@@ -6,6 +6,8 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import Link from 'next/link';
 import { CometData, ImpactLocation, ImpactSimulation } from '@/types/comet';
 import { TEST_COMETS, simulateImpact, getDamageZones } from '@/lib/services/comet-simulation';
+import * as THREE from 'three';
+import { createAsteroidMesh } from '@/lib/asteroid-utils';
 
 interface MapboxMapProps {
   className?: string;
@@ -16,6 +18,13 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   const initialCenterRef = useRef<[number, number]>([-74.5, 40.7]);
   const isPlacingPinRef = useRef(false);
   const currentSimulationRef = useRef<ImpactSimulation | null>(null);
+  
+  // Three.js refs
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const asteroidMeshRef = useRef<THREE.Mesh | null>(null);
+  
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [selectedComet, setSelectedComet] = useState<CometData>(TEST_COMETS[0]);
@@ -37,6 +46,30 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     currentSimulationRef.current = currentSimulation;
   }, [currentSimulation]);
 
+  // Sound effects utility functions
+  const playImpactSound = useCallback(() => {
+    try {
+      const audio = new Audio('/sounds/explode.wav');
+      audio.volume = 0.5;
+      audio.play().catch(error => console.log('Impact sound failed to play:', error));
+    } catch (error) {
+      console.log('Error creating impact audio:', error);
+    }
+  }, []);
+
+  // Convert lat/lng to 3D coordinates for Three.js overlay
+  const lngLatTo3D = useCallback((lng: number, lat: number, altitude: number = 0) => {
+    const phi = (90 - lat) * Math.PI / 180;
+    const theta = (lng + 180) * Math.PI / 180;
+    const radius = 50 + altitude; // Earth radius in our 3D scene
+    
+    return new THREE.Vector3(
+      -(radius * Math.sin(phi) * Math.cos(theta)),
+      radius * Math.cos(phi),
+      radius * Math.sin(phi) * Math.sin(theta)
+    );
+  }, []);
+
   // Update map cursor when pin placement state changes
   useEffect(() => {
     if (!map) return;
@@ -48,6 +81,81 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       map.getCanvas().style.cursor = '';
     }
   }, [map, isPlacingPin]);
+
+  // Initialize Three.js scene for asteroid visualization
+  useEffect(() => {
+    if (!map || !mapLoaded) return;
+
+    const animationId: number | null = null;
+
+    // Create Three.js scene with AsteroidPreview setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ 
+      alpha: true, 
+      antialias: true 
+    });
+    
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setClearColor(0x000000, 0); // Transparent background
+    renderer.domElement.style.position = 'absolute';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '0';
+    renderer.domElement.style.pointerEvents = 'none';
+    renderer.domElement.style.zIndex = '5';
+    
+    console.log('Three.js renderer created and configured');
+    
+    // Add renderer to map container
+    if (mapContainer.current) {
+      mapContainer.current.appendChild(renderer.domElement);
+      console.log('Three.js renderer added to map container');
+    }
+
+    // Use the exact lighting setup from AsteroidPreview
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    sunLight.position.set(8, 5, 3);
+    sunLight.castShadow = true;
+    scene.add(sunLight);
+
+    const fillLight = new THREE.DirectionalLight(0xaabbff, 0.6);
+    fillLight.position.set(-5, -2, -5);
+    scene.add(fillLight);
+
+    const ambientLight = new THREE.AmbientLight(0x606060, 0.7);
+    scene.add(ambientLight);
+
+    // Store references
+    sceneRef.current = scene;
+    rendererRef.current = renderer;
+    cameraRef.current = camera;
+
+    // Set initial camera position for better 3D view
+    camera.position.set(0, 0, 0);
+    camera.lookAt(0, 0, -30);
+
+    // Start render loop
+    const animate = () => {
+      if (rendererRef.current && sceneRef.current && cameraRef.current) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
+      requestAnimationFrame(animate);
+    };
+    animate();
+    console.log('Three.js animation loop started');
+
+    return () => {
+      if (renderer.domElement.parentNode) {
+        renderer.domElement.parentNode.removeChild(renderer.domElement);
+      }
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    };
+  }, [map, mapLoaded]);
 
   // Initialize map
   useEffect(() => {
@@ -541,6 +649,12 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     // Clear all map layers and sources
     cleanupMapLayers(map);
 
+    // Clean up Three.js asteroid
+    if (asteroidMeshRef.current && sceneRef.current) {
+      sceneRef.current.remove(asteroidMeshRef.current);
+      asteroidMeshRef.current = null;
+    }
+
     // Reset simulation state
     setCurrentSimulation(null);
     setIsAnimating(false);
@@ -728,7 +842,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   };
 
   const runImpactAnimation = async () => {
-    if (!map || !impactPin || isAnimating) return;
+    if (!map || !impactPin || isAnimating || !sceneRef.current || !rendererRef.current || !cameraRef.current) return;
     
     setIsAnimating(true);
     setStatus('Simulating impact...');
@@ -737,7 +851,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       // Create simulation from pin location
       const simulation = simulateImpact(selectedComet, impactPin);
       
-      // Zoom out to show trajectory from space
+      // Start from space view to show asteroid approach
       await new Promise<void>((resolve) => {
         map.flyTo({
           center: [impactPin.longitude, impactPin.latitude],
@@ -747,89 +861,168 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         setTimeout(resolve, 1500);
       });
       
-      // Show asteroid approaching
-      const startLng = impactPin.longitude + 15;
-      const startLat = impactPin.latitude + 10;
+      // Create Three.js asteroid using exact AsteroidPreview setup
+      console.log('Creating realistic asteroid using AsteroidPreview method...');
       
-      // Add asteroid marker
-      map.addSource('asteroid', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [startLng, startLat]
-          },
-          properties: {}
-        }
-      });
-
-      map.addLayer({
-        id: 'asteroid',
-        type: 'circle',
-        source: 'asteroid',
-        paint: {
-          'circle-radius': 12,
-          'circle-color': '#ff8800',
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 0.9
-        }
-      });
+      // Create the asteroid using asteroid utils - same as AsteroidPreview
+      const asteroidDiameter = Math.max(selectedComet.diameter / 10, 100); // Use reasonable diameter
+      const asteroidMesh = createAsteroidMesh(THREE, { diameter: asteroidDiameter });
+      console.log('Created asteroid using asteroid-utils with diameter:', asteroidDiameter);
       
-      // Animate asteroid movement with gradual zoom
+      // Don't override the material - let asteroid-utils handle it as it does in AsteroidPreview
+      console.log('Asteroid mesh created:', asteroidMesh);
+      
+      // Use bigger scaling for more dramatic effect
+      const minDiameter = 50;
+      const maxDiameter = 1000;
+      const minScale = 3.0; // Increased from 2.0
+      const maxScale = 6.0; // Increased from 4.5
+      const normalizedDiameter = (asteroidDiameter - minDiameter) / (maxDiameter - minDiameter);
+      const scaleFactor = minScale + normalizedDiameter * (maxScale - minScale);
+      asteroidMesh.scale.multiplyScalar(scaleFactor);
+      
+      // Create fiery trail/aura effect
+      const trailGeometry = new THREE.SphereGeometry(scaleFactor * 1.5, 16, 16);
+      const trailMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff6600, // Orange
+        transparent: true,
+        opacity: 0.3,
+        blending: THREE.AdditiveBlending
+      });
+      const trail = new THREE.Mesh(trailGeometry, trailMaterial);
+      
+      // Create inner aura
+      const auraGeometry = new THREE.SphereGeometry(scaleFactor * 1.2, 16, 16);
+      const auraMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffaa00, // Yellow-orange
+        transparent: true,
+        opacity: 0.5,
+        blending: THREE.AdditiveBlending
+      });
+      const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+      
+  // Screen-space path: start off to the right, impact at exact screen center
+  // We'll keep the map centered (or mostly centered) on the pin so impact aligns visually.
+  const startPosition = new THREE.Vector3(40, 10, -35);   // Further right & a bit higher
+  const endPosition   = new THREE.Vector3(0, 0, -35);     // Exact center of view (impact)
+      
+      asteroidMesh.position.copy(startPosition);
+      trail.position.copy(startPosition);
+      aura.position.copy(startPosition);
+      
+      sceneRef.current.add(asteroidMesh);
+      sceneRef.current.add(trail);
+      sceneRef.current.add(aura);
+      asteroidMeshRef.current = asteroidMesh;
+      console.log('Asteroid with fiery trail added to scene at position:', startPosition, 'with scale factor:', scaleFactor);
+      
+      // Position camera for clear side view
+      cameraRef.current.position.set(0, 0, 0);
+      cameraRef.current.lookAt(0, 0, -35);
+      console.log('Camera positioned for clear asteroid view');
+      
+      // Animate asteroid movement; keep map mostly fixed early, then tighten & zoom
       const steps = 60;
-      const lngStep = (impactPin.longitude - startLng) / steps;
-      const latStep = (impactPin.latitude - startLat) / steps;
-      const startZoom = 2; // Space view
-      const endZoom = 8;   // Regional view when approaching
-      
+      const centerLockFrame = 15; // After this frame we ensure map is locked on pin
       for (let i = 0; i <= steps; i++) {
-        const progress = i / steps;
-        const currentLng = startLng + (lngStep * i);
-        const currentLat = startLat + (latStep * i);
-        
-        // Update asteroid position
-        const source = map.getSource('asteroid') as mapboxgl.GeoJSONSource;
-        source?.setData({
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [currentLng, currentLat]
-          },
-          properties: {}
+        const progress = i / steps; // 0 -> 1
+
+        // Position interpolation
+        asteroidMesh.position.lerpVectors(startPosition, endPosition, progress);
+        trail.position.copy(asteroidMesh.position);
+        aura.position.copy(asteroidMesh.position);
+
+        // Subtle tumble
+        asteroidMesh.rotation.x += 0.025;
+        asteroidMesh.rotation.y += 0.018;
+        asteroidMesh.rotation.z += 0.012;
+
+        // Aura intensifies
+        (trail.material as THREE.MeshBasicMaterial).opacity = 0.25 + progress * 0.55;
+        (aura.material as THREE.MeshBasicMaterial).opacity = 0.4 + progress * 0.4;
+
+        // Camera/map behavior:
+        //  - Frames 0..centerLockFrame: slight drift toward pin (cinematic)
+        //  - After that: lock exactly on pin; then progressive zoom near final approach
+        if (i <= centerLockFrame) {
+          const t = i / centerLockFrame; // 0..1
+            // Drift from a mild offset to true center
+          const lngOffset = 6 * (1 - t); // start 6° east
+          const latOffset = 4 * (1 - t); // start 4° north
+          map.setCenter([impactPin.longitude + lngOffset, impactPin.latitude + latOffset]);
+          map.setZoom(2.5 + t * 1.5); // 2.5 -> 4.0
+        } else {
+          // Locked center
+          map.setCenter([impactPin.longitude, impactPin.latitude]);
+          // Zoom in only in last 40% of flight
+          if (progress > 0.6) {
+            const zoomT = (progress - 0.6) / 0.4; // 0..1
+            map.setZoom(4 + zoomT * 8); // 4 -> 12
+          }
+        }
+
+        if (i % 12 === 0) {
+          console.log(`Asteroid frame ${i}/${steps}`, { pos: asteroidMesh.position });
+        }
+
+        setStatus(`Asteroid incoming... ${Math.round(progress * 100)}%`);
+        await new Promise(r => setTimeout(r, 50));
+      }
+
+      console.log('Asteroid reached center (impact). Zooming for assessment...');
+
+      // Post-impact zoom refine (fast) BEFORE explosion so crater matches center
+      await new Promise<void>(resolve => {
+        map.flyTo({
+          center: [impactPin.longitude, impactPin.latitude],
+          zoom: 12,
+          duration: 900,
+          pitch: 35
         });
+        setTimeout(resolve, 900);
+      });
+      
+      // Create impact explosion at the exact pin location
+      if (asteroidMeshRef.current) {
+        // Play impact sound
+        playImpactSound();
         
-        // Gradually zoom in starting from halfway point
-        if (progress >= 0.5) {
-          const zoomProgress = (progress - 0.5) * 2; // 0 to 1 for second half
-          const currentZoom = startZoom + (endZoom - startZoom) * zoomProgress;
-          
-          map.setCenter([currentLng, currentLat]);
-          map.setZoom(currentZoom);
+        // Create explosion effect at exact target location
+        const explosionGeometry = new THREE.SphereGeometry(2, 16, 16);
+        const explosionMaterial = new THREE.MeshBasicMaterial({ 
+          color: 0xff4500, 
+          transparent: true, 
+          opacity: 0.8 
+        });
+        const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+        explosion.position.copy(endPosition); // Use end position
+        sceneRef.current.add(explosion);
+        console.log('Explosion created at impact location:', endPosition);
+        
+        // Remove asteroid and trail
+        sceneRef.current.remove(asteroidMeshRef.current);
+        sceneRef.current.remove(trail);
+        sceneRef.current.remove(aura);
+        console.log('Asteroid and trail removed from scene');
+        
+        // Explosion animation
+        for (let i = 0; i < 20; i++) {
+          explosion.scale.multiplyScalar(1.2);
+          explosionMaterial.opacity *= 0.9;
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
-        // Update status during animation
-        setStatus(`Asteroid approaching... ${Math.round(progress * 100)}%`);
-        
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-      
-      // Remove asteroid after impact
-      if (map.getLayer('asteroid')) {
-        map.removeLayer('asteroid');
-      }
-      if (map.getSource('asteroid')) {
-        map.removeSource('asteroid');
+        sceneRef.current.remove(explosion);
+        console.log('Explosion animation complete');
       }
       
       // Set simulation to trigger damage zone rendering
       setCurrentSimulation(simulation);
       
-      // Zoom to impact site - balanced view to see crater and damage zones
+      // Zoom to the actual impact site where the pin was placed
       await new Promise<void>((resolve) => {
         map.flyTo({
-          center: [impactPin.longitude, impactPin.latitude],
+          center: [impactPin.longitude, impactPin.latitude], // Center on actual pin location
           zoom: 12, // Balanced zoom to see crater and surrounding damage zones
           pitch: 35, // Moderate angled view for good 3D building visibility
           duration: 2000
@@ -837,7 +1030,8 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         setTimeout(resolve, 2000);
       });
       
-      setStatus('Impact simulation complete!');
+      console.log('Map centered on impact site at pin location:', [impactPin.longitude, impactPin.latitude]);
+      setStatus('Impact simulation complete! Crater and damage zones visible.');
       
     } catch (error) {
       console.error('Animation error:', error);
