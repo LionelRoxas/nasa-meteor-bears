@@ -3,7 +3,9 @@
 // components/LeftSidebar.tsx
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import AsteroidPreview from "./AsteroidPreview";
+import ImpactSimulatorControls from "./ImpactSimulatorControls";
 
 interface AsteroidParams {
   diameter: number;
@@ -32,6 +34,17 @@ interface LeftSidebarProps {
   isSimulating: boolean;
   onStartImpact: () => void;
   onReset: () => void;
+  // Add new props for MapboxMap control
+  onMapControlsChange?: (controls: {
+    show3DBuildings: boolean;
+    streetViewMode: boolean;
+    enhancedBuildings: boolean;
+  }) => void;
+  onRunSimulation?: () => void;
+  onLocationChange?: (location: any) => void;
+  simulationStatus?: string;
+  currentSimulation?: any;
+  impactLocation?: any;
 }
 
 export default function LeftSidebar({
@@ -43,7 +56,29 @@ export default function LeftSidebar({
   isSimulating,
   onStartImpact,
   onReset,
+  onMapControlsChange,
+  onRunSimulation,
+  onLocationChange,
+  simulationStatus = "Ready to simulate",
+  currentSimulation,
+  impactLocation = {
+    longitude: -74.5,
+    latitude: 40.7,
+    city: "New York",
+    country: "USA",
+  },
 }: LeftSidebarProps) {
+  const [viewMode, setViewMode] = useState<"parameters" | "simulator">(
+    "parameters"
+  );
+  const [finalizedAsteroid, setFinalizedAsteroid] = useState<any>(null);
+
+  // Map view controls
+  const [show3DBuildings, setShow3DBuildings] = useState(true);
+  const [streetViewMode, setStreetViewMode] = useState(false);
+  const [enhancedBuildings, setEnhancedBuildings] = useState(true);
+  const [isAnimating, setIsAnimating] = useState(false);
+
   const formatNumber = (num: number, decimals = 2) => {
     if (!num || isNaN(num)) return "0";
     if (num >= 1000000) return `${(num / 1000000).toFixed(decimals)}M`;
@@ -51,23 +86,102 @@ export default function LeftSidebar({
     return num.toFixed(decimals);
   };
 
+  const handleContinueToSimulator = () => {
+    // Finalize the asteroid configuration before moving to simulator
+    const finalAsteroid = {
+      id: "custom",
+      name: selectedNASAAsteroid
+        ? selectedNASAAsteroid.name
+        : `Custom Asteroid (${asteroidParams.diameter}m)`,
+      diameter: asteroidParams.diameter,
+      velocity: asteroidParams.velocity,
+      angle: asteroidParams.angle,
+      distance: asteroidParams.distance,
+      ...impactData,
+    };
+
+    setFinalizedAsteroid(finalAsteroid);
+    setViewMode("simulator");
+    // Don't start impact here - just transition to the simulator controls view
+  };
+
+  const handleBackToParameters = () => {
+    setViewMode("parameters");
+    setIsAnimating(false);
+    onReset();
+  };
+
+  const handleToggle3DBuildings = () => {
+    const newValue = !show3DBuildings;
+    setShow3DBuildings(newValue);
+    onMapControlsChange?.({
+      show3DBuildings: newValue,
+      streetViewMode,
+      enhancedBuildings,
+    });
+  };
+
+  const handleToggleStreetView = () => {
+    const newValue = !streetViewMode;
+    setStreetViewMode(newValue);
+    onMapControlsChange?.({
+      show3DBuildings,
+      streetViewMode: newValue,
+      enhancedBuildings,
+    });
+  };
+
+  const handleToggleEnhanced = () => {
+    const newValue = !enhancedBuildings;
+    setEnhancedBuildings(newValue);
+    onMapControlsChange?.({
+      show3DBuildings,
+      streetViewMode,
+      enhancedBuildings: newValue,
+    });
+  };
+
+  const handleRunImpact = () => {
+    setIsAnimating(true);
+    // Now trigger the actual simulation start
+    onStartImpact();
+    onRunSimulation?.();
+    // Animation state will be reset by parent component
+    setTimeout(() => setIsAnimating(false), 5000);
+  };
+
   if (isCollapsed) return null;
 
   return (
-    <div className="absolute top-4 left-4 z-10 w-[380px] h-[520px] bg-black/70 backdrop-blur-lg rounded-lg border border-white/10 overflow-hidden flex flex-col shadow-2xl">
+    <div className="absolute top-4 left-4 z-10 w-[380px] h-[720px] bg-black/70 backdrop-blur-lg rounded-lg border border-white/10 overflow-hidden flex flex-col shadow-2xl">
       {/* Header */}
       <div className="bg-black/50 backdrop-blur-sm border-b border-white/10">
         <div className="px-5 py-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-light text-white/90 uppercase tracking-wider">
-              Simulation Parameters
+              {viewMode === "parameters"
+                ? "Simulation Parameters"
+                : "Impact Simulator"}
             </h3>
-            {selectedNASAAsteroid && (
-              <div className="px-2 py-0.5 bg-white/10 backdrop-blur rounded-sm">
+            {viewMode !== "simulator" && (
+              <button
+                onClick={onReset}
+                className="px-2 py-0.5 bg-white/10 hover:bg-white/20 backdrop-blur rounded-sm transition-colors"
+              >
                 <span className="text-[10px] font-light text-white/80 uppercase tracking-wider">
-                  NASA Data
+                  Reset
                 </span>
-              </div>
+              </button>
+            )}
+            {viewMode === "simulator" && (
+              <button
+                onClick={handleBackToParameters}
+                className="px-2 py-0.5 bg-white/10 hover:bg-white/20 backdrop-blur rounded-sm transition-colors"
+              >
+                <span className="text-[10px] font-light text-white/80 uppercase tracking-wider">
+                  Back
+                </span>
+              </button>
             )}
           </div>
         </div>
@@ -75,145 +189,161 @@ export default function LeftSidebar({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-5">
-        {/* Parameters */}
-        <div className="space-y-4 mb-6">
-          {/* Asteroid Diameter */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
-                Diameter
-              </label>
-              <span className="text-white/90 font-light text-xs">
-                {formatNumber(asteroidParams.diameter, 0)}m
-              </span>
+        {viewMode === "parameters" ? (
+          <>
+            {/* 3D Asteroid Preview */}
+            <div className="mb-6">
+              <AsteroidPreview diameter={asteroidParams.diameter} />
             </div>
-            <input
-              type="range"
-              className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
-              min="50"
-              max="1000"
-              value={asteroidParams.diameter}
-              onChange={(e) =>
-                setAsteroidParams((prev) => ({
-                  ...prev,
-                  diameter: Number(e.target.value),
-                }))
-              }
-            />
-            <div className="flex justify-between mt-1">
-              <span className="text-[9px] text-white/30">50m</span>
-              <span className="text-[9px] text-white/30">1km</span>
-            </div>
-          </div>
 
-          {/* Velocity */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
-                Velocity
-              </label>
-              <span className="text-white/90 font-light text-xs">
-                {asteroidParams.velocity} km/s
-              </span>
-            </div>
-            <input
-              type="range"
-              className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
-              min="5"
-              max="50"
-              value={asteroidParams.velocity}
-              onChange={(e) =>
-                setAsteroidParams((prev) => ({
-                  ...prev,
-                  velocity: Number(e.target.value),
-                }))
-              }
-            />
-            <div className="flex justify-between mt-1">
-              <span className="text-[9px] text-white/30">5 km/s</span>
-              <span className="text-[9px] text-white/30">50 km/s</span>
-            </div>
-          </div>
+            {/* Parameters */}
+            <div className="space-y-4 mb-6">
+              {/* Asteroid Diameter */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
+                    Diameter
+                  </label>
+                  <span className="text-white/90 font-light text-xs">
+                    {formatNumber(asteroidParams.diameter, 0)}m
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
+                  min="50"
+                  max="10000"
+                  value={asteroidParams.diameter}
+                  onChange={(e) =>
+                    setAsteroidParams((prev) => ({
+                      ...prev,
+                      diameter: Number(e.target.value),
+                    }))
+                  }
+                />
+                <div className="flex justify-between mt-1">
+                  <span className="text-[9px] text-white/30">50m</span>
+                  <span className="text-[9px] text-white/30">10km</span>
+                </div>
+              </div>
 
-          {/* Entry Angle */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
-                Entry Angle
-              </label>
-              <span className="text-white/90 font-light text-xs">
-                {asteroidParams.angle}°
-              </span>
-            </div>
-            <input
-              type="range"
-              className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
-              min="15"
-              max="360"
-              value={asteroidParams.angle}
-              onChange={(e) =>
-                setAsteroidParams((prev) => ({
-                  ...prev,
-                  angle: Number(e.target.value),
-                }))
-              }
-            />
-            <div className="flex justify-between mt-1">
-              <span className="text-[9px] text-white/30">15°</span>
-              <span className="text-[9px] text-white/30">360°</span>
-            </div>
-          </div>
+              {/* Velocity */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
+                    Velocity
+                  </label>
+                  <span className="text-white/90 font-light text-xs">
+                    {asteroidParams.velocity} km/s
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
+                  min="5"
+                  max="72"
+                  value={asteroidParams.velocity}
+                  onChange={(e) =>
+                    setAsteroidParams((prev) => ({
+                      ...prev,
+                      velocity: Number(e.target.value),
+                    }))
+                  }
+                />
+                <div className="flex justify-between mt-1">
+                  <span className="text-[9px] text-white/30">5 km/s</span>
+                  <span className="text-[9px] text-white/30">72 km/s</span>
+                </div>
+              </div>
 
-          {/* Distance */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
-                Initial Distance
-              </label>
-              <span className="text-white/90 font-light text-xs">
-                {formatNumber(asteroidParams.distance, 0)} km
-              </span>
-            </div>
-            <input
-              type="range"
-              className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
-              min="10000"
-              max="500000"
-              value={asteroidParams.distance}
-              onChange={(e) =>
-                setAsteroidParams((prev) => ({
-                  ...prev,
-                  distance: Number(e.target.value),
-                }))
-              }
-            />
-            <div className="flex justify-between mt-1">
-              <span className="text-[9px] text-white/30">10k km</span>
-              <span className="text-[9px] text-white/30">500k km</span>
-            </div>
-          </div>
-        </div>
+              {/* Entry Angle */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
+                    Entry Angle
+                  </label>
+                  <span className="text-white/90 font-light text-xs">
+                    {asteroidParams.angle}°
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
+                  min="15"
+                  max="90"
+                  value={asteroidParams.angle}
+                  onChange={(e) =>
+                    setAsteroidParams((prev) => ({
+                      ...prev,
+                      angle: Number(e.target.value),
+                    }))
+                  }
+                />
+                <div className="flex justify-between mt-1">
+                  <span className="text-[9px] text-white/30">15°</span>
+                  <span className="text-[9px] text-white/30">90°</span>
+                </div>
+              </div>
 
-        {/* Controls */}
-        <div className="space-y-2">
-          <button
-            onClick={onStartImpact}
-            className={`w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider ${
-              isSimulating
-                ? "bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm"
-                : "bg-white text-black hover:bg-white/90"
-            }`}
-          >
-            {isSimulating ? "Pause Simulation" : "Start Simulation"}
-          </button>
+              {/* Distance */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-[10px] font-light text-white/60 uppercase tracking-wider">
+                    Initial Distance
+                  </label>
+                  <span className="text-white/90 font-light text-xs">
+                    {formatNumber(asteroidParams.distance, 0)} km
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
+                  min="10000"
+                  max="500000"
+                  value={asteroidParams.distance}
+                  onChange={(e) =>
+                    setAsteroidParams((prev) => ({
+                      ...prev,
+                      distance: Number(e.target.value),
+                    }))
+                  }
+                />
+                <div className="flex justify-between mt-1">
+                  <span className="text-[9px] text-white/30">10k km</span>
+                  <span className="text-[9px] text-white/30">500k km</span>
+                </div>
+              </div>
+            </div>
 
-          <button
-            onClick={onReset}
-            className="w-full px-4 py-2.5 bg-black/40 hover:bg-black/60 backdrop-blur-sm text-white/80 border border-white/20 rounded text-xs font-light transition-all uppercase tracking-wider"
-          >
-            Reset
-          </button>
-        </div>
+            {/* Controls */}
+            <div className="space-y-2">
+              <button
+                onClick={handleContinueToSimulator}
+                className="w-full px-4 py-2.5 rounded text-xs font-light transition-all uppercase tracking-wider bg-white text-black hover:bg-white/90"
+              >
+                Continue to Impact Controls →
+              </button>
+            </div>
+          </>
+        ) : (
+          /* Impact Simulator Controls View */
+          <ImpactSimulatorControls
+            finalizedAsteroid={finalizedAsteroid}
+            impactLocation={impactLocation}
+            onLocationChange={onLocationChange}
+            status={simulationStatus}
+            show3DBuildings={show3DBuildings}
+            onToggle3DBuildings={handleToggle3DBuildings}
+            streetViewMode={streetViewMode}
+            onToggleStreetView={handleToggleStreetView}
+            enhancedBuildings={enhancedBuildings}
+            onToggleEnhancedBuildings={handleToggleEnhanced}
+            isAnimating={isAnimating}
+            onRunImpact={handleRunImpact}
+            onReset={onReset}
+            currentSimulation={currentSimulation}
+          />
+        )}
       </div>
 
       <style jsx>{`
