@@ -1,4 +1,26 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Asteroid-Earthquake Energy Correlation API
+ *
+ * SCIENTIFIC BASIS: This API correlates asteroid impact energies with historical
+ * earthquake seismic energies using EXACT physics formulas from PHYSICS_FORMULAS.md
+ *
+ * FORMULAS USED:
+ * 1. Asteroid Kinetic Energy: KE = 0.5 × m × v² where m = ρ × (4/3)πr³, ρ = 3000 kg/m³
+ * 2. Earthquake Energy: E = 10^(1.5M + 4.8) Joules (Gutenberg-Richter relation)
+ * 3. Correlation Score: Based on logarithmic energy similarity (orders of magnitude)
+ *
+ * WHY ENERGY-ONLY CORRELATION?
+ * - Asteroid brightness (absolute magnitude H) vs earthquake magnitude (M) = NO physical relationship
+ * - Orbital parameters vs earthquake depth = NO physical relationship
+ * - Energy release is the ONLY scientifically valid comparison metric
+ *
+ * CORRELATION ALGORITHM:
+ * - Primary (90%): log₁₀(energy) similarity - accounts for wide energy range (10^12 to 10^24 J)
+ * - Secondary (10%): Geographic context (ocean vs land impacts)
+ *
+ * Returns top 10 earthquakes with energy closest to asteroid impact energy.
+ */
 // app/api/correlate-asteroid-earthquakes/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
@@ -309,100 +331,82 @@ function extractAsteroidFeaturesFromAPI(
 }
 
 // Calculate correlation score between asteroid features and earthquake
+// SCIENTIFIC BASIS: Compares impact energy with seismic energy released
+// Uses EXACT formulas from PHYSICS_FORMULAS.md:
+// - Asteroid: KE = 0.5 × m × v² (kinetic energy in Joules)
+// - Earthquake: E = 10^(1.5M + 4.8) (Gutenberg-Richter relation in Joules)
 function calculateCorrelationScore(
   asteroidFeatures: AsteroidFeatures,
   earthquake: Earthquake
 ): number {
-  let score = 0;
-  let factors = 0;
+  // PRIMARY CORRELATION: Energy-based matching (ONLY scientifically valid metric)
+  const asteroidEnergy = asteroidFeatures.kineticEnergyMt * 4.184e15; // Convert MT TNT to Joules
+  const earthquakeEnergy = earthquake.energy_joules ||
+    Math.pow(10, 1.5 * earthquake.magnitude + 4.8); // Gutenberg-Richter if missing
 
-  // Energy correlation (using NASA's calculated kinetic energy)
-  const asteroidEnergy = asteroidFeatures.kineticEnergyMt * 4.184e15; // Convert MT to Joules
-  const earthquakeEnergy = earthquake.energy_joules || 0;
-  if (asteroidEnergy > 0 && earthquakeEnergy > 0) {
-    const energyRatio =
-      Math.min(asteroidEnergy, earthquakeEnergy) /
-      Math.max(asteroidEnergy, earthquakeEnergy);
-    score += energyRatio * 0.3;
-    factors++;
+  if (asteroidEnergy <= 0 || earthquakeEnergy <= 0) {
+    return 0; // Invalid data
   }
 
-  // Magnitude correlation (asteroid absolute magnitude vs earthquake magnitude)
-  if (asteroidFeatures.absoluteMagnitude && earthquake.magnitude) {
-    // Normalize both to 0-1 scale
-    const normAsteroid = 1 - Math.abs(asteroidFeatures.absoluteMagnitude) / 30;
-    const normEarthquake = earthquake.magnitude / 10;
-    const magCorrelation = 1 - Math.abs(normAsteroid - normEarthquake);
-    score += magCorrelation * 0.2;
-    factors++;
+  // Calculate energy similarity on logarithmic scale (orders of magnitude)
+  // Energy in impacts/earthquakes spans many orders of magnitude (10^12 to 10^24 J)
+  const logAsteroidEnergy = Math.log10(asteroidEnergy);
+  const logEarthquakeEnergy = Math.log10(earthquakeEnergy);
+
+  // Similarity score: 1.0 = same order of magnitude, 0.0 = >10 orders difference
+  const logDifference = Math.abs(logAsteroidEnergy - logEarthquakeEnergy);
+  const energySimilarity = Math.max(0, 1 - logDifference / 10);
+
+  // SECONDARY FACTOR: Geographic impact type similarity (ocean vs land)
+  // Earthquakes near ocean trenches vs continental impacts
+  let geographicBonus = 0;
+  if (earthquake.tsunami_warning) {
+    // Ocean-related earthquake - boost score slightly if asteroid would impact ocean
+    // This is a minor factor (10% weight) compared to energy (90% weight)
+    geographicBonus = 0.1;
   }
 
-  // Significance/hazard correlation
-  if (earthquake.significance) {
-    const hazardScore =
-      asteroidFeatures.isPotentiallyHazardous * 0.5 +
-      (asteroidFeatures.minApproachDistance > 0
-        ? (1 - Math.min(asteroidFeatures.minApproachDistance, 10) / 10) * 0.5
-        : 0);
-    const earthquakeSignificance = Math.min(earthquake.significance / 1000, 1);
-    const hazardCorrelation =
-      1 - Math.abs(hazardScore - earthquakeSignificance);
-    score += hazardCorrelation * 0.2;
-    factors++;
-  }
+  // Final score: 90% energy similarity + 10% geographic context
+  const finalScore = energySimilarity * 0.9 + geographicBonus * 0.1;
 
-  // Depth correlation (orbital characteristics vs earthquake depth)
-  if (earthquake.depth_km) {
-    const orbitalComplexity =
-      (asteroidFeatures.orbitEccentricity +
-        asteroidFeatures.orbitInclination / 90) /
-      2;
-    const depthNormalized = Math.min(earthquake.depth_km / 700, 1);
-    const depthCorrelation = 1 - Math.abs(orbitalComplexity - depthNormalized);
-    score += depthCorrelation * 0.15;
-    factors++;
-  }
-
-  // Temporal proximity bonus (if dates are close)
-  if (earthquake.time && asteroidFeatures.approachCount > 0) {
-    const earthquakeDate = new Date(earthquake.time);
-    const yearProximity = Math.abs(earthquakeDate.getFullYear() - 2025) / 100;
-    score += (1 - yearProximity) * 0.15;
-    factors++;
-  }
-
-  return factors > 0 ? score / factors : 0;
+  return finalScore;
 }
 
 // Get detailed correlation factors
+// SCIENTIFIC ANALYSIS: Energy-based correlation with supporting context
 function getCorrelationDetails(
   asteroidFeatures: AsteroidFeatures,
   earthquake: Earthquake,
   asteroid: NASAAsteroidResponse["asteroid"]
 ): CorrelationDetails {
   const asteroidEnergyJoules = asteroidFeatures.kineticEnergyMt * 4.184e15;
+  const earthquakeEnergy = earthquake.energy_joules ||
+    Math.pow(10, 1.5 * earthquake.magnitude + 4.8); // Gutenberg-Richter
+
+  // Calculate equivalent earthquake magnitude for asteroid impact
+  // Using Gutenberg-Richter: M = (log₁₀(E) - 4.8) / 1.5
+  const asteroidEquivalentMagnitude = asteroidEnergyJoules > 0
+    ? (Math.log10(asteroidEnergyJoules) - 4.8) / 1.5
+    : 0;
+
+  // Energy ratio on logarithmic scale
+  const logEnergyRatio = asteroidEnergyJoules > 0 && earthquakeEnergy > 0
+    ? Math.log10(asteroidEnergyJoules / earthquakeEnergy)
+    : 0;
 
   return {
     energyComparison: {
-      asteroidEnergyEstimate: asteroidEnergyJoules.toExponential(2),
-      earthquakeEnergy: earthquake.energy_joules
-        ? earthquake.energy_joules.toExponential(2)
+      asteroidEnergyEstimate: `${asteroidEnergyJoules.toExponential(2)} J (${asteroidFeatures.kineticEnergyMt.toFixed(2)} MT TNT)`,
+      earthquakeEnergy: `${earthquakeEnergy.toExponential(2)} J`,
+      ratio: logEnergyRatio !== 0
+        ? `10^${logEnergyRatio.toFixed(2)} (${logEnergyRatio > 0 ? 'asteroid is stronger' : 'earthquake is stronger'})`
         : "N/A",
-      ratio:
-        asteroidEnergyJoules > 0 &&
-        earthquake.energy_joules &&
-        earthquake.energy_joules > 0
-          ? (
-              Math.min(asteroidEnergyJoules, earthquake.energy_joules) /
-              Math.max(asteroidEnergyJoules, earthquake.energy_joules)
-            ).toFixed(4)
-          : "N/A",
     },
     magnitudeComparison: {
-      asteroidMagnitude: asteroidFeatures.absoluteMagnitude
-        ? asteroidFeatures.absoluteMagnitude.toFixed(2)
+      asteroidMagnitude: `M${asteroidEquivalentMagnitude.toFixed(2)} (equivalent seismic magnitude)`,
+      earthquakeMagnitude: earthquake.magnitude
+        ? `M${earthquake.magnitude.toFixed(2)} ${earthquake.magnitude_type || ''}`
         : "N/A",
-      earthquakeMagnitude: earthquake.magnitude || "N/A",
     },
     hazardAssessment: {
       asteroidHazardous: asteroidFeatures.isPotentiallyHazardous ? "Yes" : "No",

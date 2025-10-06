@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import MapboxMap from "@/components/MapboxMap2";
 import NASADataPanel from "@/components/NASADataPanel";
 import LeftSidebar from "@/components/LeftSidebar";
 import Navbar from "@/components/Navbar";
+import ImpactRadiusTogglePanel from "@/components/ImpactRadiusTogglePanel";
 
 // Define the NASA asteroid data type
 interface NASAAsteroidData {
@@ -36,7 +37,7 @@ const defaultImpactLocation = {
 
 export default function MapboxSimPage() {
   const router = useRouter();
-  
+
   // Simulation state
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasImpacted, setHasImpacted] = useState(false);
@@ -82,14 +83,80 @@ export default function MapboxSimPage() {
   const [currentDistance, setCurrentDistance] = useState<number | undefined>(
     undefined
   );
+  const [enhancedPrediction, setEnhancedPrediction] = useState<any>(null);
+
+  // Pin placement state (declare before useEffects that use it)
+  const [usePredictedLocation, setUsePredictedLocation] = useState(true);
+  const [impactPin, setImpactPin] = useState<any>(null);
+  const [isPlacingPin, setIsPlacingPin] = useState(false);
 
   // MapboxMap reference
   const mapboxRef = useRef<any>(null);
 
-  // Pin placement state
-  const [usePredictedLocation, setUsePredictedLocation] = useState(true);
-  const [impactPin, setImpactPin] = useState<any>(null);
-  const [isPlacingPin, setIsPlacingPin] = useState(false);
+  // Radius visibility state for ImpactRadiusOverlay
+  const [visibleRadii, setVisibleRadii] = useState({
+    crater: true,
+    fireball: false,
+    windBlast: false,
+    earthquake: false,
+    tsunami: false,
+    shockwave: false,
+  });
+
+  const handleToggleRadius = (radiusType: keyof typeof visibleRadii) => {
+    setVisibleRadii((prev) => ({
+      ...prev,
+      [radiusType]: !prev[radiusType],
+    }));
+  };
+
+  const handleShowAllRadii = () => {
+    setVisibleRadii({
+      crater: true,
+      fireball: true,
+      windBlast: true,
+      earthquake: true,
+      tsunami: true,
+      shockwave: true,
+    });
+  };
+
+  const handleHideAllRadii = () => {
+    setVisibleRadii({
+      crater: false,
+      fireball: false,
+      windBlast: false,
+      earthquake: false,
+      tsunami: false,
+      shockwave: false,
+    });
+  };
+
+  // Debug: Log when enhanced prediction changes
+  useEffect(() => {
+    console.log("🔮 Enhanced prediction updated:", {
+      hasEnhancedPrediction: !!enhancedPrediction,
+      hasConsequencePrediction: !!enhancedPrediction?.consequencePrediction,
+      consequencePrediction: enhancedPrediction?.consequencePrediction,
+    });
+  }, [enhancedPrediction]);
+
+  // Update impact location when enhanced prediction loads (NASA asteroid)
+  useEffect(() => {
+    if (enhancedPrediction?.impact_location && usePredictedLocation) {
+      const predictedLocation = {
+        latitude: enhancedPrediction.impact_location.latitude,
+        longitude: enhancedPrediction.impact_location.longitude,
+        city: enhancedPrediction.impact_location.type || "Predicted Location",
+        country: "",
+      };
+      console.log(
+        "📍 Setting impact location from enhanced prediction:",
+        predictedLocation
+      );
+      setImpactLocation(predictedLocation);
+    }
+  }, [enhancedPrediction, usePredictedLocation]);
 
   // Calculate impact data whenever params change
   useEffect(() => {
@@ -190,22 +257,24 @@ export default function MapboxSimPage() {
     }
   };
 
-  const handleSimulationUpdate = (simulation: any) => {
+  const handleSimulationUpdate = useCallback((simulation: any) => {
     setCurrentSimulation(simulation);
-  };
+  }, []);
 
   const handleReset = () => {
     console.log("🔄 handleReset called");
-    
+
     // Use router refresh to completely reset the page state
     router.refresh();
-    
+
     // Also reset local state for immediate UI feedback
     setIsSimulating(false);
     setHasImpacted(false);
     setIsSidebarCollapsed(false);
     setShowNASAPanel(wasNASAPanelOpen);
     setCurrentSimulation(null); // Clear simulation data
+    setEnhancedPrediction(null); // Clear prediction data
+    setImpactLocation(defaultImpactLocation); // Reset to default location
     // Reset pin placement state
     setImpactPin(null);
     setIsPlacingPin(false);
@@ -222,8 +291,21 @@ export default function MapboxSimPage() {
       if (next) {
         // Switching back to predicted location
         setImpactPin(null);
-        setImpactLocation(defaultImpactLocation);
         setIsPlacingPin(false);
+
+        // Restore predicted location if available, otherwise use default
+        if (enhancedPrediction?.impact_location) {
+          const predictedLocation = {
+            latitude: enhancedPrediction.impact_location.latitude,
+            longitude: enhancedPrediction.impact_location.longitude,
+            city:
+              enhancedPrediction.impact_location.type || "Predicted Location",
+            country: "",
+          };
+          setImpactLocation(predictedLocation);
+        } else {
+          setImpactLocation(defaultImpactLocation);
+        }
       } else {
         // Switching to custom pin mode
         setImpactPin(null);
@@ -263,16 +345,16 @@ export default function MapboxSimPage() {
     setEnhancedBuildings(controls.enhancedBuildings);
   };
 
-  const handleRunSimulation = () => {
+  const handleRunSimulation = useCallback(() => {
     // This will be called when the impact simulation is triggered from the sidebar
     if (mapboxRef.current?.runImpactAnimation) {
       mapboxRef.current.runImpactAnimation();
     }
-  };
+  }, []);
 
-  const handleLocationClick = (location: any) => {
+  const handleLocationClick = useCallback((location: any) => {
     setImpactLocation(location);
-  };
+  }, []);
 
   const handleImpact = () => {
     console.log("💥 Impact detected!");
@@ -315,6 +397,9 @@ export default function MapboxSimPage() {
           show3DBuildings={show3DBuildings}
           streetViewMode={streetViewMode}
           enhancedBuildings={enhancedBuildings}
+          // Enhanced prediction support
+          enhancedPrediction={enhancedPrediction}
+          visibleRadii={visibleRadii}
           // Pin placement props
           isPlacingPin={isPlacingPin}
           onPinPlaced={handlePinPlaced}
@@ -377,6 +462,9 @@ export default function MapboxSimPage() {
               simulationStatus={simulationStatus}
               currentSimulation={currentSimulation}
               impactLocation={impactLocation}
+              // Enhanced prediction callback
+              onPredictionLoaded={setEnhancedPrediction}
+              // Pin placement props
               usePredictedLocation={usePredictedLocation}
               impactPin={impactPin}
               isPlacingPin={isPlacingPin}
@@ -399,7 +487,22 @@ export default function MapboxSimPage() {
                   <NASADataPanel onSelectAsteroid={loadNASAAsteroid} />
                 </div>
               </div>
-            )}           
+            )}
+
+            {/* Impact Radius Toggle Panel - Show after impact on RIGHT */}
+            {hasImpacted &&
+              enhancedPrediction?.consequencePrediction &&
+              !showNASAPanel && (
+                <ImpactRadiusTogglePanel
+                  consequencePrediction={
+                    enhancedPrediction.consequencePrediction
+                  }
+                  visibleRadii={visibleRadii}
+                  onToggleRadius={handleToggleRadius}
+                  onShowAll={handleShowAllRadii}
+                  onHideAll={handleHideAllRadii}
+                />
+              )}
           </div>
         </div>
       </div>

@@ -13,8 +13,10 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import mapboxgl from "mapbox-gl";
-import * as THREE from 'three';
-import { createAsteroidMesh } from '@/lib/asteroid-utils';
+import * as THREE from "three";
+import { createAsteroidMesh } from "@/lib/asteroid-utils";
+import type { EnhancedPrediction } from "@/hooks/useEnhancedPredictions";
+import ImpactRadiusOverlay from "./ImpactRadiusOverlay";
 // Types
 interface ImpactLocation {
   longitude: number;
@@ -59,6 +61,16 @@ interface MapboxMapProps {
   streetViewMode?: boolean;
   enhancedBuildings?: boolean;
   shouldRunAnimation?: boolean;
+  // Enhanced prediction support
+  enhancedPrediction?: EnhancedPrediction | null;
+  visibleRadii?: {
+    crater: boolean;
+    fireball: boolean;
+    windBlast: boolean;
+    earthquake: boolean;
+    tsunami: boolean;
+    shockwave: boolean;
+  };
   // Pin placement props
   isPlacingPin?: boolean;
   onPinPlaced?: (pin: ImpactLocation) => void;
@@ -162,6 +174,16 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       streetViewMode = false,
       enhancedBuildings = true,
       shouldRunAnimation = false,
+      // Enhanced prediction
+      enhancedPrediction,
+      visibleRadii = {
+        crater: true,
+        fireball: false,
+        windBlast: false,
+        earthquake: false,
+        tsunami: false,
+        shockwave: false,
+      },
       // Pin placement props
       isPlacingPin = false,
       onPinPlaced,
@@ -219,25 +241,25 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
     // Update map cursor when pin placement state changes
     useEffect(() => {
       if (!map) return;
-      
+
       if (isPlacingPin) {
         // Set a red crosshair cursor using CSS
-        map.getCanvas().style.cursor = 'url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 20 20\'%3E%3Cline x1=\'10\' y1=\'0\' x2=\'10\' y2=\'20\' stroke=\'%23ff0000\' stroke-width=\'2\'/%3E%3Cline x1=\'0\' y1=\'10\' x2=\'20\' y2=\'10\' stroke=\'%23ff0000\' stroke-width=\'2\'/%3E%3C/svg%3E") 10 10, crosshair';
+        map.getCanvas().style.cursor =
+          "url(\"data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cline x1='10' y1='0' x2='10' y2='20' stroke='%23ff0000' stroke-width='2'/%3E%3Cline x1='0' y1='10' x2='20' y2='10' stroke='%23ff0000' stroke-width='2'/%3E%3C/svg%3E\") 10 10, crosshair";
       } else {
-        map.getCanvas().style.cursor = '';
+        map.getCanvas().style.cursor = "";
       }
     }, [map, isPlacingPin]);
 
-    // Get the effective impact location (either pin or predicted)
-    const effectiveImpactLocation = useMemo<ImpactLocation>(
-      () => {
-        if (usePredictedLocation || !impactPinProp) {
-          return predictedLocation;
-        }
+    // Get the effective impact location (pin overrides everything)
+    const effectiveImpactLocation = useMemo<ImpactLocation>(() => {
+      // Custom pin has highest priority
+      if (!usePredictedLocation && impactPinProp) {
         return impactPinProp;
-      },
-      [usePredictedLocation, impactPinProp, predictedLocation]
-    );
+      }
+      // Use the impactLocation prop (can be predicted or default)
+      return impactLocation;
+    }, [usePredictedLocation, impactPinProp, impactLocation]);
 
     // Initialize map
     useEffect(() => {
@@ -269,7 +291,10 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           mapInstance = new mapboxgl.Map({
             container: mapContainer.current,
             style: "mapbox://styles/mapbox/satellite-streets-v12",
-            center: [effectiveImpactLocation.longitude, effectiveImpactLocation.latitude],
+            center: [
+              effectiveImpactLocation.longitude,
+              effectiveImpactLocation.latitude,
+            ],
             zoom: 3,
             projection: { name: "globe" },
             attributionControl: false,
@@ -412,22 +437,34 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
 
           // Handle clicks to set impact location
           mapInstance.on("click", (e: mapboxgl.MapMouseEvent) => {
-            console.log('Map clicked - isPlacingPin:', isPlacingPinRef.current, 'currentSimulation:', currentSimulationRef.current);
-            console.log('usePredictedLocation:', usePredictedLocation, 'impactPinProp:', impactPinProp);
+            console.log(
+              "Map clicked - isPlacingPin:",
+              isPlacingPinRef.current,
+              "currentSimulation:",
+              currentSimulationRef.current
+            );
+            console.log(
+              "usePredictedLocation:",
+              usePredictedLocation,
+              "impactPinProp:",
+              impactPinProp
+            );
             if (isPlacingPinRef.current && !currentSimulationRef.current) {
               const { lng, lat } = e.lngLat;
-              console.log('Placing pin at:', lng, lat);
+              console.log("Placing pin at:", lng, lat);
               const newPin = {
                 longitude: lng,
                 latitude: lat,
-                city: 'Selected Location',
-                country: 'Unknown'
+                city: "Selected Location",
+                country: "Unknown",
               };
-              onStatusChange?.('Pin placed! Ready to simulate impact');
+              onStatusChange?.("Pin placed! Ready to simulate impact");
               setHasUserSetLocation(true);
               onPinPlaced?.(newPin); // Call the callback to notify parent components
             } else {
-              console.log('Click ignored - not in placing pin mode or simulation exists');
+              console.log(
+                "Click ignored - not in placing pin mode or simulation exists"
+              );
             }
           });
 
@@ -458,29 +495,34 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
 
       // Create Three.js scene with AsteroidPreview setup
       const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      const renderer = new THREE.WebGLRenderer({ 
-        alpha: true, 
-        antialias: true 
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      const renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: true,
       });
-      
+
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       renderer.setClearColor(0x000000, 0); // Transparent background
-      renderer.domElement.style.position = 'absolute';
-      renderer.domElement.style.top = '0';
-      renderer.domElement.style.left = '0';
-      renderer.domElement.style.pointerEvents = 'none';
-      renderer.domElement.style.zIndex = '5';
-      
-      console.log('Three.js renderer created and configured');
-      
+      renderer.domElement.style.position = "absolute";
+      renderer.domElement.style.top = "0";
+      renderer.domElement.style.left = "0";
+      renderer.domElement.style.pointerEvents = "none";
+      renderer.domElement.style.zIndex = "5";
+
+      console.log("Three.js renderer created and configured");
+
       // Add renderer to map container
       if (mapContainer.current) {
         mapContainer.current.appendChild(renderer.domElement);
-        console.log('Three.js renderer added to map container');
+        console.log("Three.js renderer added to map container");
       }
 
       // Use the exact lighting setup from AsteroidPreview
@@ -513,7 +555,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
         requestAnimationFrame(animate);
       };
       animate();
-      console.log('Three.js animation loop started');
+      console.log("Three.js animation loop started");
 
       return () => {
         if (renderer.domElement.parentNode) {
@@ -526,182 +568,197 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
     useEffect(() => {
       if (!map || !mapLoaded || !currentSimulation) return;
 
-      console.log('Adding damage zones for simulation:', currentSimulation);
+      console.log("Adding damage zones for simulation:", currentSimulation);
       const currentMap = map; // Store reference to avoid null checks
 
       // Clean up existing layers before adding new ones
       cleanupMapLayers(currentMap);
 
       // Add impact point
-      currentMap.addSource('impact-point', {
-        type: 'geojson',
+      currentMap.addSource("impact-point", {
+        type: "geojson",
         data: {
-          type: 'Feature',
+          type: "Feature",
           geometry: {
-            type: 'Point',
-            coordinates: [currentSimulation.location.longitude, currentSimulation.location.latitude]
+            type: "Point",
+            coordinates: [
+              currentSimulation.location.longitude,
+              currentSimulation.location.latitude,
+            ],
           },
-          properties: {}
-        }
+          properties: {},
+        },
       });
 
       currentMap.addLayer({
-        id: 'impact-point',
-        type: 'circle',
-        source: 'impact-point',
+        id: "impact-point",
+        type: "circle",
+        source: "impact-point",
         paint: {
-          'circle-radius': 15,
-          'circle-color': '#ff0000',
-          'circle-stroke-width': 4,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 0.9
-        }
+          "circle-radius": 15,
+          "circle-color": "#ff0000",
+          "circle-stroke-width": 4,
+          "circle-stroke-color": "#ffffff",
+          "circle-opacity": 0.9,
+        },
       });
 
       // Add damage zones
       const damageZones = getDamageZones(currentSimulation);
-      console.log('Damage zones to add:', damageZones);
-      
+      console.log("Damage zones to add:", damageZones);
+
       damageZones.forEach((zone, index) => {
         const sourceId = `damage-zone-${index}`;
         const layerId = `damage-zone-layer-${index}`;
-        
-        console.log(`Adding damage zone ${index}: ${zone.type} with radius ${zone.radius}km`);
-        
+
+        console.log(
+          `Adding damage zone ${index}: ${zone.type} with radius ${zone.radius}km`
+        );
+
         try {
           // Create circle for damage zone
           const coordinates = [];
           const radius = zone.radius * 1000; // Convert km to meters
-          const center = [currentSimulation.location.longitude, currentSimulation.location.latitude];
-          
+          const center = [
+            currentSimulation.location.longitude,
+            currentSimulation.location.latitude,
+          ];
+
           for (let i = 0; i <= 64; i++) {
             const angle = (i * 360) / 64;
             const radians = (angle * Math.PI) / 180;
-            
+
             // Fixed coordinate calculation for proper centering
             const deltaLat = (radius * Math.cos(radians)) / 111320;
-            const deltaLng = (radius * Math.sin(radians)) / (111320 * Math.cos(center[1] * Math.PI / 180));
-            
+            const deltaLng =
+              (radius * Math.sin(radians)) /
+              (111320 * Math.cos((center[1] * Math.PI) / 180));
+
             coordinates.push([center[0] + deltaLng, center[1] + deltaLat]);
           }
           coordinates.push(coordinates[0]); // Close the polygon
 
           currentMap.addSource(sourceId, {
-            type: 'geojson',
+            type: "geojson",
             data: {
-              type: 'Feature',
+              type: "Feature",
               geometry: {
-                type: 'Polygon',
-                coordinates: [coordinates]
+                type: "Polygon",
+                coordinates: [coordinates],
               },
-              properties: {}
-            }
+              properties: {},
+            },
           });
 
           currentMap.addLayer({
             id: layerId,
-            type: 'fill',
+            type: "fill",
             source: sourceId,
             paint: {
-              'fill-color': zone.color,
-              'fill-opacity': 0.3
-            }
+              "fill-color": zone.color,
+              "fill-opacity": 0.3,
+            },
           });
 
           // Add outline
           currentMap.addLayer({
             id: `${layerId}-outline`,
-            type: 'line',
+            type: "line",
             source: sourceId,
             paint: {
-              'line-color': zone.color,
-              'line-width': 2,
-              'line-opacity': 0.8
-            }
+              "line-color": zone.color,
+              "line-width": 2,
+              "line-opacity": 0.8,
+            },
           });
         } catch (e) {
-          console.error('Error adding damage zone:', e);
+          console.error("Error adding damage zone:", e);
         }
       });
 
       // Add crater visualization
       try {
         // Clean up existing crater layers first
-        if (currentMap.getLayer('crater-visualization')) {
-          currentMap.removeLayer('crater-visualization');
+        if (currentMap.getLayer("crater-visualization")) {
+          currentMap.removeLayer("crater-visualization");
         }
-        if (currentMap.getLayer('crater-outline')) {
-          currentMap.removeLayer('crater-outline');
+        if (currentMap.getLayer("crater-outline")) {
+          currentMap.removeLayer("crater-outline");
         }
-        if (currentMap.getSource('crater-visualization')) {
-          currentMap.removeSource('crater-visualization');
+        if (currentMap.getSource("crater-visualization")) {
+          currentMap.removeSource("crater-visualization");
         }
 
         // Simple crater visualization without complex cleanup
         const craterRadius = currentSimulation.craterDiameter / 2;
-        const center = [currentSimulation.location.longitude, currentSimulation.location.latitude];
-        
+        const center = [
+          currentSimulation.location.longitude,
+          currentSimulation.location.latitude,
+        ];
+
         // Create crater visualization
         const coordinates = [];
         for (let i = 0; i <= 64; i++) {
           const angle = (i * 360) / 64;
           const radians = (angle * Math.PI) / 180;
           const deltaLat = (craterRadius * Math.cos(radians)) / 111320;
-          const deltaLng = (craterRadius * Math.sin(radians)) / (111320 * Math.cos(center[1] * Math.PI / 180));
+          const deltaLng =
+            (craterRadius * Math.sin(radians)) /
+            (111320 * Math.cos((center[1] * Math.PI) / 180));
           coordinates.push([center[0] + deltaLng, center[1] + deltaLat]);
         }
         coordinates.push(coordinates[0]); // Close the polygon
 
         // Add crater source and layer
-        if (!currentMap.getSource('crater-visualization')) {
-          currentMap.addSource('crater-visualization', {
-            type: 'geojson',
+        if (!currentMap.getSource("crater-visualization")) {
+          currentMap.addSource("crater-visualization", {
+            type: "geojson",
             data: {
-              type: 'Feature',
+              type: "Feature",
               geometry: {
-                type: 'Polygon',
-                coordinates: [coordinates]
+                type: "Polygon",
+                coordinates: [coordinates],
               },
-              properties: {}
-            }
+              properties: {},
+            },
           });
 
           currentMap.addLayer({
-            id: 'crater-visualization',
-            type: 'fill',
-            source: 'crater-visualization',
+            id: "crater-visualization",
+            type: "fill",
+            source: "crater-visualization",
             paint: {
-              'fill-color': '#8B4513',
-              'fill-opacity': 0.6
-            }
+              "fill-color": "#8B4513",
+              "fill-opacity": 0.6,
+            },
           });
 
           currentMap.addLayer({
-            id: 'crater-outline',
-            type: 'line',
-            source: 'crater-visualization',
+            id: "crater-outline",
+            type: "line",
+            source: "crater-visualization",
             paint: {
-              'line-color': '#654321',
-              'line-width': 3,
-              'line-opacity': 0.9
-            }
+              "line-color": "#654321",
+              "line-width": 3,
+              "line-opacity": 0.9,
+            },
           });
         }
       } catch (error) {
-        console.error('Error adding crater visualization:', error);
+        console.error("Error adding crater visualization:", error);
       }
-
     }, [map, mapLoaded, currentSimulation]);
 
     // Update map cursor when pin placement state changes
     useEffect(() => {
       if (!map) return;
-      
+
       if (isPlacingPin) {
         // Set a red crosshair cursor using CSS
-        map.getCanvas().style.cursor = 'url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 20 20\'%3E%3Cline x1=\'10\' y1=\'0\' x2=\'10\' y2=\'20\' stroke=\'%23ff0000\' stroke-width=\'2\'/%3E%3Cline x1=\'0\' y1=\'10\' x2=\'20\' y2=\'10\' stroke=\'%23ff0000\' stroke-width=\'2\'/%3E%3C/svg%3E") 10 10, crosshair';
+        map.getCanvas().style.cursor =
+          "url(\"data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cline x1='10' y1='0' x2='10' y2='20' stroke='%23ff0000' stroke-width='2'/%3E%3Cline x1='0' y1='10' x2='20' y2='10' stroke='%23ff0000' stroke-width='2'/%3E%3C/svg%3E\") 10 10, crosshair";
       } else {
-        map.getCanvas().style.cursor = '';
+        map.getCanvas().style.cursor = "";
       }
     }, [map, isPlacingPin]);
 
@@ -713,11 +770,11 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
 
       // Clean up existing pin
       try {
-        if (currentMap.getLayer('impact-pin')) {
-          currentMap.removeLayer('impact-pin');
+        if (currentMap.getLayer("impact-pin")) {
+          currentMap.removeLayer("impact-pin");
         }
-        if (currentMap.getSource('impact-pin')) {
-          currentMap.removeSource('impact-pin');
+        if (currentMap.getSource("impact-pin")) {
+          currentMap.removeSource("impact-pin");
         }
       } catch {
         // Pin might not exist, continue
@@ -727,36 +784,36 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       if (!impactPinProp || usePredictedLocation) return;
 
       // Add red pin marker
-      currentMap.addSource('impact-pin', {
-        type: 'geojson',
+      currentMap.addSource("impact-pin", {
+        type: "geojson",
         data: {
-          type: 'Feature',
+          type: "Feature",
           geometry: {
-            type: 'Point',
-            coordinates: [impactPinProp.longitude, impactPinProp.latitude]
+            type: "Point",
+            coordinates: [impactPinProp.longitude, impactPinProp.latitude],
           },
-          properties: {}
-        }
+          properties: {},
+        },
       });
 
       currentMap.addLayer({
-        id: 'impact-pin',
-        type: 'circle',
-        source: 'impact-pin',
+        id: "impact-pin",
+        type: "circle",
+        source: "impact-pin",
         paint: {
-          'circle-radius': 12,
-          'circle-color': '#ff0000',
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 1
-        }
+          "circle-radius": 12,
+          "circle-color": "#ff0000",
+          "circle-stroke-width": 3,
+          "circle-stroke-color": "#ffffff",
+          "circle-opacity": 1,
+        },
       });
 
       // Fly to pin location
       currentMap.flyTo({
         center: [impactPinProp.longitude, impactPinProp.latitude],
         zoom: 10, // Moderate zoom to see the area without being too close
-        duration: 2000
+        duration: 2000,
       });
     }, [map, mapLoaded, impactPinProp, usePredictedLocation]);
 
@@ -863,11 +920,11 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
 
       // Clean up existing pin
       try {
-        if (currentMap.getLayer('impact-pin')) {
-          currentMap.removeLayer('impact-pin');
+        if (currentMap.getLayer("impact-pin")) {
+          currentMap.removeLayer("impact-pin");
         }
-        if (currentMap.getSource('impact-pin')) {
-          currentMap.removeSource('impact-pin');
+        if (currentMap.getSource("impact-pin")) {
+          currentMap.removeSource("impact-pin");
         }
       } catch {
         // Pin might not exist, continue
@@ -877,36 +934,36 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       if (!impactPinProp) return;
 
       // Add red pin marker
-      currentMap.addSource('impact-pin', {
-        type: 'geojson',
+      currentMap.addSource("impact-pin", {
+        type: "geojson",
         data: {
-          type: 'Feature',
+          type: "Feature",
           geometry: {
-            type: 'Point',
-            coordinates: [impactPinProp.longitude, impactPinProp.latitude]
+            type: "Point",
+            coordinates: [impactPinProp.longitude, impactPinProp.latitude],
           },
-          properties: {}
-        }
+          properties: {},
+        },
       });
 
       currentMap.addLayer({
-        id: 'impact-pin',
-        type: 'circle',
-        source: 'impact-pin',
+        id: "impact-pin",
+        type: "circle",
+        source: "impact-pin",
         paint: {
-          'circle-radius': 12,
-          'circle-color': '#ff0000',
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 1
-        }
+          "circle-radius": 12,
+          "circle-color": "#ff0000",
+          "circle-stroke-width": 3,
+          "circle-stroke-color": "#ffffff",
+          "circle-opacity": 1,
+        },
       });
 
       // Fly to pin location
       currentMap.flyTo({
         center: [impactPinProp.longitude, impactPinProp.latitude],
         zoom: 10, // Moderate zoom to see the area without being too close
-        duration: 2000
+        duration: 2000,
       });
     }, [map, mapLoaded, impactPinProp, usePredictedLocation]);
 
@@ -1089,87 +1146,117 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
     );
 
     const runImpactAnimation = useCallback(async () => {
-      if (!map || !effectiveImpactLocation || isAnimating || !sceneRef.current || !rendererRef.current || !cameraRef.current) return;
-      
+      if (
+        !map ||
+        !effectiveImpactLocation ||
+        isAnimating ||
+        !sceneRef.current ||
+        !rendererRef.current ||
+        !cameraRef.current
+      )
+        return;
+
       setIsAnimating(true);
-      onStatusChange?.('Simulating impact...');
-      
+      onStatusChange?.("Simulating impact...");
+
       try {
         // Create simulation from effective impact location
-        const simulation = simulateImpact(asteroidParams, effectiveImpactLocation);
-        
+        const simulation = simulateImpact(
+          asteroidParams,
+          effectiveImpactLocation
+        );
+
         // Declare these variables so they can be accessed during cleanup
         let trail: THREE.Mesh;
         let aura: THREE.Mesh;
-        
+
         // Start from space view to show asteroid approach
         await new Promise<void>((resolve) => {
           map.flyTo({
-            center: [effectiveImpactLocation.longitude, effectiveImpactLocation.latitude],
+            center: [
+              effectiveImpactLocation.longitude,
+              effectiveImpactLocation.latitude,
+            ],
             zoom: 2, // Space view to see Earth
-            duration: 1500
+            duration: 1500,
           });
           setTimeout(resolve, 1500);
         });
-        
+
         // Create Three.js asteroid using exact AsteroidPreview setup
-        console.log('Creating realistic asteroid using AsteroidPreview method...');
-        
+        console.log(
+          "Creating realistic asteroid using AsteroidPreview method..."
+        );
+
         // Create the asteroid using asteroid utils - same as AsteroidPreview
         const asteroidDiameter = Math.max(asteroidParams.diameter / 10, 100);
-        const asteroidMesh = createAsteroidMesh(THREE, { diameter: asteroidDiameter });
-        console.log('Created asteroid using asteroid-utils with diameter:', asteroidDiameter);
+        const asteroidMesh = createAsteroidMesh(THREE, {
+          diameter: asteroidDiameter,
+        });
+        console.log(
+          "Created asteroid using asteroid-utils with diameter:",
+          asteroidDiameter
+        );
 
-        
         // Use bigger scaling for more dramatic effect
         const minDiameter = 50;
         const maxDiameter = 1000;
         const minScale = 3.0;
         const maxScale = 6.0;
-        const normalizedDiameter = (asteroidDiameter - minDiameter) / (maxDiameter - minDiameter);
-        const scaleFactor = minScale + normalizedDiameter * (maxScale - minScale);
+        const normalizedDiameter =
+          (asteroidDiameter - minDiameter) / (maxDiameter - minDiameter);
+        const scaleFactor =
+          minScale + normalizedDiameter * (maxScale - minScale);
         asteroidMesh.scale.multiplyScalar(scaleFactor);
-        
+
         // Create fiery trail/aura effect
-        const trailGeometry = new THREE.SphereGeometry(scaleFactor * 1.5, 16, 16);
+        const trailGeometry = new THREE.SphereGeometry(
+          scaleFactor * 1.5,
+          16,
+          16
+        );
         const trailMaterial = new THREE.MeshBasicMaterial({
           color: 0xff6600, // Orange
           transparent: true,
           opacity: 0.3,
-          blending: THREE.AdditiveBlending
+          blending: THREE.AdditiveBlending,
         });
         // eslint-disable-next-line prefer-const
         trail = new THREE.Mesh(trailGeometry, trailMaterial);
-        
+
         // Create inner aura
-        const auraGeometry = new THREE.SphereGeometry(scaleFactor * 1.2, 16, 16);
+        const auraGeometry = new THREE.SphereGeometry(
+          scaleFactor * 1.2,
+          16,
+          16
+        );
         const auraMaterial = new THREE.MeshBasicMaterial({
           color: 0xffaa00, // Yellow-orange
           transparent: true,
           opacity: 0.5,
-          blending: THREE.AdditiveBlending
+          blending: THREE.AdditiveBlending,
         });
         // eslint-disable-next-line prefer-const
         aura = new THREE.Mesh(auraGeometry, auraMaterial);
-        
+
         // Screen-space path: start off to the right, impact at exact screen center
         const startPosition = new THREE.Vector3(40, 10, -35);
         const endPosition = new THREE.Vector3(0, 0, -35);
-        
+
         asteroidMesh.position.copy(startPosition);
         trail.position.copy(startPosition);
         aura.position.copy(startPosition);
-        
+
         sceneRef.current.add(asteroidMesh);
         sceneRef.current.add(trail);
         sceneRef.current.add(aura);
         asteroidMeshRef.current = asteroidMesh;
-        console.log('Asteroid with fiery trail added to scene');
-        
+        console.log("Asteroid with fiery trail added to scene");
+
         // Position camera for clear side view
         cameraRef.current.position.set(0, 0, 0);
         cameraRef.current.lookAt(0, 0, -35);
-        
+
         // Animate asteroid movement
         const steps = 60;
         const centerLockFrame = 15;
@@ -1177,7 +1264,11 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           const progress = i / steps;
 
           // Position interpolation
-          asteroidMesh.position.lerpVectors(startPosition, endPosition, progress);
+          asteroidMesh.position.lerpVectors(
+            startPosition,
+            endPosition,
+            progress
+          );
           trail.position.copy(asteroidMesh.position);
           aura.position.copy(asteroidMesh.position);
 
@@ -1187,8 +1278,10 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           asteroidMesh.rotation.z += 0.012;
 
           // Aura intensifies
-          (trail.material as THREE.MeshBasicMaterial).opacity = 0.25 + progress * 0.55;
-          (aura.material as THREE.MeshBasicMaterial).opacity = 0.4 + progress * 0.4;
+          (trail.material as THREE.MeshBasicMaterial).opacity =
+            0.25 + progress * 0.55;
+          (aura.material as THREE.MeshBasicMaterial).opacity =
+            0.4 + progress * 0.4;
 
           // HIDE ASTEROID IMMEDIATELY AT IMPACT (when progress reaches 100%)
           if (progress >= 1.0) {
@@ -1196,7 +1289,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
             trail.visible = false;
             aura.visible = false;
             setHasImpactOccurred(true);
-            console.log('Asteroid hidden at impact moment - progress 100%');
+            console.log("Asteroid hidden at impact moment - progress 100%");
           }
 
           // Camera/map behavior
@@ -1204,36 +1297,48 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
             const t = i / centerLockFrame;
             const lngOffset = 6 * (1 - t);
             const latOffset = 4 * (1 - t);
-            map.setCenter([effectiveImpactLocation.longitude + lngOffset, effectiveImpactLocation.latitude + latOffset]);
+            map.setCenter([
+              effectiveImpactLocation.longitude + lngOffset,
+              effectiveImpactLocation.latitude + latOffset,
+            ]);
             map.setZoom(2.5 + t * 1.5);
           } else {
-            map.setCenter([effectiveImpactLocation.longitude, effectiveImpactLocation.latitude]);
+            map.setCenter([
+              effectiveImpactLocation.longitude,
+              effectiveImpactLocation.latitude,
+            ]);
             if (progress > 0.6) {
               const zoomT = (progress - 0.6) / 0.4;
               map.setZoom(4 + zoomT * 8);
             }
           }
 
-          onStatusChange?.(`Asteroid incoming... ${Math.round(progress * 100)}%`);
-          await new Promise(r => setTimeout(r, 50));
+          onStatusChange?.(
+            `Asteroid incoming... ${Math.round(progress * 100)}%`
+          );
+          await new Promise((r) => setTimeout(r, 50));
         }
 
-        console.log('Asteroid reached center (impact). Hiding asteroid immediately...');
+        console.log(
+          "Asteroid reached center (impact). Hiding asteroid immediately..."
+        );
 
         // SIMPLE SOLUTION - Just hide the asteroid on impact
         setHasImpactOccurred(true); // Set flag to hide asteroid
-        
+
         if (asteroidMeshRef.current && sceneRef.current) {
           // Remove asteroid and trail immediately on impact
           sceneRef.current.remove(asteroidMeshRef.current);
           sceneRef.current.remove(trail);
           sceneRef.current.remove(aura);
-          
+
           // Dispose of the geometries and materials to free memory
           asteroidMeshRef.current.geometry.dispose();
           if (asteroidMeshRef.current.material) {
             if (Array.isArray(asteroidMeshRef.current.material)) {
-              asteroidMeshRef.current.material.forEach(material => material.dispose());
+              asteroidMeshRef.current.material.forEach((material) =>
+                material.dispose()
+              );
             } else {
               asteroidMeshRef.current.material.dispose();
             }
@@ -1242,71 +1347,86 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
           (trail.material as THREE.MeshBasicMaterial).dispose();
           aura.geometry.dispose();
           (aura.material as THREE.MeshBasicMaterial).dispose();
-          
+
           asteroidMeshRef.current = null;
-          console.log('Asteroid hidden on impact - flag set to true');
+          console.log("Asteroid hidden on impact - flag set to true");
 
           // Set simulation immediately to trigger crater visualization
           setCurrentSimulation(simulation);
-          onStatusChange?.('Impact! Asteroid disappeared! Crater forming...');
+          onStatusChange?.("Impact! Asteroid disappeared! Crater forming...");
         }
 
         // Post-impact zoom
-        await new Promise<void>(resolve => {
+        await new Promise<void>((resolve) => {
           map.flyTo({
-            center: [effectiveImpactLocation.longitude, effectiveImpactLocation.latitude],
+            center: [
+              effectiveImpactLocation.longitude,
+              effectiveImpactLocation.latitude,
+            ],
             zoom: 12,
             duration: 900,
-            pitch: 35
+            pitch: 35,
           });
           setTimeout(resolve, 900);
         });
-        
+
         // Create MASSIVE impact explosion after asteroid vaporization
         if (sceneRef.current) {
           // Create multiple explosion layers for more dramatic effect
           const explosions: THREE.Mesh[] = [];
-          
+
           // Core explosion (white-hot)
           const coreExplosionGeometry = new THREE.SphereGeometry(1, 16, 16);
-          const coreExplosionMaterial = new THREE.MeshBasicMaterial({ 
+          const coreExplosionMaterial = new THREE.MeshBasicMaterial({
             color: 0xffffff, // White hot
-            transparent: true, 
+            transparent: true,
             opacity: 1.0,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
           });
-          const coreExplosion = new THREE.Mesh(coreExplosionGeometry, coreExplosionMaterial);
+          const coreExplosion = new THREE.Mesh(
+            coreExplosionGeometry,
+            coreExplosionMaterial
+          );
           coreExplosion.position.copy(endPosition);
           sceneRef.current.add(coreExplosion);
           explosions.push(coreExplosion);
-          
+
           // Middle explosion (orange)
           const midExplosionGeometry = new THREE.SphereGeometry(1.5, 16, 16);
-          const midExplosionMaterial = new THREE.MeshBasicMaterial({ 
+          const midExplosionMaterial = new THREE.MeshBasicMaterial({
             color: 0xff4500, // Orange-red
-            transparent: true, 
+            transparent: true,
             opacity: 0.8,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
           });
-          const midExplosion = new THREE.Mesh(midExplosionGeometry, midExplosionMaterial);
+          const midExplosion = new THREE.Mesh(
+            midExplosionGeometry,
+            midExplosionMaterial
+          );
           midExplosion.position.copy(endPosition);
           sceneRef.current.add(midExplosion);
           explosions.push(midExplosion);
-          
+
           // Outer explosion (red)
           const outerExplosionGeometry = new THREE.SphereGeometry(2, 16, 16);
-          const outerExplosionMaterial = new THREE.MeshBasicMaterial({ 
+          const outerExplosionMaterial = new THREE.MeshBasicMaterial({
             color: 0xff0000, // Red
-            transparent: true, 
+            transparent: true,
             opacity: 0.6,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
           });
-          const outerExplosion = new THREE.Mesh(outerExplosionGeometry, outerExplosionMaterial);
+          const outerExplosion = new THREE.Mesh(
+            outerExplosionGeometry,
+            outerExplosionMaterial
+          );
           outerExplosion.position.copy(endPosition);
           sceneRef.current.add(outerExplosion);
           explosions.push(outerExplosion);
-          
-          console.log('Multi-layered explosion created at impact location:', endPosition);
+
+          console.log(
+            "Multi-layered explosion created at impact location:",
+            endPosition
+          );
 
           // Massive explosion animation with shockwave effect
           for (let i = 0; i < 20; i++) {
@@ -1314,12 +1434,12 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
             coreExplosion.scale.multiplyScalar(1.3);
             midExplosion.scale.multiplyScalar(1.25);
             outerExplosion.scale.multiplyScalar(1.2);
-            
+
             // Fade out at different rates
             coreExplosionMaterial.opacity *= 0.85;
             midExplosionMaterial.opacity *= 0.88;
-            outerExplosionMaterial.opacity *= 0.90;
-            
+            outerExplosionMaterial.opacity *= 0.9;
+
             // Color shift from white to orange to red
             if (i > 5) {
               coreExplosionMaterial.color.setHex(0xffaa00); // Yellow-orange
@@ -1327,37 +1447,43 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
             if (i > 10) {
               coreExplosionMaterial.color.setHex(0xff6600); // Orange
             }
-            
-            await new Promise(resolve => setTimeout(resolve, 60));
+
+            await new Promise((resolve) => setTimeout(resolve, 60));
           }
-          
+
           // Remove all explosion effects
-          explosions.forEach(explosion => {
+          explosions.forEach((explosion) => {
             sceneRef.current!.remove(explosion);
             explosion.geometry.dispose();
             (explosion.material as THREE.MeshBasicMaterial).dispose();
           });
-          console.log('Massive explosion animation complete - all layers disposed');
+          console.log(
+            "Massive explosion animation complete - all layers disposed"
+          );
         }
-        
+
         // Final zoom to impact site
         await new Promise<void>((resolve) => {
           map.flyTo({
-            center: [effectiveImpactLocation.longitude, effectiveImpactLocation.latitude],
+            center: [
+              effectiveImpactLocation.longitude,
+              effectiveImpactLocation.latitude,
+            ],
             zoom: 12,
             pitch: 35,
-            duration: 2000
+            duration: 2000,
           });
           setTimeout(resolve, 2000);
         });
-        
-        onStatusChange?.('Impact simulation complete! Crater and damage zones visible.');
-        
+
+        onStatusChange?.(
+          "Impact simulation complete! Crater and damage zones visible."
+        );
       } catch (error) {
-        console.error('Animation error:', error);
-        onStatusChange?.('Animation error occurred');
+        console.error("Animation error:", error);
+        onStatusChange?.("Animation error occurred");
       }
-      
+
       setIsAnimating(false);
     }, [
       map,
@@ -1373,19 +1499,19 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
 
       animationRequestRef.current = false;
       cleanupMapLayers(map);
-      
+
       // Clean up pin
       try {
-        if (map.getLayer('impact-pin')) {
-          map.removeLayer('impact-pin');
+        if (map.getLayer("impact-pin")) {
+          map.removeLayer("impact-pin");
         }
-        if (map.getSource('impact-pin')) {
-          map.removeSource('impact-pin');
+        if (map.getSource("impact-pin")) {
+          map.removeSource("impact-pin");
         }
       } catch {
         // Pin might not exist, continue
       }
-      
+
       setCurrentSimulation(null);
       setIsAnimating(false);
       setHasImpactOccurred(false); // Reset impact flag
@@ -1453,7 +1579,7 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
             "building-3d",
             "fill-extrusion-ambient-occlusion-intensity"
           );
-          const currentValue = typeof current === 'number' ? current : 0.1;
+          const currentValue = typeof current === "number" ? current : 0.1;
           const newEnhanced = currentValue < 0.3;
           map.setPaintProperty(
             "building-3d",
@@ -1490,6 +1616,64 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
       }
     }, [shouldRunAnimation, isAnimating, runImpactAnimation]);
 
+    // Show predicted impact location when enhanced prediction loads
+    useEffect(() => {
+      if (!map || !mapLoaded || !enhancedPrediction?.impact_location) return;
+
+      const { latitude, longitude } = enhancedPrediction.impact_location;
+
+      console.log("📍 Showing predicted impact location on map:", {
+        latitude,
+        longitude,
+      });
+
+      // Pan map to predicted location
+      map.flyTo({
+        center: [longitude, latitude],
+        zoom: 10,
+        duration: 2000,
+        essential: true,
+      });
+
+      // Add impact location marker
+      try {
+        // Remove existing prediction marker if any
+        if (map.getLayer("prediction-marker")) {
+          map.removeLayer("prediction-marker");
+        }
+        if (map.getSource("prediction-marker")) {
+          map.removeSource("prediction-marker");
+        }
+
+        // Add new prediction marker
+        map.addSource("prediction-marker", {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [longitude, latitude] },
+            properties: {},
+          },
+        });
+
+        map.addLayer({
+          id: "prediction-marker",
+          type: "circle",
+          source: "prediction-marker",
+          paint: {
+            "circle-radius": 10,
+            "circle-color": "#3b82f6", // Blue for predicted location
+            "circle-stroke-width": 3,
+            "circle-stroke-color": "#ffffff",
+            "circle-opacity": 0.8,
+          },
+        });
+
+        console.log("✅ Prediction marker added to map");
+      } catch (error) {
+        console.error("❌ Error adding prediction marker:", error);
+      }
+    }, [map, mapLoaded, enhancedPrediction]);
+
     return (
       <div className={`relative w-full h-full ${className}`}>
         <div
@@ -1515,6 +1699,31 @@ const MapboxMap = forwardRef<MapboxMapRef, MapboxMapProps>(
             {effectiveImpactLocation.longitude.toFixed(3)}°
           </div>
         )}
+
+        {/* Impact Radius Overlay - Show after simulation completes */}
+        {(() => {
+          const shouldShow =
+            mapLoaded &&
+            !isAnimating &&
+            currentSimulation &&
+            enhancedPrediction?.consequencePrediction;
+          console.log("🗺️ ImpactRadiusOverlay render check:", {
+            mapLoaded,
+            isAnimating,
+            hasCurrentSimulation: !!currentSimulation,
+            hasEnhancedPrediction: !!enhancedPrediction,
+            hasConsequencePrediction:
+              !!enhancedPrediction?.consequencePrediction,
+            shouldShow,
+          });
+          return shouldShow ? (
+            <ImpactRadiusOverlay
+              consequencePrediction={enhancedPrediction.consequencePrediction}
+              visibleRadii={visibleRadii}
+              map={map}
+            />
+          ) : null;
+        })()}
       </div>
     );
   }

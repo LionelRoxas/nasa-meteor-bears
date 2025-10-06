@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from "react";
 import AsteroidPreview from "./AsteroidPreview";
-import ImpactSimulatorControls from "./ImpactSimulatorControls";
+import ImpactSimulatorControls from "./ImpactSimulatorControls3";
 import {
   useEnhancedPredictions,
   type EnhancedPrediction,
@@ -51,15 +51,6 @@ interface LeftSidebarProps {
   impactLocation?: any;
   // Enhanced prediction callback
   onPredictionLoaded?: (prediction: EnhancedPrediction) => void;
-  // Pin placement props
-  usePredictedLocation?: boolean;
-  impactPin?: any | null;
-  isPlacingPin?: boolean;
-  // Pin placement communication with parent
-  onStartPinPlacement?: () => void;
-  onRemovePin?: () => void;
-  onToggleLocationMode?: () => void;
-  hasImpactOccurred?: boolean; // Flag to indicate if impact has finished
 }
 
 export default function LeftSidebar({
@@ -83,13 +74,6 @@ export default function LeftSidebar({
     country: "USA",
   },
   onPredictionLoaded,
-  usePredictedLocation,
-  impactPin,
-  isPlacingPin,
-  onStartPinPlacement: parentOnStartPinPlacement,
-  onRemovePin: parentOnRemovePin,
-  onToggleLocationMode,
-  hasImpactOccurred = false,
 }: LeftSidebarProps) {
   const [viewMode, setViewMode] = useState<"parameters" | "simulator">(
     "parameters"
@@ -246,19 +230,6 @@ export default function LeftSidebar({
       streetViewMode,
       enhancedBuildings: newValue,
     });
-  };
-
-  const handleToggleLocationMode = () => {
-    onToggleLocationMode?.();
-  };
-
-  const handleStartPinPlacement = () => {
-    parentOnStartPinPlacement?.();
-  };
-
-  const handleRemovePin = () => {
-    // Communicate with parent to remove pin from the map
-    parentOnRemovePin?.();
   };
 
   const handleRunImpact = () => {
@@ -488,16 +459,7 @@ export default function LeftSidebar({
             onRunImpact={handleRunImpact}
             onReset={onReset}
             currentSimulation={currentSimulation}
-            // Enhanced prediction
             enhancedPrediction={enhancedPrediction}
-            hasImpactOccurred={hasImpactOccurred}
-            // Pin placement props
-            usePredictedLocation={usePredictedLocation}
-            onToggleLocationMode={handleToggleLocationMode}
-            impactPin={impactPin}
-            isPlacingPin={isPlacingPin}
-            onStartPinPlacement={handleStartPinPlacement}
-            onRemovePin={handleRemovePin}
           />
         )}
       </div>
