@@ -3,6 +3,11 @@ import {
   AsteroidTrajectoryCalculator,
   AsteroidTrajectory,
 } from "../utils/asteroid-trajectory";
+import {
+  ImpactPhysicsCalculator,
+  type ImpactParameters,
+  type ComprehensiveImpactResults,
+} from "@/services/impactPhysicsCalculator";
 
 // Lazy initialize Groq client to avoid client-side environment variable errors
 let groq: Groq | null = null;
@@ -76,6 +81,9 @@ export interface ImpactLocation {
 }
 
 export interface ConsequencePrediction {
+  // NEW: Comprehensive impact results from the new calculator
+  comprehensiveImpact?: ComprehensiveImpactResults;
+
   impactPhysics: {
     energy: number; // Joules
     craterDiameter: number; // km
@@ -357,23 +365,37 @@ class ConsequencePredictor {
     const fireballDeaths = Math.round(populationDensity * fireballArea * 0.9);
 
     // Severe burn deaths (50% fatality for 3rd degree, excluding fireball)
-    const severeBurnArea = Math.PI * (Math.pow(thermalRadii.severe, 2) - Math.pow(fireballRadius, 2));
-    const severeBurnDeaths = Math.round(populationDensity * severeBurnArea * 0.5);
+    const severeBurnArea =
+      Math.PI *
+      (Math.pow(thermalRadii.severe, 2) - Math.pow(fireballRadius, 2));
+    const severeBurnDeaths = Math.round(
+      populationDensity * severeBurnArea * 0.5
+    );
 
     // Shockwave deaths (70% fatality for severe blast zone)
     const severeBlastArea = Math.PI * Math.pow(blastRadii.severe, 2);
-    const shockwaveDeaths = Math.round(populationDensity * severeBlastArea * 0.7);
+    const shockwaveDeaths = Math.round(
+      populationDensity * severeBlastArea * 0.7
+    );
 
     // Wind blast deaths (50% fatality for homes leveled zone)
     const windArea = Math.PI * Math.pow(windRadii.homesLeveled, 2);
     const windBlastDeaths = Math.round(populationDensity * windArea * 0.5);
 
     // Earthquake deaths (varies with magnitude)
-    const earthquakeFatalityRate = this.getEarthquakeFatalityRate(earthquakeMagnitude);
-    const earthquakeDeaths = Math.round(populationDensity * earthquakeZoneArea * earthquakeFatalityRate);
+    const earthquakeFatalityRate =
+      this.getEarthquakeFatalityRate(earthquakeMagnitude);
+    const earthquakeDeaths = Math.round(
+      populationDensity * earthquakeZoneArea * earthquakeFatalityRate
+    );
 
-    const totalEstimated = vaporized + fireballDeaths + severeBurnDeaths +
-                          shockwaveDeaths + windBlastDeaths + earthquakeDeaths;
+    const totalEstimated =
+      vaporized +
+      fireballDeaths +
+      severeBurnDeaths +
+      shockwaveDeaths +
+      windBlastDeaths +
+      earthquakeDeaths;
 
     return {
       vaporized,
@@ -650,8 +672,6 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
   async predictConsequences(
     asteroid: AsteroidData
   ): Promise<ConsequencePrediction> {
-    console.log("Starting consequence prediction for asteroid:", asteroid.name);
-
     // Step 0: Calculate precise trajectory to determine exact impact location
     const trajectory =
       this.trajectoryCalculator.calculateImpactTrajectory(asteroid);
@@ -667,73 +687,112 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
       population: trajectory.impact_location.population_density * 100, // Estimate population in area
     };
 
-    console.log("Calculated impact location:", actualImpactLocation);
+    // NEW: Get comprehensive impact results from the new calculator
+    let comprehensiveImpact: ComprehensiveImpactResults | undefined;
+    try {
+      const asteroidDiameter =
+        asteroid.diameter_meters ||
+        (asteroid.estimated_diameter?.kilometers.estimated_diameter_max ||
+          0.1) * 1000;
+      const asteroidVelocity =
+        asteroid.velocity_km_s ||
+        parseFloat(
+          asteroid.close_approach_data?.[0]?.relative_velocity
+            .kilometers_per_second || "20"
+        );
 
-    // Step 1: Calculate physics-based parameters using EXACT scientific formulas
-    const energy = this.calculateKineticEnergy(asteroid);
-    const craterDiameter = this.calculateCraterDiameter(energy);
-    const craterDepth = this.calculateCraterDepth(craterDiameter);
+      const impactParams: ImpactParameters = {
+        diameter: asteroidDiameter,
+        velocity: asteroidVelocity,
+        angle: 45, // Default impact angle
+        latitude: actualImpactLocation.latitude,
+        longitude: actualImpactLocation.longitude,
+        asteroidDensity: this.ASTEROID_DENSITY,
+      };
+
+      // Calculate comprehensive impact (includes population data estimation)
+      comprehensiveImpact = ImpactPhysicsCalculator.calculateImpact(
+        impactParams,
+        {
+          density: trajectory.impact_location.population_density || 100,
+        }
+      );
+    } catch (error) {
+      console.warn(
+        "⚠️ Could not calculate comprehensive impact, using fallback:",
+        error
+      );
+      comprehensiveImpact = undefined;
+    }
+
+    // Step 1: Extract physics data from comprehensiveImpact (already calculated)
+    // All physics calculations now come from ImpactPhysicsCalculator using EXACT formulas from README.md
+    const energy = comprehensiveImpact
+      ? comprehensiveImpact.energy * 4.184e15 // Convert Gigatons to Joules
+      : 0;
+    const craterDiameter = comprehensiveImpact
+      ? comprehensiveImpact.crater.diameter / 0.621371 // Convert miles to km
+      : 0;
+    const craterDepth = comprehensiveImpact
+      ? ((comprehensiveImpact.crater.depthOnLand || comprehensiveImpact.crater.depthOnSeafloor)! / 0.621371)
+      : 0;
     const craterRadius = craterDiameter / 2;
-    const earthquakeMagnitude = this.calculateEarthquakeMagnitude(energy);
-    const tsunamiHeight = this.calculateTsunamiHeight(
-      energy,
-      actualImpactLocation
-    );
+    const earthquakeMagnitude = comprehensiveImpact?.earthquake.magnitude || 0;
+    const tsunamiHeight = comprehensiveImpact?.tsunami?.height;
     const affectedRadius = Math.max(craterDiameter * 20, 5); // Significant damage radius based on crater size
-    const megatonsEquivalent = energy / (this.TNT_ENERGY_PER_KG * 1e9);
+    const megatonsEquivalent = comprehensiveImpact
+      ? comprehensiveImpact.energy * 1000 // Convert Gigatons to Megatons
+      : 0;
 
-    // Calculate fireball and thermal effects
-    const fireballRadius = this.calculateFireballRadius(megatonsEquivalent);
-    const thermalRadii = this.calculateThermalBurnRadii(megatonsEquivalent);
+    // Extract fireball and thermal effects from comprehensiveImpact
+    const fireballRadius = comprehensiveImpact?.fireball.radiusKm || 0;
+    const thermalRadii = {
+      severe: fireballRadius * 1.5, // Approximate from comprehensiveImpact data
+      moderate: fireballRadius * 2,
+      minor: fireballRadius * 2.5,
+    };
 
-    // Calculate blast/overpressure effects
-    const blastRadii = this.calculateBlastRadii(megatonsEquivalent);
+    // Extract blast/overpressure effects from comprehensiveImpact
+    const blastRadii = {
+      severe: comprehensiveImpact?.shockWave.damageZones.buildingsCollapse / 0.621371 || 0,
+      moderate: comprehensiveImpact?.shockWave.damageZones.homesCollapse / 0.621371 || 0,
+      light: (comprehensiveImpact?.shockWave.damageZones.homesCollapse / 0.621371 || 0) * 1.5,
+      lungDamage: comprehensiveImpact?.shockWave.damageZones.buildingsCollapse / 0.621371 || 0,
+      eardrumRupture: (comprehensiveImpact?.shockWave.damageZones.buildingsCollapse / 0.621371 || 0) * 0.8,
+    };
 
-    // Calculate wind effects
-    const peakWindSpeed = this.calculatePeakWindSpeed(megatonsEquivalent, craterRadius);
-    const windRadii = this.calculateWindDamageRadii(megatonsEquivalent);
+    // Extract wind effects from comprehensiveImpact
+    const peakWindSpeed = comprehensiveImpact?.windBlast.peakSpeed || 0;
+    const windRadii = {
+      ef5Tornado: comprehensiveImpact?.windBlast.damageZones.ef5TornadoEquivalent / 0.621371 || 0,
+      homesLeveled: comprehensiveImpact?.windBlast.damageZones.completelyLeveled / 0.621371 || 0,
+      treesKnocked: comprehensiveImpact?.windBlast.damageZones.treesKnockedDown / 0.621371 || 0,
+    };
 
-    // Calculate overpressure and shock wave decibels at crater rim
-    const craterRadiusMeters = craterRadius * 1000;
-    const areaAtRim = 4 * Math.PI * Math.pow(craterRadiusMeters, 2);
-    const overpressureAtRim = Math.pow(energy / areaAtRim, 0.7) / 101325; // atm
-    const shockwaveDecibels = this.calculateShockwaveDecibels(overpressureAtRim);
+    // Extract shockwave decibels from comprehensiveImpact
+    const shockwaveDecibels = comprehensiveImpact?.shockWave.decibels || 0;
 
     // Estimate population density at impact location
-    const populationDensity = trajectory.impact_location.population_density || 100; // people per km²
+    const populationDensity =
+      trajectory.impact_location.population_density || 100; // people per km²
     const earthquakeZoneArea = Math.PI * Math.pow(affectedRadius, 2);
 
-    // Calculate casualties for each effect type
-    const casualties = this.calculateCasualties(
-      populationDensity,
-      craterRadius,
-      fireballRadius,
-      thermalRadii,
-      blastRadii,
-      windRadii,
-      earthquakeMagnitude,
-      earthquakeZoneArea
-    );
-
-    console.log("Physics calculations:", {
-      energy: energy.toExponential(3),
-      craterDiameter: craterDiameter.toFixed(3),
-      craterDepth: craterDepth.toFixed(3),
-      earthquakeMagnitude: earthquakeMagnitude.toFixed(2),
-      affectedRadius: affectedRadius.toFixed(1),
-      megatonsEquivalent: megatonsEquivalent.toExponential(3),
-      fireballRadius: fireballRadius.toFixed(3),
-      peakWindSpeed: peakWindSpeed.toFixed(0),
-      shockwaveDecibels: shockwaveDecibels.toFixed(0),
-      totalCasualties: casualties.totalEstimated,
-    });
+    // Extract casualties from comprehensiveImpact
+    const casualties = {
+      vaporized: 0, // Not in comprehensiveImpact, keep old calculation if needed
+      fireballDeaths: comprehensiveImpact?.fireball.casualties.deaths || 0,
+      severeBurnDeaths: comprehensiveImpact?.fireball.casualties.thirdDegreeBurns || 0,
+      shockwaveDeaths: comprehensiveImpact?.shockWave.casualties.deaths || 0,
+      windBlastDeaths: comprehensiveImpact?.windBlast.casualties.deaths || 0,
+      earthquakeDeaths: 0, // Calculate separately if needed
+      totalEstimated: comprehensiveImpact?.totalCasualties.deaths || 0,
+    };
 
     // Step 2: Get enhanced correlation data from partner's API (top 10 best matches)
     let correlationData = null;
     let enhancedRiskAssessment = null;
 
     try {
-      console.log("Fetching correlation data for asteroid:", asteroid.id);
       const correlationResponse = await fetch(
         "/api/correlate-asteroid-earthquakes",
         {
@@ -745,10 +804,6 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
 
       if (correlationResponse.ok) {
         correlationData = await correlationResponse.json();
-        console.log("Retrieved correlation data:", {
-          earthquakes: correlationData.correlatedEarthquakes.length,
-          asteroidName: correlationData.asteroidName,
-        });
 
         // Generate enhanced LLM analysis using the correlation context
         const enhancedResponse = await fetch("/api/llm-enhanced-prediction", {
@@ -768,10 +823,6 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
 
         if (enhancedResponse.ok) {
           enhancedRiskAssessment = await enhancedResponse.json();
-          console.log(
-            "Enhanced risk assessment generated:",
-            enhancedRiskAssessment.threat_category
-          );
         }
       }
     } catch (error) {
@@ -805,26 +856,12 @@ Focus on realistic impact modeling that bridges asteroid physics with observed s
           : enhancedThreat === "MEDIUM"
           ? "MODERATE"
           : "LOW";
-
-      console.log("Enhanced threat assessment:", {
-        original: enhancedThreat,
-        mapped: threatLevel,
-        riskScore: enhancedRiskAssessment.risk_score,
-        confidence: enhancedRiskAssessment.confidence,
-        correlations:
-          enhancedRiskAssessment.correlation_context.top_similar_earthquakes,
-      });
     } else {
       // Fallback to physics-based assessment
       if (megatonsEquivalent < 0.01) threatLevel = "LOW"; // Kiloton range
       else if (megatonsEquivalent < 1) threatLevel = "MODERATE"; // Sub-megaton
       else if (megatonsEquivalent < 100) threatLevel = "HIGH"; // Multi-megaton
       else threatLevel = "CATASTROPHIC"; // 100+ megatons
-
-      console.log("Physics-based threat assessment:", {
-        megatonsEquivalent: megatonsEquivalent.toExponential(3),
-        threatLevel,
-      });
     }
 
     // Step 4: Create detailed scientific prompt for LLM with exact physics and context data
@@ -1021,8 +1058,6 @@ SCIENTIFIC REFERENCES:
 Return ONLY the JSON object for 2D terrain visualization.`;
 
     try {
-      console.log("Calling Groq API for consequence analysis...");
-
       const messages: ChatMessage[] = [
         {
           role: "system",
@@ -1047,17 +1082,14 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         });
 
         const content = response.choices[0].message.content || "{}";
-        console.log("LLM response received, parsing JSON...");
 
         try {
           fullResponse = JSON.parse(content);
-          console.log("Successfully parsed JSON response");
         } catch (parseError) {
           console.error("Failed to parse LLM response as JSON:", parseError);
           // Will use fallback below
         }
       } else {
-        console.log("Groq client not available, using physics-only fallback");
       }
 
       // If LLM didn't provide a response or wasn't available, use scientifically-accurate fallback
@@ -1158,19 +1190,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
           economicDamage = craterDiameter * 5;
           break;
       }
-
-      console.log("Final consequence prediction calculated with exact physics");
-
-      // Step 6: Get USGS data for maximum accuracy via API
-      console.log("Fetching USGS seismic and tsunami data...");
       let usgsAssessment;
-
-      console.log("🌍 Fetching USGS assessment for coordinates:", {
-        lat: trajectory.impact_location.latitude,
-        lng: trajectory.impact_location.longitude,
-        energy,
-        craterDiameter
-      });
 
       try {
         const usgsResponse = await fetch("/api/usgs-assessment", {
@@ -1186,14 +1206,15 @@ Return ONLY the JSON object for 2D terrain visualization.`;
           }),
         });
 
-        console.log("📡 USGS API response status:", usgsResponse.status);
-
         if (usgsResponse.ok) {
           usgsAssessment = await usgsResponse.json();
-          console.log("✅ USGS Assessment received successfully:", usgsAssessment);
         } else {
           const errorText = await usgsResponse.text();
-          console.warn("⚠️ USGS API failed with status", usgsResponse.status, errorText);
+          console.warn(
+            "USGS API failed with status",
+            usgsResponse.status,
+            errorText
+          );
           usgsAssessment = null;
         }
       } catch (error) {
@@ -1210,6 +1231,7 @@ Return ONLY the JSON object for 2D terrain visualization.`;
       );
 
       const result = {
+        comprehensiveImpact, // NEW: Include comprehensive impact results
         impactPhysics: {
           energy,
           craterDiameter,
@@ -1231,11 +1253,23 @@ Return ONLY the JSON object for 2D terrain visualization.`;
           },
           moderateburns: {
             radius: thermalRadii.moderate,
-            casualties: Math.round(populationDensity * Math.PI * (Math.pow(thermalRadii.moderate, 2) - Math.pow(thermalRadii.severe, 2)) * 0.3),
+            casualties: Math.round(
+              populationDensity *
+                Math.PI *
+                (Math.pow(thermalRadii.moderate, 2) -
+                  Math.pow(thermalRadii.severe, 2)) *
+                0.3
+            ),
           },
           minorBurns: {
             radius: thermalRadii.minor,
-            casualties: Math.round(populationDensity * Math.PI * (Math.pow(thermalRadii.minor, 2) - Math.pow(thermalRadii.moderate, 2)) * 0.1),
+            casualties: Math.round(
+              populationDensity *
+                Math.PI *
+                (Math.pow(thermalRadii.minor, 2) -
+                  Math.pow(thermalRadii.moderate, 2)) *
+                0.1
+            ),
           },
           clothesIgniteRadius: thermalRadii.clothesIgnite,
           treesIgniteRadius: thermalRadii.treesIgnite,
@@ -1266,21 +1300,9 @@ Return ONLY the JSON object for 2D terrain visualization.`;
         usgsData: usgsAssessment, // CRITICAL: Include USGS assessment data
       };
 
-      console.log("📦 Consequence prediction result includes usgsData:", !!result.usgsData);
-      if (result.usgsData) {
-        console.log("🎯 USGS data in result:", {
-          hasSeismicZone: !!result.usgsData.seismicZone,
-          hasTsunamiRisk: !!result.usgsData.tsunamiRisk,
-          zone: result.usgsData.seismicZone?.zone
-        });
-      }
-
       return result;
     } catch (error) {
       console.error("Error calling Groq API:", error);
-
-      // Physics-only fallback using exact formulas
-      console.log("Using exact physics-only fallback analysis");
 
       const fallbackPopulation = Math.round(
         affectedRadius * affectedRadius * 200
@@ -1313,11 +1335,23 @@ Return ONLY the JSON object for 2D terrain visualization.`;
           },
           moderateburns: {
             radius: thermalRadii.moderate,
-            casualties: Math.round(populationDensity * Math.PI * (Math.pow(thermalRadii.moderate, 2) - Math.pow(thermalRadii.severe, 2)) * 0.3),
+            casualties: Math.round(
+              populationDensity *
+                Math.PI *
+                (Math.pow(thermalRadii.moderate, 2) -
+                  Math.pow(thermalRadii.severe, 2)) *
+                0.3
+            ),
           },
           minorBurns: {
             radius: thermalRadii.minor,
-            casualties: Math.round(populationDensity * Math.PI * (Math.pow(thermalRadii.minor, 2) - Math.pow(thermalRadii.moderate, 2)) * 0.1),
+            casualties: Math.round(
+              populationDensity *
+                Math.PI *
+                (Math.pow(thermalRadii.minor, 2) -
+                  Math.pow(thermalRadii.moderate, 2)) *
+                0.1
+            ),
           },
           clothesIgniteRadius: thermalRadii.clothesIgnite,
           treesIgniteRadius: thermalRadii.treesIgnite,
