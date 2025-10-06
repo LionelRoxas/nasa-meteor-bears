@@ -326,7 +326,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
     // Fly to pin location
     currentMap.flyTo({
       center: [impactPin.longitude, impactPin.latitude],
-      zoom: 8,
+      zoom: 10, // Moderate zoom to see the area without being too close
       duration: 2000
     });
   }, [map, mapLoaded, impactPin]);
@@ -561,8 +561,8 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   // Add damage zones to map (only after impact simulation)
   useEffect(() => {
     if (!map || !mapLoaded || !currentSimulation) return;
-    if (!map.isStyleLoaded()) return;
 
+    console.log('Adding damage zones for simulation:', currentSimulation);
     const currentMap = map; // Store reference to avoid null checks
 
     // Clean up existing layers before adding new ones
@@ -596,10 +596,13 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
 
     // Add damage zones
     const damageZones = getDamageZones(currentSimulation);
+    console.log('Damage zones to add:', damageZones);
     
     damageZones.forEach((zone, index) => {
       const sourceId = `damage-zone-${index}`;
       const layerId = `damage-zone-layer-${index}`;
+      
+      console.log(`Adding damage zone ${index}: ${zone.type} with radius ${zone.radius}km`);
       
       try {
         // Create circle for damage zone
@@ -734,11 +737,11 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       // Create simulation from pin location
       const simulation = simulateImpact(selectedComet, impactPin);
       
-      // Zoom out to show trajectory
+      // Zoom out to show trajectory from space
       await new Promise<void>((resolve) => {
         map.flyTo({
           center: [impactPin.longitude, impactPin.latitude],
-          zoom: 2,
+          zoom: 2, // Space view to see Earth
           duration: 1500
         });
         setTimeout(resolve, 1500);
@@ -774,16 +777,19 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         }
       });
       
-      // Animate asteroid movement
+      // Animate asteroid movement with gradual zoom
       const steps = 60;
       const lngStep = (impactPin.longitude - startLng) / steps;
       const latStep = (impactPin.latitude - startLat) / steps;
+      const startZoom = 2; // Space view
+      const endZoom = 8;   // Regional view when approaching
       
       for (let i = 0; i <= steps; i++) {
         const progress = i / steps;
         const currentLng = startLng + (lngStep * i);
         const currentLat = startLat + (latStep * i);
         
+        // Update asteroid position
         const source = map.getSource('asteroid') as mapboxgl.GeoJSONSource;
         source?.setData({
           type: 'Feature',
@@ -793,6 +799,15 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           },
           properties: {}
         });
+        
+        // Gradually zoom in starting from halfway point
+        if (progress >= 0.5) {
+          const zoomProgress = (progress - 0.5) * 2; // 0 to 1 for second half
+          const currentZoom = startZoom + (endZoom - startZoom) * zoomProgress;
+          
+          map.setCenter([currentLng, currentLat]);
+          map.setZoom(currentZoom);
+        }
         
         // Update status during animation
         setStatus(`Asteroid approaching... ${Math.round(progress * 100)}%`);
@@ -811,12 +826,12 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       // Set simulation to trigger damage zone rendering
       setCurrentSimulation(simulation);
       
-      // Zoom to impact site - closer to see buildings
+      // Zoom to impact site - balanced view to see crater and damage zones
       await new Promise<void>((resolve) => {
         map.flyTo({
           center: [impactPin.longitude, impactPin.latitude],
-          zoom: 16, // Much closer zoom to see 3D buildings
-          pitch: 45, // Angled view for better 3D building visibility
+          zoom: 12, // Balanced zoom to see crater and surrounding damage zones
+          pitch: 35, // Moderate angled view for good 3D building visibility
           duration: 2000
         });
         setTimeout(resolve, 2000);
