@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Link from 'next/link';
@@ -25,6 +25,9 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
   const [currentSimulation, setCurrentSimulation] = useState<ImpactSimulation | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const [status, setStatus] = useState('Initializing...');
+  const [show3DBuildings, setShow3DBuildings] = useState(true);
+  const [streetViewMode, setStreetViewMode] = useState(false);
+  const [enhancedBuildings, setEnhancedBuildings] = useState(true);
 
   // Initialize map
   useEffect(() => {
@@ -61,10 +64,109 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           });
           mapInstance!.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
           
-          // Add fog/atmosphere
+          // Add enhanced 3D buildings layer
+          if (!mapInstance!.getLayer('building-3d')) {
+            mapInstance!.addLayer({
+              id: 'building-3d',
+              source: 'composite',
+              'source-layer': 'building',
+              filter: ['==', 'extrude', 'true'],
+              type: 'fill-extrusion',
+              minzoom: 13,
+              paint: {
+                'fill-extrusion-color': [
+                  'case',
+                  ['boolean', ['feature-state', 'destroyed'], false],
+                  '#ff0000', // Destroyed buildings - red
+                  ['boolean', ['feature-state', 'severely-damaged'], false],
+                  '#ff6600', // Severely damaged - orange
+                  ['boolean', ['feature-state', 'moderately-damaged'], false],
+                  '#ffaa00', // Moderately damaged - yellow-orange
+                  ['boolean', ['feature-state', 'lightly-damaged'], false],
+                  '#ffff00', // Lightly damaged - yellow
+                  [
+                    'interpolate',
+                    ['linear'],
+                    ['get', 'height'],
+                    0, '#7f8fa6',     // Low buildings - gray
+                    50, '#718093',    // Medium buildings - darker gray
+                    100, '#57606f',   // Tall buildings - dark gray
+                    200, '#2f3542'    // Skyscrapers - very dark gray
+                  ]
+                ],
+                'fill-extrusion-height': [
+                  'interpolate',
+                  ['linear'],
+                  ['zoom'],
+                  13, 0,
+                  13.5, [
+                    'case',
+                    ['boolean', ['feature-state', 'destroyed'], false],
+                    ['*', ['get', 'height'], 0.1], // Destroyed buildings are collapsed
+                    ['boolean', ['feature-state', 'severely-damaged'], false],
+                    ['*', ['get', 'height'], 0.4], // Severely damaged are partially collapsed
+                    ['boolean', ['feature-state', 'moderately-damaged'], false],
+                    ['*', ['get', 'height'], 0.7], // Moderately damaged lose some height
+                    ['get', 'height'] // Normal height for undamaged buildings
+                  ]
+                ],
+                'fill-extrusion-base': [
+                  'interpolate',
+                  ['linear'],
+                  ['zoom'],
+                  13, 0,
+                  13.5, ['get', 'min_height']
+                ],
+                'fill-extrusion-opacity': [
+                  'interpolate',
+                  ['linear'],
+                  ['zoom'],
+                  13, 0.7,
+                  16, 0.82,
+                  18, 0.9
+                ],
+                // Add ambient occlusion effect
+                'fill-extrusion-ambient-occlusion-intensity': 0.3,
+                'fill-extrusion-ambient-occlusion-radius': 3,
+                // Add flood lighting for more dramatic effect
+                'fill-extrusion-flood-light-intensity': 0.4,
+                'fill-extrusion-flood-light-color': '#ffffff',
+                // Add vertical gradient
+                'fill-extrusion-vertical-gradient': true
+              }
+            }, 'waterway-label');
+          }
+          
+          // Add building shadows for more realism
+          if (!mapInstance!.getLayer('building-shadows')) {
+            mapInstance!.addLayer({
+              id: 'building-shadows',
+              source: 'composite',
+              'source-layer': 'building',
+              filter: ['==', 'extrude', 'true'],
+              type: 'fill-extrusion',
+              minzoom: 16,
+              paint: {
+                'fill-extrusion-color': 'rgba(0,0,0,0.4)',
+                'fill-extrusion-height': 1,
+                'fill-extrusion-base': 0,
+                'fill-extrusion-opacity': [
+                  'interpolate',
+                  ['linear'],
+                  ['zoom'],
+                  16, 0,
+                  17, 0.6
+                ],
+                'fill-extrusion-translate': [2, 2],
+                'fill-extrusion-translate-anchor': 'map'
+              }
+            }, 'building-3d');
+          }
+          
+          // Add fog/atmosphere earth border color
           mapInstance!.setFog({
-            color: '#220053',
-            'high-color': '#ffc2a8',
+            color: '#003ef6ff',
+            'high-color': '#3849e1ff',
             'horizon-blend': 0.02,
             'space-color': '#000000',
             'star-intensity': 0.8
@@ -82,8 +184,8 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           });
         });
 
-        mapInstance.on('error', (e: mapboxgl.ErrorEvent) => {
-          console.error('Map error:', e);
+        mapInstance.on('error', (e: { error: Error }) => {
+          console.error('Map error:', e.error);
           setStatus('Map error occurred');
         });
 
@@ -110,6 +212,24 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         zoom: 6,
         duration: 2000
       });
+      
+      // Reset building colors when location changes
+      if (map.getLayer('building-3d')) {
+        const features = map.queryRenderedFeatures({ layers: ['building-3d'] });
+        features.forEach((feature) => {
+          if (feature.id) {
+            map.setFeatureState(
+              { source: 'composite', sourceLayer: 'building', id: feature.id },
+              { 
+                destroyed: false,
+                'severely-damaged': false,
+                'moderately-damaged': false,
+                'lightly-damaged': false
+              }
+            );
+          }
+        });
+      }
     }
   }, [map, mapLoaded, impactLocation]);
 
@@ -120,6 +240,100 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       setCurrentSimulation(simulation);
     }
   }, [selectedComet, impactLocation]);
+
+  // Function to color buildings based on damage zones with enhanced damage levels
+  const colorBuildingsInDamageZones = useCallback((mapInstance: mapboxgl.Map, simulation: ImpactSimulation) => {
+    if (!mapInstance.getLayer('building-3d')) return;
+
+    // Query all building features in the viewport
+    const features = mapInstance.queryRenderedFeatures({ layers: ['building-3d'] });
+
+    features.forEach((feature) => {
+      if (feature.geometry.type === 'Polygon' && feature.geometry.coordinates[0]) {
+        // Calculate building center (simple approximation)
+        const coords = feature.geometry.coordinates[0] as number[][];
+        let totalLng = 0, totalLat = 0;
+        coords.forEach((coord: number[]) => {
+          const [lng, lat] = coord;
+          totalLng += lng;
+          totalLat += lat;
+        });
+        const buildingLng = totalLng / coords.length;
+        const buildingLat = totalLat / coords.length;
+
+        // Calculate distance from impact point to building
+        const distance = calculateDistance(
+          simulation.location.latitude,
+          simulation.location.longitude,
+          buildingLat,
+          buildingLng
+        );
+
+        // Reset all damage states first
+        if (feature.id) {
+          mapInstance.setFeatureState(
+            { source: 'composite', sourceLayer: 'building', id: feature.id },
+            { 
+              destroyed: false,
+              'severely-damaged': false,
+              'moderately-damaged': false,
+              'lightly-damaged': false
+            }
+          );
+        }
+
+        // Determine damage level based on distance from impact
+        const craterRadius = simulation.craterDiameter / 2000; // Convert to km
+        
+        if (distance <= craterRadius) {
+          // Complete destruction zone
+          if (feature.id) {
+            mapInstance.setFeatureState(
+              { source: 'composite', sourceLayer: 'building', id: feature.id },
+              { destroyed: true }
+            );
+          }
+        } else if (distance <= craterRadius * 2) {
+          // Severe damage zone
+          if (feature.id) {
+            mapInstance.setFeatureState(
+              { source: 'composite', sourceLayer: 'building', id: feature.id },
+              { 'severely-damaged': true }
+            );
+          }
+        } else if (distance <= craterRadius * 4) {
+          // Moderate damage zone
+          if (feature.id) {
+            mapInstance.setFeatureState(
+              { source: 'composite', sourceLayer: 'building', id: feature.id },
+              { 'moderately-damaged': true }
+            );
+          }
+        } else if (distance <= simulation.damageRadius) {
+          // Light damage zone
+          if (feature.id) {
+            mapInstance.setFeatureState(
+              { source: 'composite', sourceLayer: 'building', id: feature.id },
+              { 'lightly-damaged': true }
+            );
+          }
+        }
+      }
+    });
+  }, []);
+
+  // Helper function to calculate distance between two points in km
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
 
   // Add damage zones to map
   useEffect(() => {
@@ -135,7 +349,7 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         if (map.getSource(id)) {
           map.removeSource(id);
         }
-      } catch (e) {
+      } catch {
         // Layer might not exist, continue
       }
     });
@@ -229,7 +443,72 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
       }
     });
 
-  }, [map, mapLoaded, currentSimulation]);
+    // Color buildings based on damage zones
+    colorBuildingsInDamageZones(map, currentSimulation);
+
+  }, [map, mapLoaded, currentSimulation, colorBuildingsInDamageZones]);
+
+  // Function to toggle street view mode
+  const toggleStreetView = useCallback(() => {
+    if (!map || !mapLoaded) return;
+
+    const newStreetViewMode = !streetViewMode;
+    setStreetViewMode(newStreetViewMode);
+
+    if (newStreetViewMode) {
+      // Street view mode - close zoom, angled view, ground level perspective
+      map.flyTo({
+        center: [impactLocation.longitude, impactLocation.latitude],
+        zoom: 18, // Very close zoom for street level
+        pitch: 70, // High pitch for ground-level perspective
+        bearing: 45, // Angled view
+        duration: 2000
+      });
+    } else {
+      // Aerial view mode - moderate zoom, top-down view
+      map.flyTo({
+        center: [impactLocation.longitude, impactLocation.latitude],
+        zoom: 15,
+        pitch: 45, // Moderate pitch for 3D effect
+        bearing: 0, // North-facing
+        duration: 2000
+      });
+    }
+  }, [map, mapLoaded, streetViewMode, impactLocation]);
+
+  // Toggle enhanced buildings with better materials and lighting
+  const toggleEnhancedBuildings = useCallback(() => {
+    if (!map || !map.getLayer('building-3d')) return;
+
+    const newEnhanced = !enhancedBuildings;
+    setEnhancedBuildings(newEnhanced);
+
+    if (newEnhanced) {
+      // Enhanced mode - more realistic colors and lighting
+      map.setPaintProperty('building-3d', 'fill-extrusion-ambient-occlusion-intensity', 0.5);
+      map.setPaintProperty('building-3d', 'fill-extrusion-flood-light-intensity', 0.6);
+      map.setPaintProperty('building-3d', 'fill-extrusion-vertical-gradient', true);
+    } else {
+      // Simple mode - basic rendering
+      map.setPaintProperty('building-3d', 'fill-extrusion-ambient-occlusion-intensity', 0.1);
+      map.setPaintProperty('building-3d', 'fill-extrusion-flood-light-intensity', 0.2);
+      map.setPaintProperty('building-3d', 'fill-extrusion-vertical-gradient', false);
+    }
+  }, [map, enhancedBuildings]);
+  const toggle3DBuildings = () => {
+    if (!map) return;
+    
+    const newVisibility = !show3DBuildings;
+    setShow3DBuildings(newVisibility);
+    
+    // Toggle both building layers
+    if (map.getLayer('building-3d')) {
+      map.setLayoutProperty('building-3d', 'visibility', newVisibility ? 'visible' : 'none');
+    }
+    if (map.getLayer('building-shadows')) {
+      map.setLayoutProperty('building-shadows', 'visibility', newVisibility ? 'visible' : 'none');
+    }
+  };
 
   const runImpactAnimation = async () => {
     if (!map || !currentSimulation || isAnimating) return;
@@ -312,11 +591,12 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
         map.removeSource('asteroid');
       }
       
-      // Zoom to impact site
+      // Zoom to impact site - closer to see buildings
       await new Promise<void>((resolve) => {
         map.flyTo({
           center: [currentSimulation.location.longitude, currentSimulation.location.latitude],
-          zoom: 8,
+          zoom: 16, // Much closer zoom to see 3D buildings
+          pitch: 45, // Angled view for better 3D building visibility
           duration: 2000
         });
         setTimeout(resolve, 2000);
@@ -419,6 +699,103 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
             <div className="text-xs text-gray-400 mb-1">Status:</div>
             <div className="text-sm text-blue-300">{status}</div>
           </div>
+
+          {/* 3D Buildings Toggle */}
+          <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-md">
+            <div>
+              <div className="text-sm text-gray-200">3D Buildings</div>
+              <div className="text-xs text-gray-400">Show building damage</div>
+            </div>
+            <button
+              onClick={toggle3DBuildings}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                show3DBuildings ? 'bg-blue-600' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  show3DBuildings ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          
+          {/* Street View Toggle */}
+          <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-md">
+            <div>
+              <div className="text-sm text-gray-200">Street View Mode</div>
+              <div className="text-xs text-gray-400">Ground-level perspective</div>
+            </div>
+            <button
+              onClick={toggleStreetView}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                streetViewMode ? 'bg-green-600' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  streetViewMode ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Enhanced Buildings Toggle */}
+          <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-md">
+            <div>
+              <div className="text-sm text-gray-200">Enhanced Rendering</div>
+              <div className="text-xs text-gray-400">Better lighting & shadows</div>
+            </div>
+            <button
+              onClick={toggleEnhancedBuildings}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                enhancedBuildings ? 'bg-purple-600' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  enhancedBuildings ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          
+          {/* Building Damage Legend */}
+          {show3DBuildings && (
+            <div className="p-3 bg-gray-800/50 rounded-md">
+              <h4 className="text-sm font-medium text-gray-200 mb-3">🏢 Building Damage Levels</h4>
+              <div className="space-y-2">
+                <div className="flex items-center text-xs">
+                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ff0000' }}></div>
+                  <div className="flex-1">
+                    <span className="text-gray-200">Destroyed</span>
+                    <span className="text-gray-500 ml-1">(0-0.5km)</span>
+                  </div>
+                </div>
+                <div className="flex items-center text-xs">
+                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ff6600' }}></div>
+                  <div className="flex-1">
+                    <span className="text-gray-200">Severe Damage</span>
+                    <span className="text-gray-500 ml-1">(0.5-1km)</span>
+                  </div>
+                </div>
+                <div className="flex items-center text-xs">
+                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ffaa00' }}></div>
+                  <div className="flex-1">
+                    <span className="text-gray-200">Moderate Damage</span>
+                    <span className="text-gray-500 ml-1">(1-2km)</span>
+                  </div>
+                </div>
+                <div className="flex items-center text-xs">
+                  <div className="w-4 h-4 rounded-sm mr-2 border border-gray-500" style={{ backgroundColor: '#ffff00' }}></div>
+                  <div className="flex-1">
+                    <span className="text-gray-200">Light Damage</span>
+                    <span className="text-gray-500 ml-1">(2km+)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* Simulate Button */}
           <button
@@ -440,6 +817,9 @@ export default function MapboxMap({ className = '' }: MapboxMapProps) {
           <div className="text-xs text-gray-400 space-y-1">
             <p>• Click anywhere on Earth to set target</p>
             <p>• Choose asteroid size and simulate</p>
+            <p>• Toggle 3D buildings for damage view</p>
+            <p>• Use Street View for ground perspective</p>
+            <p>• Enhanced rendering for better visuals</p>
             <p>• View real-time damage analysis</p>
           </div>
         </div>
